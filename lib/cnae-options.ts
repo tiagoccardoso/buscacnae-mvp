@@ -9,6 +9,7 @@ type ExternalCnaeRow = Record<string, unknown>;
 
 const CNAE_SOURCE_URL = "https://servicodados.ibge.gov.br/api/v2/cnae/subclasses";
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24;
+const REMOTE_FETCH_TIMEOUT_MS = 5000;
 
 let memoryCache:
   | {
@@ -17,7 +18,6 @@ let memoryCache:
     }
   | null = null;
 let inflightPromise: Promise<CnaeOption[]> | null = null;
-
 
 const FALLBACK_CNAE_OPTIONS: CnaeOption[] = [
   ["6201501", "Desenvolvimento de programas de computador sob encomenda"],
@@ -118,31 +118,37 @@ function mapExternalRow(row: ExternalCnaeRow): CnaeOption | null {
 }
 
 async function fetchAllCnaesFromSource() {
-  const response = await fetch(CNAE_SOURCE_URL, {
-    headers: {
-      Accept: "application/json"
-    },
-    next: {
-      revalidate: 60 * 60 * 24 * 30
-    }
-  });
+  try {
+    const response = await fetch(CNAE_SOURCE_URL, {
+      headers: {
+        Accept: "application/json"
+      },
+      signal: AbortSignal.timeout(REMOTE_FETCH_TIMEOUT_MS),
+      next: {
+        revalidate: 60 * 60 * 24 * 30
+      }
+    });
 
-  if (!response.ok) {
+    if (!response.ok) {
+      return mergeWithFallback([]);
+    }
+
+    const payload = (await response.json()) as unknown;
+    const rows = Array.isArray(payload) ? payload : [];
+    const unique = new Map<string, CnaeOption>();
+
+    for (const row of rows) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+      const option = mapExternalRow(row as ExternalCnaeRow);
+      if (!option || unique.has(option.value)) continue;
+      unique.set(option.value, option);
+    }
+
+    return mergeWithFallback(Array.from(unique.values()));
+  } catch (error) {
+    console.error("Falha ao consultar catálogo remoto de CNAEs. Usando fallback local.", error);
     return mergeWithFallback([]);
   }
-
-  const payload = (await response.json()) as unknown;
-  const rows = Array.isArray(payload) ? payload : [];
-  const unique = new Map<string, CnaeOption>();
-
-  for (const row of rows) {
-    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
-    const option = mapExternalRow(row as ExternalCnaeRow);
-    if (!option || unique.has(option.value)) continue;
-    unique.set(option.value, option);
-  }
-
-  return mergeWithFallback(Array.from(unique.values()));
 }
 
 export async function getAllCnaeOptions() {

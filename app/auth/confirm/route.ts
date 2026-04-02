@@ -1,16 +1,27 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getBaseUrl } from "@/lib/env";
+
+function sanitizeNextPath(value: string | null) {
+  if (!value) return "/dashboard";
+  if (!value.startsWith("/") || value.startsWith("//")) return "/dashboard";
+  return value;
+}
+
+function getRequestOrigin(request: Request) {
+  const url = new URL(request.url);
+  return url.origin;
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const tokenHash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type") as EmailOtpType | null;
-  const next = url.searchParams.get("next") ?? "/dashboard";
+  const next = sanitizeNextPath(url.searchParams.get("next"));
+  const origin = getRequestOrigin(request);
 
   if (!tokenHash || !type) {
-    return NextResponse.redirect(new URL("/sign-in?error=Link inválido ou expirado.", getBaseUrl()));
+    return NextResponse.redirect(new URL("/sign-in?error=Link inválido ou expirado.", origin));
   }
 
   const supabase = await createSupabaseServerClient();
@@ -21,9 +32,9 @@ export async function GET(request: Request) {
 
   if (error) {
     return NextResponse.redirect(
-      new URL(`/sign-in?error=${encodeURIComponent(error.message)}`, getBaseUrl())
+      new URL(`/sign-in?error=${encodeURIComponent(error.message)}`, origin)
     );
   }
 
-  return NextResponse.redirect(new URL(next, getBaseUrl()));
+  return NextResponse.redirect(new URL(next, origin));
 }
