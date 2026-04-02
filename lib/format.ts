@@ -13,9 +13,17 @@ export function formatDateTime(value?: string | null) {
 }
 
 export function formatMoney(value?: number | string | null) {
-  const amount = typeof value === "string" ? Number(value) : value ?? 0;
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+
+  const amount = typeof value === "string" ? Number(value) : value;
+  if (!Number.isFinite(amount)) {
+    return "-";
+  }
+
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL"
-  }).format(Number.isFinite(amount) ? amount : 0);
+  }).format(amount);
 }

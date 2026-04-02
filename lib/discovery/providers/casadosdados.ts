@@ -11,17 +11,26 @@ import {
   toTitleCase
 } from "@/lib/utils";
 
-function extractNestedString(value: unknown, path: string[]) {
+function coalesceText(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
+
+function extractNestedText(value: unknown, path: string[]) {
   let current = value;
   for (const key of path) {
     if (!current || typeof current !== "object" || Array.isArray(current)) return null;
     current = (current as Record<string, unknown>)[key];
   }
-  return typeof current === "string" && current.trim() ? current.trim() : null;
+  return coalesceText(current);
 }
 
 function extractFirstString(value: unknown): string | null {
   if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (Array.isArray(value)) {
     for (const item of value) {
       const nested = extractFirstString(item);
@@ -39,7 +48,9 @@ function extractFirstString(value: unknown): string | null {
   return null;
 }
 
-function normalizeFromCasaDosDados(item: Record<string, unknown>): NormalizedEstablishment | null {
+export function normalizeCasaDosDadosEstablishment(
+  item: Record<string, unknown>
+): NormalizedEstablishment | null {
   const activity = coalesceObject(
     item.atividade_principal,
     item.cnae_principal,
@@ -55,69 +66,124 @@ function normalizeFromCasaDosDados(item: Record<string, unknown>): NormalizedEst
   );
   if (!cnpj) return null;
 
-  const typeLogradouro = coalesceString(address?.tipo_logradouro);
-  const logradouro = coalesceString(address?.logradouro, item.logradouro);
-  const addressLine = typeLogradouro && logradouro ? `${typeLogradouro} ${logradouro}` : logradouro;
+  const typeLogradouro = coalesceText(address?.tipo_logradouro);
+  const logradouro = coalesceText(address?.logradouro, item.logradouro);
+  const addressLine =
+    typeLogradouro && logradouro ? `${typeLogradouro} ${logradouro}` : logradouro;
+  const addressIbge =
+    address?.ibge && typeof address.ibge === "object" && !Array.isArray(address.ibge)
+      ? (address.ibge as Record<string, unknown>)
+      : null;
 
   return {
     cnpj,
-    cnpjRoot: normalizeCode(coalesceString(item.cnpj_raiz) ?? ""),
-    companyName: coalesceString(item.razao_social, item.nome_empresarial) ?? "Sem razão social",
+    cnpjRoot: normalizeCode(coalesceText(item.cnpj_raiz) ?? ""),
+    companyName:
+      coalesceString(item.razao_social, item.nome_empresarial) ?? "Sem razão social",
     tradeName: coalesceString(item.nome_fantasia),
-    registrationStatus: coalesceString(
+    registrationStatus: coalesceText(
       registrationStatus?.situacao_cadastral,
       registrationStatus?.descricao,
       item.situacao_cadastral,
       item.status
     ),
-    openedAt: coalesceString(item.data_abertura, item.abertura),
+    openedAt: coalesceText(item.data_abertura, item.abertura),
     primaryCnaeCode: normalizeCode(
-      coalesceString(
+      coalesceText(
         item.codigo_atividade_principal,
         activity?.codigo,
-        extractNestedString(activity, ["principal", "codigo"])
+        extractNestedText(activity, ["principal", "codigo"])
       ) ?? ""
     ),
-    primaryCnaeDescription: coalesceString(
+    primaryCnaeDescription: coalesceText(
       item.atividade_principal_descricao,
       item.descricao_atividade_principal,
       activity?.descricao,
-      extractNestedString(activity, ["principal", "descricao"])
+      extractNestedText(activity, ["principal", "descricao"]),
+      typeof item.atividade_principal === "string" ? item.atividade_principal : null
     ),
     secondaryCnaes: coalesceArray(item.atividades_secundarias, item.codigo_atividade_secundaria),
-    legalNatureCode: normalizeCode(coalesceString(item.codigo_natureza_juridica) ?? ""),
-    legalNatureDescription: coalesceString(item.natureza_juridica, item.descricao_natureza_juridica),
-    companySize: coalesceString(item.porte, companySize?.descricao),
+    legalNatureCode: normalizeCode(coalesceText(item.codigo_natureza_juridica) ?? ""),
+    legalNatureDescription: coalesceText(
+      item.natureza_juridica,
+      item.descricao_natureza_juridica
+    ),
+    companySize: coalesceText(item.porte, companySize?.descricao),
     simplesOptIn: parseBoolean(item.opcao_pelo_simples),
     meiOptIn: parseBoolean(item.opcao_pelo_mei),
     capitalSocial: parseNumber(item.capital_social),
-    email: extractFirstString(item.email) ?? extractFirstString(contacts?.email) ?? extractFirstString(contacts?.emails),
+    email:
+      extractFirstString(item.email) ??
+      extractFirstString(contacts?.email) ??
+      extractFirstString(contacts?.emails),
     phone:
       extractFirstString(item.telefone) ??
       extractFirstString(item.telefone1) ??
       extractFirstString(contacts?.telefone) ??
       extractFirstString(contacts?.telefones),
-    website: extractFirstString(item.website) ?? extractFirstString(contacts?.website) ?? extractFirstString(contacts?.site),
-    country: coalesceString(item.pais),
-    stateCode: coalesceString(item.uf, address?.uf)?.toUpperCase() ?? null,
-    cityName: coalesceString(item.municipio, item.cidade, address?.municipio),
+    website:
+      extractFirstString(item.website) ??
+      extractFirstString(contacts?.website) ??
+      extractFirstString(contacts?.site),
+    country: coalesceText(item.pais),
+    stateCode: coalesceText(item.uf, address?.uf)?.toUpperCase() ?? null,
+    cityName: coalesceText(item.municipio, item.cidade, address?.municipio),
     cityIbge: normalizeCode(
-      coalesceString(
+      coalesceText(
         item.codigo_municipio_ibge,
         item.municipio_ibge,
         address?.codigo_municipio_ibge,
         address?.municipio_ibge,
-        address?.ibge && typeof address.ibge === "object" && !Array.isArray(address.ibge)
-          ? coalesceString((address.ibge as Record<string, unknown>).codigo_municipio)
-          : null
+        addressIbge?.codigo_municipio
       ) ?? ""
     ),
-    neighborhood: coalesceString(item.bairro, address?.bairro),
-    cep: normalizeCode(coalesceString(item.cep, address?.cep) ?? ""),
+    neighborhood: coalesceText(item.bairro, address?.bairro),
+    cep: normalizeCode(coalesceText(item.cep, address?.cep) ?? ""),
     addressLine,
-    addressNumber: coalesceString(item.numero, address?.numero),
-    complement: coalesceString(item.complemento, address?.complemento),
+    addressNumber: coalesceText(item.numero, address?.numero),
+    complement: coalesceText(item.complemento, address?.complemento),
     providerPayload: item
+  };
+}
+
+export async function fetchCasaDosDadosCompanyByCnpj(cnpj: string): Promise<{
+  raw: Record<string, unknown>;
+  normalized: NormalizedEstablishment | null;
+}> {
+  const normalizedCnpj = normalizeCnpj(cnpj);
+  if (!normalizedCnpj) {
+    throw new Error("CNPJ inválido para consulta detalhada na Casa dos Dados.");
+  }
+
+  const response = await fetch(
+    `https://api.casadosdados.com.br/v4/cnpj/${normalizedCnpj}`,
+    {
+      method: "GET",
+      headers: {
+        "api-key": getCasaDosDadosKey(),
+        Accept: "application/json"
+      },
+      cache: "no-store"
+    }
+  );
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(`Casa dos Dados respondeu ${response.status}: ${message}`);
+  }
+
+  const raw = (await response.json()) as Record<string, unknown>;
+
+  const normalized = normalizeCasaDosDadosEstablishment(raw);
+
+  return {
+    raw,
+    normalized: normalized
+      ? {
+          ...normalized,
+          cityName: normalized.cityName ? toTitleCase(normalized.cityName) : normalized.cityName
+        }
+      : null
   };
 }
 
@@ -172,7 +238,7 @@ export async function searchWithCasaDosDados(
   const rows = coalesceArray(raw.registros, raw.cnpjs, raw.resultados, raw.data, raw) ?? [];
 
   const normalized = rows
-    .map((item) => normalizeFromCasaDosDados(item as Record<string, unknown>))
+    .map((item) => normalizeCasaDosDadosEstablishment(item as Record<string, unknown>))
     .filter(Boolean) as NormalizedEstablishment[];
 
   return {
