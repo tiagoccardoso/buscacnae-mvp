@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { confirmSearchAccessOrderPayment, getSearchAccessOrderByAccessToken } from "@/lib/billing";
+import { getSearchAccessOrderByAccessToken, syncSearchAccessOrderPaymentStatus } from "@/lib/billing";
 import { createXlsxWorkbook } from "@/lib/export/xlsx";
 import { formatCnpj } from "@/lib/format";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -31,19 +31,13 @@ function toCell(value: unknown) {
 
 export async function GET(_request: Request, { params }: DownloadRouteProps) {
   const { token } = await params;
-  let order = await getSearchAccessOrderByAccessToken(token);
+  const initialOrder = await getSearchAccessOrderByAccessToken(token);
 
-  if (!order) {
+  if (!initialOrder) {
     return new NextResponse("Pedido não encontrado.", { status: 404 });
   }
 
-  if (!["paid", "free"].includes(order.status)) {
-    order =
-      (await confirmSearchAccessOrderPayment({
-        orderId: order.id,
-        sessionId: order.stripe_checkout_session_id
-      })) ?? order;
-  }
+  const order = await syncSearchAccessOrderPaymentStatus(initialOrder);
 
   if (!["paid", "free"].includes(order.status)) {
     return new NextResponse("A lista ainda não foi liberada para download.", { status: 403 });

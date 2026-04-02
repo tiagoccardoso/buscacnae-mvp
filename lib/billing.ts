@@ -127,6 +127,42 @@ export async function getSearchAccessOrderByCheckoutSessionId(sessionId: string)
   return (data as SearchAccessOrderRecord | null) ?? null;
 }
 
+
+export async function syncSearchAccessOrderPaymentStatus(order: SearchAccessOrderRecord) {
+  if (isSearchAccessOrderUnlocked(order.status)) {
+    return order;
+  }
+
+  if (!order.stripe_checkout_session_id) {
+    return order;
+  }
+
+  const stripe = getStripeClient();
+  const session = await stripe.checkout.sessions.retrieve(order.stripe_checkout_session_id);
+
+  if (session.payment_status === "paid") {
+    await markSearchAccessOrderPaid({
+      orderId: order.id,
+      sessionId: session.id,
+      paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+    });
+
+    return (await getSearchAccessOrderById(order.id)) ?? order;
+  }
+
+  if (session.status === "expired") {
+    await markSearchAccessOrderPaymentFailed({
+      orderId: order.id,
+      sessionId: session.id,
+      paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+    });
+
+    return (await getSearchAccessOrderById(order.id)) ?? order;
+  }
+
+  return order;
+}
+
 export async function markSearchAccessOrderCheckoutCreated(args: {
   orderId: string;
   customerId?: string | null;
@@ -204,52 +240,6 @@ export async function markSearchAccessOrderPaymentFailed(args: {
   await query;
 }
 
-
-export async function confirmSearchAccessOrderPayment(args: {
-  orderId?: string | null;
-  accessToken?: string | null;
-  sessionId?: string | null;
-}) {
-  let order: SearchAccessOrderRecord | null = null;
-
-  if (args.orderId) {
-    order = await getSearchAccessOrderById(args.orderId);
-  } else if (args.accessToken) {
-    order = await getSearchAccessOrderByAccessToken(args.accessToken);
-  }
-
-  if (!order || isSearchAccessOrderUnlocked(order.status)) {
-    return order;
-  }
-
-  const sessionId = args.sessionId ?? order.stripe_checkout_session_id;
-  if (!sessionId) {
-    return order;
-  }
-
-  try {
-    const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-    if (session.customer) {
-      await syncStripeCustomer(String(session.customer)).catch(() => undefined);
-    }
-
-    if (session.mode === "payment" && session.payment_status === "paid") {
-      await markSearchAccessOrderPaid({
-        orderId: order.id,
-        sessionId: session.id,
-        paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
-      });
-
-      return await getSearchAccessOrderById(order.id);
-    }
-  } catch {
-    return order;
-  }
-
-  return order;
-}
 async function unlockOrderFromCheckoutSession(session: Stripe.Checkout.Session) {
   const orderId = typeof session.metadata?.order_id === "string" ? session.metadata.order_id : null;
   const order = orderId
