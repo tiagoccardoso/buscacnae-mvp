@@ -3,7 +3,9 @@ import { notFound, redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { LeadToggleForm } from "@/components/lead-toggle-form";
-import { formatCnpj, formatDateTime } from "@/lib/format";
+import { getSearchAccessOrderById, syncSearchAccessOrderPaymentStatus } from "@/lib/billing";
+import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
+import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
 
 type SearchResultPageProps = {
@@ -32,6 +34,21 @@ export default async function SearchResultPage({ params }: SearchResultPageProps
     notFound();
   }
 
+  const summary = getSearchSummary(search.data);
+
+  const orderLookup = await supabase
+    .from("search_access_orders")
+    .select("id")
+    .eq("search_query_id", id)
+    .eq("profile_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const rawOrder = orderLookup.data?.id ? await getSearchAccessOrderById(orderLookup.data.id) : null;
+  const order = rawOrder ? await syncSearchAccessOrderPaymentStatus(rawOrder) : null;
+  const orderUnlocked = order?.status === "paid" || order?.status === "free";
+
   const { data: rows } = await supabase
     .from("search_results")
     .select("position, establishment_id, establishments(*)")
@@ -52,28 +69,107 @@ export default async function SearchResultPage({ params }: SearchResultPageProps
 
   return (
     <div className="stack">
-      <div className="surface-premium card-lg stack">
-        <div className="inline-actions" style={{ justifyContent: "space-between" }}>
-          <div className="stack" style={{ gap: 6 }}>
-            <span className="eyebrow">Resultado da busca</span>
-            <h2 className="section-title" style={{ marginBottom: 0 }}>
-              CNAE {search.data.cnae_code} · {search.data.city_name}/{search.data.state_code}
-            </h2>
-            <span className="muted">
-              {search.data.total_results} resultados · {search.data.cached ? "cache" : "consulta nova"} · {" "}
-              {formatDateTime(search.data.created_at)}
-            </span>
+      <div className="panel-grid two">
+        <div className="surface-premium card-lg stack">
+          <div className="inline-actions" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div className="stack" style={{ gap: 6 }}>
+              <span className="eyebrow">Resultado da busca</span>
+              <h2 className="section-title" style={{ marginBottom: 0 }}>
+                {summary.headline}
+              </h2>
+              <span className="muted">
+                {search.data.total_results} resultados · {search.data.cached ? "cache" : "consulta nova"} · {" "}
+                {formatDateTime(search.data.created_at)}
+              </span>
+            </div>
+            <Link href="/dashboard/search" className="button-ghost">
+              Nova busca
+            </Link>
           </div>
-          <Link href="/dashboard/search" className="button-ghost">
-            Nova busca
-          </Link>
+
+          <div className="stat-grid stat-grid-premium">
+            <div className="stat-box stat-box-premium">
+              <strong>{search.data.total_results}</strong>
+              <span className="muted">Empresas retornadas</span>
+            </div>
+            <div className="stat-box stat-box-premium">
+              <strong>{summary.cnaeText}</strong>
+              <span className="muted">CNAEs do recorte</span>
+            </div>
+            <div className="stat-box stat-box-premium">
+              <strong>{summary.locationText}</strong>
+              <span className="muted">Abrangência geográfica</span>
+            </div>
+          </div>
+
+          {summary.filterLabels.length > 0 ? (
+            <div className="inline-list">
+              {summary.filterLabels.map((label) => (
+                <span key={label} className="pill">
+                  {label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="surface-premium card-lg stack">
+          <span className="eyebrow">Compra da lista</span>
+
+          {order ? (
+            <>
+              <div className="grid-2">
+                <div className="surface-soft card stack">
+                  <span className="kicker">CNPJs encontrados</span>
+                  <strong style={{ fontSize: "2rem" }}>{order.result_count}</strong>
+                  <span className="muted">Quantidade pronta para desbloqueio.</span>
+                </div>
+                <div className="surface-soft card stack">
+                  <span className="kicker">Total</span>
+                  <strong style={{ fontSize: "2rem" }}>{formatMoney(order.total_amount_cents / 100)}</strong>
+                  <span className="muted">{formatMoney(order.unit_amount_cents / 100)} por CNPJ encontrado.</span>
+                </div>
+              </div>
+
+              <div className="notice">
+                {orderUnlocked
+                  ? "Esta lista já está liberada. Você pode abrir a versão completa ou baixar o XLSX."
+                  : order.result_count === 0
+                    ? "Nenhum CNPJ foi encontrado nesta busca. O resultado fica disponível sem cobrança."
+                    : "A lista completa pode ser comprada agora, aproveitando a pesquisa já salva no Dashboard."}
+              </div>
+
+              <div className="inline-actions">
+                {orderUnlocked ? (
+                  <>
+                    <Link href={`/orders/${order.access_token}`} className="button">
+                      Abrir lista liberada
+                    </Link>
+                    <Link href={`/orders/${order.access_token}/download`} className="button-ghost">
+                      Baixar XLSX
+                    </Link>
+                  </>
+                ) : order.result_count === 0 ? (
+                  <Link href={`/orders/${order.access_token}`} className="button">
+                    Ver resultado vazio
+                  </Link>
+                ) : (
+                  <Link href={`/checkout/${order.id}`} className="button">
+                    Comprar lista
+                  </Link>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="notice warning">Não foi possível localizar o pedido comercial associado a esta busca.</div>
+          )}
         </div>
       </div>
 
       {!rows || rows.length === 0 ? (
         <EmptyState
           title="Nenhum estabelecimento retornado"
-          description="Tente outro CNAE, outro município ou revise o provedor configurado. O visual premium continua preservando clareza mesmo quando a busca volta vazia."
+          description="Tente outro recorte de CNAEs ou ajuste a região da busca. O resultado continua salvo no Dashboard para você revisar depois."
           ctaHref="/dashboard/search"
           ctaLabel="Voltar ao formulário"
         />
@@ -82,7 +178,7 @@ export default async function SearchResultPage({ params }: SearchResultPageProps
           <div className="stack" style={{ gap: 8 }}>
             <span className="eyebrow">Lista retornada</span>
             <p className="section-copy">
-              Navegue pelos estabelecimentos encontrados, abra a ficha completa ou salve os melhores para o pipeline comercial.
+              Navegue pelos estabelecimentos encontrados, abra a ficha completa, salve os melhores no pipeline comercial ou avance para a compra da lista completa.
             </p>
           </div>
           <div className="result-card-grid">

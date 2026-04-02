@@ -1,8 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { prepareSearchOrder } from "@/lib/discovery/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { runDiscoverySearch } from "@/lib/discovery/service";
 
 export async function runSearchAction(formData: FormData) {
   const supabase = await createSupabaseServerClient();
@@ -14,16 +14,19 @@ export async function runSearchAction(formData: FormData) {
     redirect("/sign-in?message=Faça login para continuar.");
   }
 
-  const input = {
+  const email = String(user.email ?? "").trim().toLowerCase();
+
+  const result = await prepareSearchOrder({
+    profileId: user.id,
+    email,
     cnae: String(formData.get("cnae") ?? ""),
     stateCode: String(formData.get("stateCode") ?? ""),
-    cityName: String(formData.get("cityName") ?? ""),
-    cityIbge: String(formData.get("cityIbge") ?? "")
-  };
-
-  const result = await runDiscoverySearch({
-    ...input,
-    profileId: user.id
+    citySelection: String(formData.get("citySelection") ?? ""),
+    stateWide: formData.get("stateWide") === "on",
+    requireEmail: formData.get("requireEmail") === "on",
+    requireAddress: formData.get("requireAddress") === "on",
+    requirePhone: formData.get("requirePhone") === "on",
+    mobileOnly: formData.get("mobileOnly") === "on"
   });
 
   if (!result.ok) {
