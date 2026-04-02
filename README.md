@@ -62,6 +62,13 @@ No painel do Supabase:
 
 ## 3) Configure a Stripe
 
+Para o checkout avulso, configure também:
+
+- `MINIMUM_CHECKOUT_AMOUNT_CENTS=50`
+
+Isso evita erro de valor mínimo em cobranças pequenas na Stripe.
+
+
 Crie 2 preços recorrentes e coloque os IDs em:
 
 - `STRIPE_PRICE_PRO_MONTHLY`

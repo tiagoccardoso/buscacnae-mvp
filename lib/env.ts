@@ -16,13 +16,19 @@ export function getAppName() {
   return getEnv("NEXT_PUBLIC_APP_NAME") || "BuscaCNAE";
 }
 
+function normalizeUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
 export function getBaseUrl() {
-  const explicit = getEnv("NEXT_PUBLIC_SITE_URL");
+  const explicit = normalizeUrl(getEnv("NEXT_PUBLIC_SITE_URL"));
   if (explicit) return explicit;
 
-  const vercelUrl = getEnv("VERCEL_URL");
+  const vercelUrl = normalizeUrl(getEnv("VERCEL_URL"));
   if (vercelUrl) {
-    return vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`;
+    return vercelUrl;
   }
 
   return "http://localhost:3000";
@@ -91,7 +97,7 @@ export function isBillingBypassed() {
 }
 
 export function getMinimumCheckoutAmountCents() {
-  return Number(getEnv("MINIMUM_CHECKOUT_AMOUNT_CENTS") || "0");
+  return Number(getEnv("MINIMUM_CHECKOUT_AMOUNT_CENTS") || "50");
 }
 
 export function getSplineSceneUrl() {
