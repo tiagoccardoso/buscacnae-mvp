@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getSearchAccessOrderByAccessToken } from "@/lib/billing";
+import { confirmSearchAccessOrderPayment, getSearchAccessOrderByAccessToken } from "@/lib/billing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
 import { getSearchSummary } from "@/lib/search-summary";
@@ -15,13 +15,22 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
   const { token } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const checkoutState = typeof resolvedSearchParams.checkout === "string" ? resolvedSearchParams.checkout : "";
+  const checkoutSessionId = typeof resolvedSearchParams.session_id === "string" ? resolvedSearchParams.session_id : "";
   const order = await getSearchAccessOrderByAccessToken(token);
 
   if (!order) {
     notFound();
   }
 
-  const currentOrder = order as NonNullable<typeof order>;
+  let currentOrder = order as NonNullable<typeof order>;
+
+  if (checkoutState === "success" && !["paid", "free"].includes(currentOrder.status)) {
+    currentOrder =
+      (await confirmSearchAccessOrderPayment({
+        orderId: currentOrder.id,
+        sessionId: checkoutSessionId || currentOrder.stripe_checkout_session_id
+      })) ?? currentOrder;
+  }
   const admin = createSupabaseAdminClient();
   const { data: search } = await admin
     .from("search_queries")
@@ -68,8 +77,8 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
             <>
               {checkoutState === "success" ? (
                 <div className="notice warning">
-                  O checkout retornou com sucesso, mas o webhook ainda pode estar confirmando o pagamento.
-                  Atualize esta página em alguns segundos.
+                  O checkout retornou com sucesso, mas o pagamento ainda não foi confirmado no sistema.
+                  Se ele já foi capturado pela Stripe, esta página libera a lista automaticamente ao recarregar.
                 </div>
               ) : null}
               <div className="notice warning">

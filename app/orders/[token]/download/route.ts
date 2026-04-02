@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSearchAccessOrderByAccessToken } from "@/lib/billing";
+import { confirmSearchAccessOrderPayment, getSearchAccessOrderByAccessToken } from "@/lib/billing";
 import { createXlsxWorkbook } from "@/lib/export/xlsx";
 import { formatCnpj } from "@/lib/format";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -31,10 +31,18 @@ function toCell(value: unknown) {
 
 export async function GET(_request: Request, { params }: DownloadRouteProps) {
   const { token } = await params;
-  const order = await getSearchAccessOrderByAccessToken(token);
+  let order = await getSearchAccessOrderByAccessToken(token);
 
   if (!order) {
     return new NextResponse("Pedido não encontrado.", { status: 404 });
+  }
+
+  if (!["paid", "free"].includes(order.status)) {
+    order =
+      (await confirmSearchAccessOrderPayment({
+        orderId: order.id,
+        sessionId: order.stripe_checkout_session_id
+      })) ?? order;
   }
 
   if (!["paid", "free"].includes(order.status)) {

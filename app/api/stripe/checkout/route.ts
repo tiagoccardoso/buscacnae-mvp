@@ -79,6 +79,7 @@ export async function POST(request: Request) {
 
     const successUrl = new URL(`/orders/${order.access_token}`, getBaseUrl());
     successUrl.searchParams.set("checkout", "success");
+    successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
 
     const cancelUrl = new URL(`/checkout/${order.id}`, getBaseUrl());
     cancelUrl.searchParams.set("checkout", "cancelled");
