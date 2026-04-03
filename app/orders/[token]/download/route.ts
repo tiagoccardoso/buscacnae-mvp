@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSearchAccessOrderByAccessToken, syncSearchAccessOrderPaymentStatus } from "@/lib/billing";
 import { createXlsxWorkbook } from "@/lib/export/xlsx";
-import { formatCnpj } from "@/lib/format";
+import { formatCnpj, formatDate, formatMoney } from "@/lib/format";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { extractSingleObject } from "@/lib/utils";
+import { extractSingleObject, flattenUnknownToRows, safeJsonStringify } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,14 +29,37 @@ function toCell(value: unknown) {
   return String(value).trim();
 }
 
-function stringify(value: unknown) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value.trim();
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
+function stringifyMultiline(value: unknown) {
+  return safeJsonStringify(value, 2);
+}
+
+function formatSecondaryCnaes(value: unknown) {
+  if (!Array.isArray(value)) {
+    return toCell(value);
   }
+
+  return value
+    .map((item) => {
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        const record = item as Record<string, unknown>;
+        return toCell(record.descricao ?? record.codigo ?? record.id ?? safeJsonStringify(item, 0));
+      }
+
+      return toCell(item);
+    })
+    .filter(Boolean)
+    .join(" • ");
+}
+
+function formatMaybeDate(value: unknown) {
+  const text = toCell(value);
+  if (!text) return "";
+  return /^\d{4}-\d{2}-\d{2}/.test(text) ? formatDate(text) : text;
+}
+
+function formatMaybeMoney(value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  return formatMoney(value as number | string);
 }
 
 export async function GET(_request: Request, { params }: DownloadRouteProps) {
@@ -67,7 +90,7 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
       .order("position", { ascending: true })
   ]);
 
-  const workbookRows: string[][] = [
+  const listSheetRows: string[][] = [
     [
       "Posição",
       "CNPJ",
@@ -97,31 +120,37 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
       "Endereço",
       "Número",
       "Complemento",
-      "Payload Consolidado (JSON)"
+      "Dados brutos formatados (JSON)"
     ]
+  ];
+
+  const rawSheetRows: string[][] = [
+    ["Posição", "CNPJ", "Razão Social", "Campo bruto", "Valor bruto"]
   ];
 
   for (const row of rows ?? []) {
     const establishment = extractSingleObject(row.establishments);
     if (!establishment) continue;
 
-    workbookRows.push([
+    const formattedPayload = stringifyMultiline(establishment.provider_payload);
+
+    listSheetRows.push([
       toCell(row.position),
       formatCnpj(toCell(establishment.cnpj)),
       toCell(establishment.cnpj_root),
       toCell(establishment.company_name),
       toCell(establishment.trade_name),
       toCell(establishment.registration_status),
-      toCell(establishment.opened_at),
+      formatMaybeDate(establishment.opened_at),
       toCell(establishment.primary_cnae_code),
       toCell(establishment.primary_cnae_description),
-      stringify(establishment.secondary_cnaes),
+      formatSecondaryCnaes(establishment.secondary_cnaes),
       toCell(establishment.legal_nature_code),
       toCell(establishment.legal_nature_description),
       toCell(establishment.company_size),
       toCell(establishment.simples_opt_in),
       toCell(establishment.mei_opt_in),
-      toCell(establishment.capital_social),
+      formatMaybeMoney(establishment.capital_social),
       toCell(establishment.phone),
       toCell(establishment.email),
       toCell(establishment.website),
@@ -134,13 +163,36 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
       toCell(establishment.address_line),
       toCell(establishment.address_number),
       toCell(establishment.complement),
-      stringify(establishment.provider_payload)
+      formattedPayload
     ]);
+
+    const flattenedRawRows = flattenUnknownToRows(establishment.provider_payload);
+    for (const flatRow of flattenedRawRows) {
+      rawSheetRows.push([
+        toCell(row.position),
+        formatCnpj(toCell(establishment.cnpj)),
+        toCell(establishment.company_name),
+        flatRow.path,
+        flatRow.value
+      ]);
+    }
   }
 
   const workbook = createXlsxWorkbook({
-    sheetName: "Lista",
-    rows: workbookRows
+    sheets: [
+      {
+        name: "Lista",
+        rows: listSheetRows,
+        columnWidths: [10, 22, 16, 34, 28, 18, 14, 14, 32, 36, 16, 28, 18, 10, 10, 16, 18, 30, 24, 16, 8, 22, 14, 18, 14, 30, 12, 18, 86],
+        wrapColumns: [8, 9, 11, 16, 17, 24, 25, 27, 28]
+      },
+      {
+        name: "Dados brutos",
+        rows: rawSheetRows,
+        columnWidths: [10, 22, 34, 48, 96],
+        wrapColumns: [3, 4]
+      }
+    ]
   });
 
   const fileParts = [

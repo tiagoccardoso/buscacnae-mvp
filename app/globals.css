@@ -507,6 +507,11 @@ main {
   flex-wrap: wrap;
 }
 
+.history-toolbar-actions form,
+.history-row-actions form {
+  margin: 0;
+}
+
 .history-action-button {
   min-width: 112px;
 }
@@ -2804,4 +2809,19 @@ main {
 
 .dashboard-search-picker-form .picker-column {
   min-width: 0;
+}
+
+.payload-json-block {
+  margin: 0;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(5, 14, 39, 0.72);
+  color: #dbe9ff;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  max-height: 540px;
 }

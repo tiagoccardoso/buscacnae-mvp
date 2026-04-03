@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { formatCnpj, formatDate, formatDateTime, formatMoney } from "@/lib/format";
-import { extractSingleObject } from "@/lib/utils";
+import { extractSingleObject, safeJsonStringify } from "@/lib/utils";
 
 type EstablishmentDetailsProps = {
   establishment: Record<string, unknown>;
@@ -543,6 +543,10 @@ export function EstablishmentDetails({ establishment }: EstablishmentDetailsProp
         <div className="surface-soft card stack">
           <strong>Todos os campos retornados pela API</strong>
           <div className="details-grid">{renderObjectFields(payload, "payload")}</div>
+          <div className="stack" style={{ gap: 10 }}>
+            <span className="kicker">Dados brutos formatados (JSON)</span>
+            <pre className="payload-json-block">{safeJsonStringify(payload, 2)}</pre>
+          </div>
         </div>
       ) : null}
     </div>

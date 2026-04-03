@@ -1,5 +1,25 @@
 import { deflateRawSync } from "node:zlib";
 
+type WorkbookSheet = {
+  name: string;
+  rows: string[][];
+  columnWidths?: number[];
+  wrapColumns?: number[];
+};
+
+type LegacyWorkbookInput = {
+  sheetName: string;
+  rows: string[][];
+  columnWidths?: number[];
+  wrapColumns?: number[];
+};
+
+type WorkbookInput =
+  | LegacyWorkbookInput
+  | {
+      sheets: WorkbookSheet[];
+    };
+
 const CRC32_TABLE = new Uint32Array(256);
 
 for (let i = 0; i < 256; i += 1) {
@@ -53,7 +73,26 @@ function columnName(index: number) {
   return result;
 }
 
-function buildSharedStrings(rows: string[][]) {
+function normalizeSheets(input: WorkbookInput) {
+  if ("sheets" in input) {
+    return input.sheets.map((sheet) => ({
+      ...sheet,
+      rows: sheet.rows.length > 0 ? sheet.rows : [[""]],
+      wrapColumns: sheet.wrapColumns ?? []
+    }));
+  }
+
+  return [
+    {
+      name: input.sheetName,
+      rows: input.rows.length > 0 ? input.rows : [[""]],
+      columnWidths: input.columnWidths,
+      wrapColumns: input.wrapColumns ?? []
+    }
+  ];
+}
+
+function buildSharedStrings(sheets: WorkbookSheet[]) {
   const indexByValue = new Map<string, number>();
   const values: string[] = [];
 
@@ -68,29 +107,49 @@ function buildSharedStrings(rows: string[][]) {
     return index;
   }
 
-  const matrix = rows.map((row) => row.map((cell) => ensure(cell)));
+  const matrices = sheets.map((sheet) => sheet.rows.map((row) => row.map((cell) => ensure(cell))));
 
   const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${rows.reduce((sum, row) => sum + row.length, 0)}" uniqueCount="${values.length}">${values
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sheets.reduce(
+    (sum, sheet) => sum + sheet.rows.reduce((rowSum, row) => rowSum + row.length, 0),
+    0
+  )}" uniqueCount="${values.length}">${values
     .map((value) => `<si><t xml:space="preserve">${escapeXml(value)}</t></si>`)
     .join("")}</sst>`;
 
   return {
     xml,
-    matrix
+    matrices
   };
 }
 
-function buildSheetXml(rows: string[][]) {
-  const { xml: sharedStringsXml, matrix } = buildSharedStrings(rows);
-  const maxColumns = rows.reduce((max, row) => Math.max(max, row.length), 0);
-  const lastColumn = maxColumns > 0 ? columnName(maxColumns - 1) : "A";
-  const lastRow = Math.max(rows.length, 1);
+function buildColumnWidths(sheet: WorkbookSheet) {
+  const maxColumns = sheet.rows.reduce((max, row) => Math.max(max, row.length), 0);
 
-  const widths = Array.from({ length: maxColumns }, (_, columnIndex) => {
-    const maxWidth = rows.reduce((max, row) => Math.max(max, (row[columnIndex] ?? "").length), 0);
-    return Math.min(Math.max(maxWidth + 2, 12), 40);
+  return Array.from({ length: maxColumns }, (_, columnIndex) => {
+    const computedWidth = sheet.rows.reduce((max, row) => {
+      const candidate = row[columnIndex] ?? "";
+      const widestLine = candidate
+        .split(/\r?\n/)
+        .reduce((lineMax, line) => Math.max(lineMax, line.length), 0);
+      return Math.max(max, widestLine);
+    }, 0);
+
+    const explicitWidth = sheet.columnWidths?.[columnIndex];
+    if (typeof explicitWidth === "number" && Number.isFinite(explicitWidth)) {
+      return Math.max(8, Math.min(explicitWidth, 120));
+    }
+
+    return Math.min(Math.max(computedWidth + 2, 12), 48);
   });
+}
+
+function buildSheetXml(sheet: WorkbookSheet, matrix: number[][]) {
+  const maxColumns = sheet.rows.reduce((max, row) => Math.max(max, row.length), 0);
+  const lastColumn = maxColumns > 0 ? columnName(maxColumns - 1) : "A";
+  const lastRow = Math.max(sheet.rows.length, 1);
+  const widths = buildColumnWidths(sheet);
+  const wrapColumns = new Set(sheet.wrapColumns ?? []);
 
   const colsXml = widths.length
     ? `<cols>${widths
@@ -103,7 +162,9 @@ function buildSheetXml(rows: string[][]) {
       const cellsXml = row
         .map((sharedStringIndex, columnIndex) => {
           const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
-          const styleIndex = rowIndex === 0 ? 1 : 0;
+          const rawValue = sheet.rows[rowIndex]?.[columnIndex] ?? "";
+          const shouldWrap = wrapColumns.has(columnIndex) || rawValue.includes("\n") || rawValue.length > 90;
+          const styleIndex = rowIndex === 0 ? 1 : shouldWrap ? 2 : 0;
           return `<c r="${ref}" t="s" s="${styleIndex}"><v>${sharedStringIndex}</v></c>`;
         })
         .join("");
@@ -112,7 +173,7 @@ function buildSheetXml(rows: string[][]) {
     })
     .join("");
 
-  const worksheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="A1:${lastColumn}${lastRow}"/>
   <sheetViews>
@@ -121,15 +182,10 @@ function buildSheetXml(rows: string[][]) {
       <selection pane="bottomLeft" activeCell="A2" sqref="A2"/>
     </sheetView>
   </sheetViews>
-  <sheetFormatPr defaultRowHeight="15"/>
+  <sheetFormatPr defaultRowHeight="18"/>
   ${colsXml}
   <sheetData>${sheetRowsXml}</sheetData>
 </worksheet>`;
-
-  return {
-    sharedStringsXml,
-    worksheetXml
-  };
 }
 
 function buildStylesXml() {
@@ -158,9 +214,12 @@ function buildStylesXml() {
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
-  <cellXfs count="2">
+  <cellXfs count="3">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyFont="1"/>
     <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1">
+      <alignment vertical="top" wrapText="1"/>
+    </xf>
   </cellXfs>
   <cellStyles count="1">
     <cellStyle name="Normal" xfId="0" builtinId="0"/>
@@ -234,32 +293,75 @@ function createZip(entries: Array<{ name: string; data: string | Buffer }>) {
   return Buffer.concat([...localParts, centralDirectory, endOfCentralDirectory]);
 }
 
-export function createXlsxWorkbook({
-  sheetName,
-  rows
-}: {
-  sheetName: string;
-  rows: string[][];
-}) {
-  const safeRows = rows.length > 0 ? rows : [[""]];
-  const { worksheetXml, sharedStringsXml } = buildSheetXml(safeRows);
-  const escapedSheetName = escapeXml(sheetName);
+export function createXlsxWorkbook(input: WorkbookInput) {
+  const sheets = normalizeSheets(input);
+  const { xml: sharedStringsXml, matrices } = buildSharedStrings(sheets);
   const stylesXml = buildStylesXml();
 
-  return createZip([
-    {
-      name: "[Content_Types].xml",
-      data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const worksheetEntries = sheets.map((sheet, index) => ({
+    name: `xl/worksheets/sheet${index + 1}.xml`,
+    data: buildSheetXml(sheet, matrices[index] ?? [[0]])
+  }));
+
+  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>${sheets
+    .map(
+      (sheet, index) =>
+        `<sheet name="${escapeXml(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`
+    )
+    .join("")}</sheets>
+</workbook>`;
+
+  const workbookRelationships = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${sheets
+    .map(
+      (_sheet, index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`
+    )
+    .join("")}
+  <Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId${sheets.length + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>`;
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  ${sheets
+    .map(
+      (_sheet, index) =>
+        `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+    )
+    .join("")}
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
   <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
-</Types>`
+</Types>`;
+
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>BuscaCNAE</Application>
+  <HeadingPairs>
+    <vt:vector size="2" baseType="variant">
+      <vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant>
+      <vt:variant><vt:i4>${sheets.length}</vt:i4></vt:variant>
+    </vt:vector>
+  </HeadingPairs>
+  <TitlesOfParts>
+    <vt:vector size="${sheets.length}" baseType="lpstr">
+      ${sheets.map((sheet) => `<vt:lpstr>${escapeXml(sheet.name)}</vt:lpstr>`).join("")}
+    </vt:vector>
+  </TitlesOfParts>
+</Properties>`;
+
+  return createZip([
+    {
+      name: "[Content_Types].xml",
+      data: contentTypesXml
     },
     {
       name: "_rels/.rels",
@@ -283,39 +385,15 @@ export function createXlsxWorkbook({
     },
     {
       name: "docProps/app.xml",
-      data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
-  <Application>BuscaCNAE</Application>
-  <HeadingPairs>
-    <vt:vector size="2" baseType="variant">
-      <vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant>
-      <vt:variant><vt:i4>1</vt:i4></vt:variant>
-    </vt:vector>
-  </HeadingPairs>
-  <TitlesOfParts>
-    <vt:vector size="1" baseType="lpstr">
-      <vt:lpstr>${escapedSheetName}</vt:lpstr>
-    </vt:vector>
-  </TitlesOfParts>
-</Properties>`
+      data: appXml
     },
     {
       name: "xl/workbook.xml",
-      data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets>
-    <sheet name="${escapedSheetName}" sheetId="1" r:id="rId1"/>
-  </sheets>
-</workbook>`
+      data: workbookXml
     },
     {
       name: "xl/_rels/workbook.xml.rels",
-      data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
-</Relationships>`
+      data: workbookRelationships
     },
     {
       name: "xl/styles.xml",
@@ -325,9 +403,6 @@ export function createXlsxWorkbook({
       name: "xl/sharedStrings.xml",
       data: sharedStringsXml
     },
-    {
-      name: "xl/worksheets/sheet1.xml",
-      data: worksheetXml
-    }
+    ...worksheetEntries
   ]);
 }

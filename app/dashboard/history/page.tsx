@@ -104,30 +104,33 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     <div className="surface-premium card-lg stack">
       {feedback}
 
-      <form className="stack">
-        <div className="history-toolbar">
-          <div className="stack" style={{ gap: 8 }}>
-            <span className="eyebrow">Histórico operacional</span>
-            <h2 className="section-title">Consultas executadas</h2>
-            <p className="section-copy">
-              Acompanhe volume, localidade, resultado e origem da consulta em uma tabela desenhada para leitura comercial.
-            </p>
-            <span className="muted">
-              {searches.length} registro(s) exibidos no histórico recente. Marque uma ou mais linhas para excluir em grupo.
-            </span>
-          </div>
-
-          <div className="history-toolbar-actions">
-            <button type="submit" formAction={deleteSelectedSearchHistoryAction} className="button-danger">
-              Excluir selecionadas
-            </button>
-            <button type="submit" formAction={deleteAllSearchHistoryAction} className="button-danger">
-              Excluir todo o histórico
-            </button>
-          </div>
+      <div className="history-toolbar">
+        <div className="stack" style={{ gap: 8 }}>
+          <span className="eyebrow">Histórico operacional</span>
+          <h2 className="section-title">Consultas executadas</h2>
+          <p className="section-copy">
+            Acompanhe volume, localidade, resultado e origem da consulta em uma tabela desenhada para leitura comercial.
+          </p>
+          <span className="muted">
+            {searches.length} registro(s) exibidos no histórico recente. Marque uma ou mais linhas para excluir em grupo.
+          </span>
         </div>
 
-        <div className="table-wrap">
+        <div className="history-toolbar-actions">
+          <form id="history-bulk-delete-form" action={deleteSelectedSearchHistoryAction}>
+            <button type="submit" className="button-danger">
+              Excluir selecionadas
+            </button>
+          </form>
+          <form action={deleteAllSearchHistoryAction}>
+            <button type="submit" className="button-danger">
+              Excluir todo o histórico
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div className="table-wrap">
           <table className="table table-premium table-glow">
             <thead>
               <tr>
@@ -148,6 +151,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                       type="checkbox"
                       name="searchIds"
                       value={search.id}
+                      form="history-bulk-delete-form"
                       aria-label={`Selecionar busca ${search.cnae_code} em ${search.city_name}/${search.state_code}`}
                       className="history-checkbox"
                     />
@@ -164,23 +168,19 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                       <Link href={`/dashboard/search/${search.id}`} className="button-ghost history-action-button">
                         Abrir
                       </Link>
-                      <button
-                        type="submit"
-                        name="searchId"
-                        value={search.id}
-                        formAction={deleteSearchHistoryItemAction}
-                        className="button-danger history-action-button"
-                      >
-                        Excluir
-                      </button>
+                      <form action={deleteSearchHistoryItemAction}>
+                        <input type="hidden" name="searchId" value={search.id} />
+                        <button type="submit" className="button-danger history-action-button">
+                          Excluir
+                        </button>
+                      </form>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      </form>
+      </div>
     </div>
   );
 }

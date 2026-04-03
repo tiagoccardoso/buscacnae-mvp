@@ -92,3 +92,61 @@ export function extractSingleObject(value: unknown) {
 
   return null;
 }
+
+export function safeJsonStringify(value: unknown, space = 0) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value, null, space);
+  } catch {
+    return String(value);
+  }
+}
+
+function toFlatString(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "Sim" : "Não";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value === "string") return value;
+  return safeJsonStringify(value, 0);
+}
+
+export function flattenUnknownToRows(
+  value: unknown,
+  parentPath = ""
+): Array<{ path: string; value: string }> {
+  if (value === null || value === undefined) {
+    return [{ path: parentPath || "(raiz)", value: "" }];
+  }
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return [{ path: parentPath || "(raiz)", value: toFlatString(value) }];
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return [{ path: parentPath || "(raiz)", value: "[]" }];
+    }
+
+    return value.flatMap((item, index) => flattenUnknownToRows(item, `${parentPath}[${index}]`));
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      return [{ path: parentPath || "(raiz)", value: "{}" }];
+    }
+
+    return entries.flatMap(([key, nestedValue]) =>
+      flattenUnknownToRows(nestedValue, parentPath ? `${parentPath}.${key}` : key)
+    );
+  }
+
+  return [{ path: parentPath || "(raiz)", value: String(value) }];
+}
