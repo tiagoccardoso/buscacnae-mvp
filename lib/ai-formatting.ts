@@ -28,6 +28,13 @@ type FormattingSourceRecord = {
 
 type SearchAiExportSourceRow = Record<string, unknown>;
 
+type FormattingAiInputRecord = {
+  position: number;
+  sourceRecord: FormattingSourceRecord;
+  xlsxRow: string[];
+  availableFields: Record<string, string>;
+};
+
 type PreparedExportRecord = {
   position: number;
   aiRecord: SearchAiFormattedRecord;
@@ -71,6 +78,11 @@ export type SearchAiFormattedPayload = {
   headline: string;
   subtitle: string;
   totalRecords: number;
+  strategy?: {
+    xlsx: string;
+    pdf: string;
+    pdfSafety: string;
+  };
   summary: Array<{ label: string; value: string }>;
   records: SearchAiFormattedRecord[];
 };
@@ -270,7 +282,48 @@ function createFallbackRecords(sourceRecords: FormattingSourceRecord[]): SearchA
   }));
 }
 
-async function formatChunkWithOpenAi(records: FormattingSourceRecord[]) {
+function buildAiPromptInput(records: FormattingAiInputRecord[]) {
+  const headers = [
+    "Posição",
+    "Empresa",
+    "Nome fantasia",
+    "CNPJ",
+    "Situação cadastral",
+    "Data de abertura",
+    "Atividade principal",
+    "CNAEs secundários",
+    "Natureza jurídica",
+    "Porte",
+    "Regime tributário",
+    "Capital social",
+    "Localização",
+    "Endereço",
+    "Telefone",
+    "E-mail",
+    "Site"
+  ];
+
+  return {
+    task:
+      "Receba a planilha xlsx diretamente do sistema. O objetivo é organizar os dados com todas as informações disponíveis e gerar a base para um novo XLSX e um PDF com as informações.",
+    pdf_guidance:
+      "Para a formatação em PDF, escolha a melhor forma de apresentação para evitar textos desconfigurados, excesso de quebras e caracteres estranhos. Prefira linguagem limpa, sem markdown, sem emojis e sem símbolos decorativos.",
+    expected_strategy:
+      "Elabore uma estratégia curta para o XLSX e para o PDF, mas responda somente em JSON válido no formato solicitado.",
+    system_xlsx_preview: {
+      description: "Prévia da planilha que o sistema entregaria internamente para a etapa de organização por IA.",
+      headers,
+      rows: records.map((record) => record.xlsxRow)
+    },
+    records: records.map((record) => ({
+      position: record.position,
+      normalized_record: record.sourceRecord,
+      all_available_fields: record.availableFields
+    }))
+  };
+}
+
+async function formatChunkWithOpenAi(records: FormattingAiInputRecord[]) {
   const apiKey = getOpenAiApiKey();
   if (!apiKey) {
     return null;
@@ -285,10 +338,10 @@ async function formatChunkWithOpenAi(records: FormattingSourceRecord[]) {
     body: JSON.stringify({
       model: getOpenAiModel(),
       instructions:
-        "Você recebe registros empresariais do sistema e organiza uma visão principal para exportação em XLSX e PDF. Preserve integralmente os dados recebidos, nunca invente valores e nunca remova informações úteis. Responda apenas JSON válido no formato {\"items\":[{\"position\": number, \"companyName\": string, \"tradeName\": string, \"registrationStatus\": string, \"openedAt\": string, \"primaryActivity\": string, \"secondaryCnaes\": string, \"legalNature\": string, \"companySize\": string, \"taxProfile\": string, \"capitalSocial\": string, \"location\": string, \"address\": string, \"phone\": string, \"email\": string, \"website\": string, \"contactChannel\": string, \"dataCompleteness\": string, \"commercialNote\": string}]}. Use somente os dados fornecidos. Normalize nomes, telefones, e-mails, sites, localização e endereço em português do Brasil. Em contactChannel, indique o melhor canal baseado nos contatos disponíveis. Em dataCompleteness, classifique como Alta, Média ou Baixa considerando principalmente telefone, e-mail, site e endereço. Em commercialNote, faça uma observação objetiva com no máximo 22 palavras usando apenas dados reais do item.",
-      input: safeJsonStringify({ goal: "Gerar visão principal organizada sem perda de dados", items: records }, 2),
-      max_output_tokens: 4500,
-      temperature: 0.2
+        "Receba a planilha xlsx diretamente do sistema, organize os dados com todas as informações disponíveis e gere a melhor base possível para exportação em XLSX e PDF. Preserve integralmente os dados recebidos, nunca invente valores e nunca descarte informações úteis. Considere tanto a prévia tabular do XLSX quanto todos os campos disponíveis por registro. Para o PDF, escolha uma estratégia textual que privilegie legibilidade, blocos curtos, rótulos claros, texto limpo em português do Brasil e caracteres seguros para evitar desconfiguração visual, símbolos estranhos, markdown, emojis e ornamentos desnecessários. Responda apenas JSON válido no formato {\"strategy\":{\"xlsx\": string, \"pdf\": string, \"pdfSafety\": string}, \"items\":[{\"position\": number, \"companyName\": string, \"tradeName\": string, \"registrationStatus\": string, \"openedAt\": string, \"primaryActivity\": string, \"secondaryCnaes\": string, \"legalNature\": string, \"companySize\": string, \"taxProfile\": string, \"capitalSocial\": string, \"location\": string, \"address\": string, \"phone\": string, \"email\": string, \"website\": string, \"contactChannel\": string, \"dataCompleteness\": string, \"commercialNote\": string}]}. Em strategy.xlsx, descreva em uma frase como organizar o XLSX. Em strategy.pdf, descreva em uma frase como distribuir as informações no PDF. Em strategy.pdfSafety, descreva em uma frase como evitar textos quebrados e caracteres estranhos no PDF. Use somente os dados fornecidos. Normalize nomes, telefones, e-mails, sites, localização e endereço em português do Brasil. Em contactChannel, indique o melhor canal baseado nos contatos disponíveis. Em dataCompleteness, classifique como Alta, Média ou Baixa considerando principalmente telefone, e-mail, site e endereço. Em commercialNote, faça uma observação objetiva com no máximo 22 palavras usando apenas dados reais do item.",
+      input: safeJsonStringify(buildAiPromptInput(records), 2),
+      max_output_tokens: 5000,
+      temperature: 0.15
     })
   });
 
@@ -305,6 +358,11 @@ async function formatChunkWithOpenAi(records: FormattingSourceRecord[]) {
   }
 
   const parsed = JSON.parse(jsonText) as {
+    strategy?: {
+      xlsx?: string;
+      pdf?: string;
+      pdfSafety?: string;
+    };
     items?: Array<Partial<SearchAiFormattedRecord> & { position?: number }>;
   };
 
@@ -312,7 +370,22 @@ async function formatChunkWithOpenAi(records: FormattingSourceRecord[]) {
     return null;
   }
 
-  return parsed.items;
+  return {
+    strategy:
+      parsed.strategy &&
+      typeof parsed.strategy === "object" &&
+      (parsed.strategy.xlsx || parsed.strategy.pdf || parsed.strategy.pdfSafety)
+        ? {
+            xlsx: typeof parsed.strategy.xlsx === "string" && parsed.strategy.xlsx.trim() ? parsed.strategy.xlsx.trim() : "",
+            pdf: typeof parsed.strategy.pdf === "string" && parsed.strategy.pdf.trim() ? parsed.strategy.pdf.trim() : "",
+            pdfSafety:
+              typeof parsed.strategy.pdfSafety === "string" && parsed.strategy.pdfSafety.trim()
+                ? parsed.strategy.pdfSafety.trim()
+                : ""
+          }
+        : null,
+    items: parsed.items
+  };
 }
 
 function mergeAiRecord(
@@ -676,6 +749,57 @@ function buildPreparedExportRecords(payload: SearchAiFormattedPayload, rows: Sea
     .sort((left, right) => left.position - right.position);
 }
 
+function buildFormattingAiInputRecord(
+  row: { position?: number | string | null; establishments?: unknown; provider_payload?: unknown }
+): FormattingAiInputRecord | null {
+  const establishment = extractSingleObject(row.establishments);
+  if (!establishment) return null;
+
+  const position = Number(row.position ?? 0);
+  const sourceRecord = buildSourceRecord(position, establishment);
+  const flatFields = new Map<string, string>();
+  const establishmentPayload = expandStructuredValue(establishment.provider_payload);
+  const searchResultPayload = expandStructuredValue(row.provider_payload);
+  const establishmentWithoutPayload = { ...establishment };
+  delete establishmentWithoutPayload.provider_payload;
+
+  flattenValueToMap(
+    {
+      normalized: sourceRecord,
+      establishment: establishmentWithoutPayload,
+      provider_payload: establishmentPayload,
+      search_result_payload: searchResultPayload
+    },
+    "",
+    flatFields
+  );
+
+  return {
+    position,
+    sourceRecord,
+    xlsxRow: [
+      String(sourceRecord.position),
+      sourceRecord.companyName,
+      sourceRecord.tradeName,
+      sourceRecord.cnpjFormatted,
+      sourceRecord.registrationStatus,
+      sourceRecord.openedAt,
+      sourceRecord.primaryActivity,
+      sourceRecord.secondaryCnaes,
+      sourceRecord.legalNature,
+      sourceRecord.companySize,
+      sourceRecord.taxProfile,
+      sourceRecord.capitalSocial,
+      sourceRecord.location,
+      sourceRecord.address,
+      sourceRecord.phone,
+      sourceRecord.email,
+      sourceRecord.website
+    ],
+    availableFields: Object.fromEntries(flatFields)
+  };
+}
+
 export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrderRecord) {
   if (isStoredPayload(order.formatted_payload)) {
     return order.formatted_payload;
@@ -690,37 +814,44 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
       .maybeSingle(),
     admin
       .from("search_results")
-      .select("position, establishments(*)")
+      .select("position, provider_payload, establishments(*)")
       .eq("search_query_id", order.search_query_id)
       .order("position", { ascending: true })
   ]);
 
-  const sourceRecords = ((rows ?? []) as Array<{ position?: number | string | null; establishments?: unknown }>)
-    .map((row: { position?: number | string | null; establishments?: unknown }) => {
-      const establishment = extractSingleObject(row.establishments);
-      if (!establishment) return null;
-      return buildSourceRecord(Number(row.position ?? 0), establishment);
-    })
-    .filter((item: FormattingSourceRecord | null): item is FormattingSourceRecord => Boolean(item));
+  const aiInputRecords = ((rows ?? []) as Array<{ position?: number | string | null; establishments?: unknown; provider_payload?: unknown }>)
+    .map((row) => buildFormattingAiInputRecord(row))
+    .filter((item): item is FormattingAiInputRecord => Boolean(item));
 
+  const sourceRecords = aiInputRecords.map((record) => record.sourceRecord);
   const fallbackRecords = createFallbackRecords(sourceRecords);
   let formattedRecords = fallbackRecords;
   let generator: SearchAiFormattedPayload["generator"] = "fallback";
+  let strategy: SearchAiFormattedPayload["strategy"] | undefined;
 
   try {
-    const chunkSize = 12;
+    const chunkSize = 8;
     const aiRecords = new Map<number, Partial<SearchAiFormattedRecord> & { position?: number }>();
 
-    for (let start = 0; start < sourceRecords.length; start += chunkSize) {
-      const chunk = sourceRecords.slice(start, start + chunkSize);
+    for (let start = 0; start < aiInputRecords.length; start += chunkSize) {
+      const chunk = aiInputRecords.slice(start, start + chunkSize);
       const formattedChunk = await formatChunkWithOpenAi(chunk);
 
       if (!formattedChunk) {
         aiRecords.clear();
+        strategy = undefined;
         break;
       }
 
-      for (const item of formattedChunk) {
+      if (!strategy && formattedChunk.strategy) {
+        strategy = {
+          xlsx: formattedChunk.strategy.xlsx || "",
+          pdf: formattedChunk.strategy.pdf || "",
+          pdfSafety: formattedChunk.strategy.pdfSafety || ""
+        };
+      }
+
+      for (const item of formattedChunk.items) {
         if (typeof item.position === "number") {
           aiRecords.set(item.position, item);
         }
@@ -733,6 +864,15 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
     }
   } catch {
     generator = "fallback";
+    strategy = undefined;
+  }
+
+  if (!strategy) {
+    strategy = {
+      xlsx: "Organizar a lista em abas legíveis, com colunas padronizadas e todos os campos disponíveis preservados para análise e filtro.",
+      pdf: "Distribuir cada empresa em ficha cadastral com seções curtas e rótulos claros para facilitar a leitura sem poluir a página.",
+      pdfSafety: "Usar texto limpo, sem markdown, emojis ou símbolos decorativos, mantendo quebras controladas e caracteres compatíveis com o PDF."
+    };
   }
 
   const summary = getSearchSummary(search ?? {});
@@ -745,6 +885,7 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
     headline: summary.headline,
     subtitle: `${formattedRecords.length} registro(s) organizados para exportação em XLSX e PDF`,
     totalRecords: formattedRecords.length,
+    strategy,
     summary: buildSummary(formattedRecords),
     records: formattedRecords
   };
@@ -758,12 +899,15 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
 }
 
 export function buildAiFormattedWorkbookRows(payload: SearchAiFormattedPayload) {
-  const summaryRows = [
+  const summaryRows: string[][] = [
     ["Título", payload.headline],
     ["Subtítulo", payload.subtitle],
     ["Gerado em", formatDateTime(payload.generatedAt)],
     ["Gerador", payload.generator === "openai" ? `OpenAI (${payload.model})` : `Fallback (${payload.model})`],
     ["Total de registros", String(payload.totalRecords)],
+    ...(payload.strategy?.xlsx ? [["Estratégia do XLSX", payload.strategy.xlsx]] : []),
+    ...(payload.strategy?.pdf ? [["Estratégia do PDF", payload.strategy.pdf]] : []),
+    ...(payload.strategy?.pdfSafety ? [["Segurança visual do PDF", payload.strategy.pdfSafety]] : []),
     ...payload.summary.map((item) => [item.label, item.value])
   ];
 
@@ -1144,11 +1288,23 @@ export function buildAiFormattedPdfInput(payload: SearchAiFormattedPayload, rows
     };
   });
 
+  const summary = [...payload.summary];
+
+  if (payload.strategy?.xlsx) {
+    summary.unshift({ label: "Estratégia do XLSX", value: payload.strategy.xlsx });
+  }
+  if (payload.strategy?.pdf) {
+    summary.unshift({ label: "Estratégia do PDF", value: payload.strategy.pdf });
+  }
+  if (payload.strategy?.pdfSafety) {
+    summary.unshift({ label: "Segurança visual do PDF", value: payload.strategy.pdfSafety });
+  }
+
   return {
     title: `${payload.headline} · Lista formatada por IA`,
     subtitle: payload.subtitle,
     generatedAt: formatDateTime(payload.generatedAt),
-    summary: payload.summary,
+    summary,
     records
   };
 }
