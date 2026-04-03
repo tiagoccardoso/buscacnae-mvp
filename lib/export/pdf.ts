@@ -149,6 +149,7 @@ export type FormattedPdfRecord = {
   cnpjFormatted: string;
   registrationStatus: string;
   primaryActivity: string;
+  secondaryCnaes?: string;
   legalNature: string;
   companySize: string;
   taxProfile: string;
@@ -233,6 +234,7 @@ export function createFormattedListPdf(input: FormattedPdfInput) {
       `#${record.position} ${record.companyName} • ${record.cnpjFormatted}`,
       `Fantasia: ${record.tradeName || "-"}`,
       `Status: ${record.registrationStatus} • Atividade: ${record.primaryActivity}`,
+      `CNAEs secundários: ${record.secondaryCnaes || "-"}`,
       `Natureza/Porte: ${record.legalNature} • ${record.companySize}`,
       `Regime/Capital/Abertura: ${record.taxProfile} • ${record.capitalSocial} • ${record.openedAt}`,
       `Localização: ${record.location}`,

@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/empty-state";
 import { LeadToggleForm } from "@/components/lead-toggle-form";
+import { FormattedDownloadButtons } from "@/components/formatted-download-buttons";
 import {
   ensureSearchAccessOrderForSearch,
   getSearchAiFormatOrderBySearchQueryId,
@@ -227,20 +228,13 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
                   <div className="notice">
                     {aiFormatUnlocked
-                      ? "A organização por IA desta lista já foi contratada. Os arquivos formatados são gerados sob demanda no primeiro download."
+                      ? "A organização por IA desta lista já foi contratada. Ao clicar em um dos downloads, o sistema mostra o processamento e inicia o arquivo automaticamente assim que a geração terminar."
                       : "O botão só aparece depois da compra efetivada da lista. Ao contratar, esta lista recebe uma cobrança avulsa de R$ 10,00 para formatação por IA."}
                   </div>
 
                   <div className="inline-actions">
                     {aiFormatUnlocked ? (
-                      <>
-                        <Link href={`/dashboard/search/${id}/format-ai/download/xlsx`} className="button">
-                          Baixar XLSX formatado
-                        </Link>
-                        <Link href={`/dashboard/search/${id}/format-ai/download/pdf`} className="button-ghost">
-                          Baixar PDF formatado
-                        </Link>
-                      </>
+                      <FormattedDownloadButtons searchId={id} />
                     ) : (
                       <form action="/api/stripe/ai-format-checkout" method="POST">
                         <input type="hidden" name="searchId" value={id} />

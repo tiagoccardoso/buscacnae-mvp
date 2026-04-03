@@ -266,8 +266,8 @@ async function formatChunkWithOpenAi(records: FormattingSourceRecord[]) {
     body: JSON.stringify({
       model: getOpenAiModel(),
       instructions:
-        "Você organiza listas comerciais B2B no Brasil. Responda apenas JSON válido com o formato {\"items\":[{\"position\": number, \"companyName\": string, \"tradeName\": string, \"registrationStatus\": string, \"primaryActivity\": string, \"legalNature\": string, \"companySize\": string, \"taxProfile\": string, \"location\": string, \"address\": string, \"phone\": string, \"email\": string, \"website\": string, \"contactChannel\": string, \"dataCompleteness\": string, \"commercialNote\": string}]}. Use somente os dados fornecidos. Não invente dados ausentes. Preserve posição. Padronize nomes, contatos e endereço. commercialNote deve ter no máximo 18 palavras.",
-      input: safeJsonStringify({ items: records }, 2),
+        "Você organiza e normaliza listas comerciais B2B no Brasil para exportação em XLSX e PDF. Responda apenas JSON válido com o formato {\"items\":[{\"position\": number, \"companyName\": string, \"tradeName\": string, \"registrationStatus\": string, \"openedAt\": string, \"primaryActivity\": string, \"secondaryCnaes\": string, \"legalNature\": string, \"companySize\": string, \"taxProfile\": string, \"capitalSocial\": string, \"location\": string, \"address\": string, \"phone\": string, \"email\": string, \"website\": string, \"contactChannel\": string, \"dataCompleteness\": string, \"commercialNote\": string}]}. Analise todos os campos recebidos de cada item e preserve a mesma quantidade de registros e a mesma posição. Use somente os dados fornecidos. Nunca invente dados ausentes. Nunca remova ou esconda telefone, e-mail, site, endereço, CNAE secundário, capital social, status, data de abertura ou outras informações já presentes. Normalize nomes, telefones, e-mails, sites, localização e endereço em português do Brasil. Em contactChannel, indique o melhor canal com base nos contatos disponíveis. Em dataCompleteness, classifique como Alta, Média ou Baixa considerando principalmente telefone, e-mail, site e endereço. Em commercialNote, faça uma observação comercial objetiva com no máximo 22 palavras usando os dados reais do item.",
+      input: safeJsonStringify({ goal: "Gerar arquivos XLSX e PDF completos com todos os dados disponíveis", items: records }, 2),
       max_output_tokens: 4500,
       temperature: 0.2
     })
@@ -309,9 +309,15 @@ function mergeAiRecord(
   const registrationStatus = typeof partial?.registrationStatus === "string" && partial.registrationStatus.trim()
     ? partial.registrationStatus.trim()
     : sourceRecord.registrationStatus;
+  const openedAt = typeof partial?.openedAt === "string" && partial.openedAt.trim()
+    ? partial.openedAt.trim()
+    : sourceRecord.openedAt;
   const primaryActivity = typeof partial?.primaryActivity === "string" && partial.primaryActivity.trim()
     ? partial.primaryActivity.trim()
     : sourceRecord.primaryActivity;
+  const secondaryCnaes = typeof partial?.secondaryCnaes === "string" && partial.secondaryCnaes.trim()
+    ? partial.secondaryCnaes.trim()
+    : sourceRecord.secondaryCnaes;
   const legalNature = typeof partial?.legalNature === "string" && partial.legalNature.trim()
     ? partial.legalNature.trim()
     : sourceRecord.legalNature;
@@ -321,6 +327,9 @@ function mergeAiRecord(
   const taxProfile = typeof partial?.taxProfile === "string" && partial.taxProfile.trim()
     ? partial.taxProfile.trim()
     : sourceRecord.taxProfile;
+  const capitalSocial = typeof partial?.capitalSocial === "string" && partial.capitalSocial.trim()
+    ? partial.capitalSocial.trim()
+    : sourceRecord.capitalSocial;
   const location = typeof partial?.location === "string" && partial.location.trim()
     ? partial.location.trim()
     : sourceRecord.location;
@@ -342,10 +351,13 @@ function mergeAiRecord(
     companyName,
     tradeName,
     registrationStatus,
+    openedAt,
     primaryActivity,
+    secondaryCnaes,
     legalNature,
     companySize,
     taxProfile,
+    capitalSocial,
     location,
     address,
     phone,
