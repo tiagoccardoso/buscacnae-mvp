@@ -105,6 +105,10 @@ export function getMinimumCheckoutAmountCents() {
   return Number(getEnv("MINIMUM_CHECKOUT_AMOUNT_CENTS") || "50");
 }
 
+export function getAiFormattingPriceCents() {
+  return Number(getEnv("AI_FORMATTING_PRICE_CENTS") || "1000");
+}
+
 export function getSplineSceneUrl() {
   return getEnv("NEXT_PUBLIC_SPLINE_SCENE_URL");
 }

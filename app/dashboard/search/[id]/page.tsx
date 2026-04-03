@@ -4,17 +4,48 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/empty-state";
 import { LeadToggleForm } from "@/components/lead-toggle-form";
-import { ensureSearchAccessOrderForSearch, syncSearchAccessOrderPaymentStatus, type SearchAccessOrderRecord } from "@/lib/billing";
+import {
+  ensureSearchAccessOrderForSearch,
+  getSearchAiFormatOrderBySearchQueryId,
+  syncSearchAccessOrderPaymentStatus,
+  syncSearchAiFormatOrderPaymentStatus,
+  type SearchAccessOrderRecord,
+  type SearchAiFormatOrderRecord
+} from "@/lib/billing";
 import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
+import { getAiFormattingPriceCents } from "@/lib/env";
 import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
 
 type SearchResultPageProps = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function SearchResultPage({ params }: SearchResultPageProps) {
+function readAiFormatMessage(status: string) {
+  if (status === "success") {
+    return { type: "success", text: "Pagamento da formatação por IA confirmado. Os downloads em XLSX e PDF já estão liberados para esta lista." };
+  }
+
+  if (status === "cancelled") {
+    return { type: "warning", text: "A cobrança da formatação por IA foi cancelada. Você pode tentar novamente quando quiser." };
+  }
+
+  if (status === "blocked") {
+    return { type: "warning", text: "A formatação por IA só fica disponível depois que a compra da lista for efetivada." };
+  }
+
+  if (status === "error") {
+    return { type: "danger", text: "Não foi possível iniciar o checkout da formatação por IA." };
+  }
+
+  return null;
+}
+
+export default async function SearchResultPage({ params, searchParams }: SearchResultPageProps) {
   const { id } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const aiFormatState = typeof resolvedSearchParams.ai_format === "string" ? resolvedSearchParams.ai_format : "";
   const supabase = await createSupabaseServerClient();
   const {
     data: { user }
@@ -73,9 +104,20 @@ export default async function SearchResultPage({ params }: SearchResultPageProps
     : { data: [] as Array<{ establishment_id: string }> };
 
   const savedSet = new Set((savedRows ?? []).map((item) => item.establishment_id));
+  const aiFormatMessage = readAiFormatMessage(aiFormatState);
+
+  let aiFormatOrder: SearchAiFormatOrderRecord | null = null;
+  if (orderUnlocked && (rows?.length ?? 0) > 0) {
+    const existingAiOrder = await getSearchAiFormatOrderBySearchQueryId(id);
+    aiFormatOrder = existingAiOrder ? await syncSearchAiFormatOrderPaymentStatus(existingAiOrder) : null;
+  }
+
+  const aiFormatUnlocked = aiFormatOrder?.status === "paid";
 
   return (
     <div className="stack">
+      {aiFormatMessage ? <div className={`notice ${aiFormatMessage.type}`}>{aiFormatMessage.text}</div> : null}
+
       <div className="panel-grid two">
         <div className="surface-premium card-lg stack">
           <div className="inline-actions" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -166,6 +208,50 @@ export default async function SearchResultPage({ params }: SearchResultPageProps
                   </Link>
                 )}
               </div>
+
+              {orderUnlocked && (rows?.length ?? 0) > 0 ? (
+                <div className="surface-soft card stack" style={{ marginTop: 12 }}>
+                  <span className="eyebrow">Formatação com IA</span>
+                  <div className="grid-2">
+                    <div className="stack" style={{ gap: 6 }}>
+                      <span className="kicker">Cobrança individual</span>
+                      <strong style={{ fontSize: "1.8rem" }}>{formatMoney(getAiFormattingPriceCents() / 100)}</strong>
+                      <span className="muted">Cada lista comprada libera a organização por IA em uma cobrança separada.</span>
+                    </div>
+                    <div className="stack" style={{ gap: 6 }}>
+                      <span className="kicker">Entrega</span>
+                      <strong style={{ fontSize: "1.1rem" }}>{aiFormatUnlocked ? "IA liberada" : "Aguardando liberação"}</strong>
+                      <span className="muted">Quando liberada, esta mesma lista poderá ser baixada em XLSX e PDF já normalizados.</span>
+                    </div>
+                  </div>
+
+                  <div className="notice">
+                    {aiFormatUnlocked
+                      ? "A organização por IA desta lista já foi contratada. Os arquivos formatados são gerados sob demanda no primeiro download."
+                      : "O botão só aparece depois da compra efetivada da lista. Ao contratar, esta lista recebe uma cobrança avulsa de R$ 10,00 para formatação por IA."}
+                  </div>
+
+                  <div className="inline-actions">
+                    {aiFormatUnlocked ? (
+                      <>
+                        <Link href={`/dashboard/search/${id}/format-ai/download/xlsx`} className="button">
+                          Baixar XLSX formatado
+                        </Link>
+                        <Link href={`/dashboard/search/${id}/format-ai/download/pdf`} className="button-ghost">
+                          Baixar PDF formatado
+                        </Link>
+                      </>
+                    ) : (
+                      <form action="/api/stripe/ai-format-checkout" method="POST">
+                        <input type="hidden" name="searchId" value={id} />
+                        <button type="submit" className="button">
+                          Formatar com IA por R$ 10,00
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : (
             <div className="notice warning">{orderErrorMessage || "Não foi possível preparar o pedido comercial desta busca."}</div>

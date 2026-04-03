@@ -57,7 +57,13 @@ export async function POST(request: Request) {
     orderId: order.id,
     orderAccessToken: order.access_token,
     successUrl: successUrl.toString(),
-    cancelUrl: cancelUrl.toString()
+    cancelUrl: cancelUrl.toString(),
+    productName: "Acesso à lista de CNPJs da pesquisa",
+    productDescription: `Pedido ${order.id}`,
+    metadata: {
+      order_type: "search_access",
+      search_query_id: order.search_query_id
+    }
   });
 
   await markSearchAccessOrderCheckoutCreated({

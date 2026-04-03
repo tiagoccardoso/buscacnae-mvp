@@ -18,7 +18,10 @@ export async function createOneTimeCheckoutSession({
   orderAccessToken,
   successUrl,
   cancelUrl,
-  customerEmail
+  customerEmail,
+  productName,
+  productDescription,
+  metadata
 }: {
   customerId?: string | null;
   amountCents: number;
@@ -28,6 +31,9 @@ export async function createOneTimeCheckoutSession({
   successUrl: string;
   cancelUrl: string;
   customerEmail?: string | null;
+  productName?: string;
+  productDescription?: string;
+  metadata?: Record<string, string>;
 }) {
   const stripe = getStripeClient();
 
@@ -44,15 +50,16 @@ export async function createOneTimeCheckoutSession({
           currency: (currency || "brl").toLowerCase(),
           unit_amount: amountCents,
           product_data: {
-            name: "Acesso à lista de CNPJs da pesquisa",
-            description: `Pedido ${orderId}`
+            name: productName || "Acesso à lista de CNPJs da pesquisa",
+            description: productDescription || `Pedido ${orderId}`
           }
         }
       }
     ],
     metadata: {
       order_id: orderId,
-      access_token: orderAccessToken
+      access_token: orderAccessToken,
+      ...(metadata ?? {})
     },
     success_url: successUrl,
     cancel_url: cancelUrl

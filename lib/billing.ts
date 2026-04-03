@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe";
-import { getMinimumCheckoutAmountCents } from "@/lib/env";
+import { getAiFormattingPriceCents, getMinimumCheckoutAmountCents } from "@/lib/env";
 
 export type SearchAccessOrderRecord = {
   id: string;
@@ -27,8 +27,34 @@ export type SearchAccessOrderRecord = {
   updated_at: string;
 };
 
+export type SearchAiFormatOrderRecord = {
+  id: string;
+  access_token: string;
+  profile_id: string | null;
+  email: string;
+  search_query_id: string;
+  amount_cents: number;
+  currency: string;
+  status: string;
+  stripe_customer_id: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  checkout_url: string | null;
+  formatted_payload: unknown;
+  format_error: string | null;
+  formatted_at: string | null;
+  paid_at: string | null;
+  unlocked_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 function isSearchAccessOrderUnlocked(status: string) {
   return status === "paid" || status === "free";
+}
+
+function isSearchAiFormatOrderUnlocked(status: string) {
+  return status === "paid";
 }
 
 async function registerWebhookEvent(eventId: string, type: string, payload: unknown) {
@@ -321,7 +347,6 @@ export async function ensureSearchAccessOrderForSearch(args: {
   return insertedOrder as SearchAccessOrderRecord;
 }
 
-
 export async function syncSearchAccessOrderPaymentStatus(order: SearchAccessOrderRecord) {
   if (isSearchAccessOrderUnlocked(order.status)) {
     return order;
@@ -434,7 +459,265 @@ export async function markSearchAccessOrderPaymentFailed(args: {
   await query;
 }
 
-async function unlockOrderFromCheckoutSession(session: Stripe.Checkout.Session) {
+export async function getSearchAiFormatOrderById(orderId: string): Promise<SearchAiFormatOrderRecord | null> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin.from("search_ai_format_orders").select("*").eq("id", orderId).maybeSingle();
+  return (data as SearchAiFormatOrderRecord | null) ?? null;
+}
+
+export async function getSearchAiFormatOrderBySearchQueryId(
+  searchQueryId: string
+): Promise<SearchAiFormatOrderRecord | null> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin
+    .from("search_ai_format_orders")
+    .select("*")
+    .eq("search_query_id", searchQueryId)
+    .maybeSingle();
+  return (data as SearchAiFormatOrderRecord | null) ?? null;
+}
+
+export async function getSearchAiFormatOrderByCheckoutSessionId(
+  sessionId: string
+): Promise<SearchAiFormatOrderRecord | null> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin
+    .from("search_ai_format_orders")
+    .select("*")
+    .eq("stripe_checkout_session_id", sessionId)
+    .maybeSingle();
+  return (data as SearchAiFormatOrderRecord | null) ?? null;
+}
+
+export async function ensureSearchAiFormatOrderForSearch(args: {
+  searchQueryId: string;
+  profileId?: string | null;
+  email?: string | null;
+}): Promise<SearchAiFormatOrderRecord> {
+  const admin = createSupabaseAdminClient();
+  const normalizedEmail = typeof args.email === "string" ? args.email.trim().toLowerCase() : "";
+  let resolvedProfileId = args.profileId ?? null;
+  let resolvedEmail = normalizedEmail;
+
+  const existing = await getSearchAiFormatOrderBySearchQueryId(args.searchQueryId);
+
+  if (!resolvedProfileId || !resolvedEmail) {
+    const { data: search, error: searchError } = await admin
+      .from("search_queries")
+      .select("profile_id")
+      .eq("id", args.searchQueryId)
+      .maybeSingle();
+
+    if (searchError || !search) {
+      throw searchError ?? new Error("Não foi possível localizar a busca da formatação por IA.");
+    }
+
+    resolvedProfileId = resolvedProfileId ?? search.profile_id ?? null;
+  }
+
+  if (!resolvedEmail && resolvedProfileId) {
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("email")
+      .eq("id", resolvedProfileId)
+      .maybeSingle();
+
+    resolvedEmail = typeof profile?.email === "string" ? profile.email.trim().toLowerCase() : "";
+  }
+
+  if (!resolvedEmail) {
+    throw new Error("Não foi possível determinar o e-mail da cobrança de formatação por IA.");
+  }
+
+  if (existing) {
+    const updates: Partial<SearchAiFormatOrderRecord> = {};
+
+    if (resolvedProfileId && existing.profile_id !== resolvedProfileId) {
+      updates.profile_id = resolvedProfileId;
+    }
+
+    if (existing.email !== resolvedEmail) {
+      updates.email = resolvedEmail;
+    }
+
+    if (existing.amount_cents !== getAiFormattingPriceCents()) {
+      updates.amount_cents = getAiFormattingPriceCents();
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return existing;
+    }
+
+    const { data: updatedOrder, error: updateError } = await admin
+      .from("search_ai_format_orders")
+      .update(updates)
+      .eq("id", existing.id)
+      .select("*")
+      .single();
+
+    if (updateError || !updatedOrder) {
+      throw updateError ?? new Error("Não foi possível atualizar a cobrança de formatação por IA.");
+    }
+
+    return updatedOrder as SearchAiFormatOrderRecord;
+  }
+
+  const accessToken = crypto.randomBytes(24).toString("hex");
+  const { data: insertedOrder, error: insertError } = await admin
+    .from("search_ai_format_orders")
+    .insert({
+      access_token: accessToken,
+      profile_id: resolvedProfileId,
+      email: resolvedEmail,
+      search_query_id: args.searchQueryId,
+      amount_cents: getAiFormattingPriceCents(),
+      currency: "brl",
+      status: "pending"
+    })
+    .select("*")
+    .single();
+
+  if (insertError || !insertedOrder) {
+    if ((insertError as { code?: string } | null)?.code === "23505") {
+      const concurrentOrder = await getSearchAiFormatOrderBySearchQueryId(args.searchQueryId);
+      if (concurrentOrder) {
+        return concurrentOrder;
+      }
+    }
+
+    throw insertError ?? new Error("Não foi possível criar a cobrança de formatação por IA.");
+  }
+
+  return insertedOrder as SearchAiFormatOrderRecord;
+}
+
+export async function syncSearchAiFormatOrderPaymentStatus(order: SearchAiFormatOrderRecord) {
+  if (isSearchAiFormatOrderUnlocked(order.status)) {
+    return order;
+  }
+
+  if (!order.stripe_checkout_session_id) {
+    return order;
+  }
+
+  const stripe = getStripeClient();
+  const session = await stripe.checkout.sessions.retrieve(order.stripe_checkout_session_id);
+
+  if (session.payment_status === "paid") {
+    await markSearchAiFormatOrderPaid({
+      orderId: order.id,
+      sessionId: session.id,
+      paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+    });
+
+    return (await getSearchAiFormatOrderById(order.id)) ?? order;
+  }
+
+  if (session.status === "expired") {
+    await markSearchAiFormatOrderPaymentFailed({
+      orderId: order.id,
+      sessionId: session.id,
+      paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+    });
+
+    return (await getSearchAiFormatOrderById(order.id)) ?? order;
+  }
+
+  return order;
+}
+
+export async function markSearchAiFormatOrderCheckoutCreated(args: {
+  orderId: string;
+  customerId?: string | null;
+  checkoutSessionId: string;
+  checkoutUrl?: string | null;
+}) {
+  const admin = createSupabaseAdminClient();
+  await admin
+    .from("search_ai_format_orders")
+    .update({
+      stripe_customer_id: args.customerId ?? null,
+      stripe_checkout_session_id: args.checkoutSessionId,
+      checkout_url: args.checkoutUrl ?? null,
+      status: "pending"
+    })
+    .eq("id", args.orderId);
+}
+
+export async function markSearchAiFormatOrderPaid(args: {
+  orderId?: string | null;
+  sessionId?: string | null;
+  paymentIntentId?: string | null;
+}) {
+  const admin = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+
+  let query = admin
+    .from("search_ai_format_orders")
+    .update({
+      status: "paid",
+      stripe_payment_intent_id: args.paymentIntentId ?? null,
+      stripe_checkout_session_id: args.sessionId ?? null,
+      paid_at: now,
+      unlocked_at: now
+    })
+    .neq("status", "paid");
+
+  if (args.orderId) {
+    query = query.eq("id", args.orderId);
+  } else if (args.sessionId) {
+    query = query.eq("stripe_checkout_session_id", args.sessionId);
+  } else {
+    return;
+  }
+
+  await query;
+}
+
+export async function markSearchAiFormatOrderPaymentFailed(args: {
+  orderId?: string | null;
+  sessionId?: string | null;
+  paymentIntentId?: string | null;
+}) {
+  const admin = createSupabaseAdminClient();
+
+  let query = admin
+    .from("search_ai_format_orders")
+    .update({
+      status: "failed",
+      stripe_payment_intent_id: args.paymentIntentId ?? null,
+      stripe_checkout_session_id: args.sessionId ?? null
+    })
+    .neq("status", "paid");
+
+  if (args.orderId) {
+    query = query.eq("id", args.orderId);
+  } else if (args.sessionId) {
+    query = query.eq("stripe_checkout_session_id", args.sessionId);
+  } else {
+    return;
+  }
+
+  await query;
+}
+
+export async function saveSearchAiFormatPayload(args: {
+  orderId: string;
+  payload: unknown;
+  error?: string | null;
+}) {
+  const admin = createSupabaseAdminClient();
+  await admin
+    .from("search_ai_format_orders")
+    .update({
+      formatted_payload: args.payload,
+      format_error: args.error ?? null,
+      formatted_at: new Date().toISOString()
+    })
+    .eq("id", args.orderId);
+}
+
+async function unlockSearchAccessOrderFromCheckoutSession(session: Stripe.Checkout.Session) {
   const orderId = typeof session.metadata?.order_id === "string" ? session.metadata.order_id : null;
   const order = orderId
     ? await getSearchAccessOrderById(orderId)
@@ -451,6 +734,40 @@ async function unlockOrderFromCheckoutSession(session: Stripe.Checkout.Session) 
   });
 }
 
+async function unlockSearchAiFormatOrderFromCheckoutSession(session: Stripe.Checkout.Session) {
+  const orderId = typeof session.metadata?.order_id === "string" ? session.metadata.order_id : null;
+  const order = orderId
+    ? await getSearchAiFormatOrderById(orderId)
+    : await getSearchAiFormatOrderByCheckoutSessionId(session.id);
+
+  if (!order || isSearchAiFormatOrderUnlocked(order.status)) {
+    return;
+  }
+
+  await markSearchAiFormatOrderPaid({
+    orderId: order.id,
+    sessionId: session.id,
+    paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+  });
+}
+
+async function failOrderFromCheckoutSession(session: Stripe.Checkout.Session, orderType: string | null) {
+  if (orderType === "search_ai_format") {
+    await markSearchAiFormatOrderPaymentFailed({
+      orderId: typeof session.metadata?.order_id === "string" ? session.metadata.order_id : null,
+      sessionId: session.id,
+      paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+    });
+    return;
+  }
+
+  await markSearchAccessOrderPaymentFailed({
+    orderId: typeof session.metadata?.order_id === "string" ? session.metadata.order_id : null,
+    sessionId: session.id,
+    paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+  });
+}
+
 export async function handleStripeWebhook(event: Stripe.Event) {
   const fresh = await registerWebhookEvent(event.id, event.type, event.data.object);
   if (!fresh) return;
@@ -458,29 +775,36 @@ export async function handleStripeWebhook(event: Stripe.Event) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
+      const orderType = typeof session.metadata?.order_type === "string" ? session.metadata.order_type : "search_access";
       if (session.customer) {
         await syncStripeCustomer(String(session.customer));
       }
       if (session.mode === "payment" && session.payment_status === "paid") {
-        await unlockOrderFromCheckoutSession(session);
+        if (orderType === "search_ai_format") {
+          await unlockSearchAiFormatOrderFromCheckoutSession(session);
+        } else {
+          await unlockSearchAccessOrderFromCheckoutSession(session);
+        }
       }
       break;
     }
     case "checkout.session.async_payment_succeeded": {
       const session = event.data.object as Stripe.Checkout.Session;
+      const orderType = typeof session.metadata?.order_type === "string" ? session.metadata.order_type : "search_access";
       if (session.customer) {
         await syncStripeCustomer(String(session.customer));
       }
-      await unlockOrderFromCheckoutSession(session);
+      if (orderType === "search_ai_format") {
+        await unlockSearchAiFormatOrderFromCheckoutSession(session);
+      } else {
+        await unlockSearchAccessOrderFromCheckoutSession(session);
+      }
       break;
     }
     case "checkout.session.async_payment_failed": {
       const session = event.data.object as Stripe.Checkout.Session;
-      await markSearchAccessOrderPaymentFailed({
-        orderId: typeof session.metadata?.order_id === "string" ? session.metadata.order_id : null,
-        sessionId: session.id,
-        paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
-      });
+      const orderType = typeof session.metadata?.order_type === "string" ? session.metadata.order_type : "search_access";
+      await failOrderFromCheckoutSession(session, orderType);
       break;
     }
     case "customer.updated": {
