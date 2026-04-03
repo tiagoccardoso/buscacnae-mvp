@@ -69,11 +69,16 @@ export function getStripeUrls() {
 }
 
 export function getDiscoveryProvider(): DiscoveryProvider {
-  return "casadosdados";
+  const provider = getEnv("DISCOVERY_PROVIDER").toLowerCase();
+  if (provider === "casadosdados" || provider === "cnpjws" || provider === "hybrid") {
+    return provider;
+  }
+  return "hybrid";
 }
 
 export function getProviderLabel(provider: DiscoveryProvider) {
-  return provider === "casadosdados" ? "Casa dos Dados" : "CNPJ.ws Premium";
+  if (provider === "hybrid") return "Casa dos Dados + CNPJ.ws";
+  return provider === "casadosdados" ? "Casa dos Dados" : "CNPJ.ws";
 }
 
 export function getCnpjWsToken() {

@@ -1,5 +1,7 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { EstablishmentDetails } from "@/components/establishment-details";
 import { getSearchAccessOrderByAccessToken, syncSearchAccessOrderPaymentStatus } from "@/lib/billing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
@@ -99,41 +101,69 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
               </div>
 
               {rows && rows.length > 0 ? (
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>Empresa</th>
-                        <th>CNPJ</th>
-                        <th>Cidade</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((row) => {
-                        const establishment = extractSingleObject(row.establishments);
-                        if (!establishment) return null;
+                <div className="stack">
+                  <div className="table-wrap">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Empresa</th>
+                          <th>CNPJ</th>
+                          <th>Cidade</th>
+                          <th>Contato</th>
+                          <th>Endereço</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => {
+                          const establishment = extractSingleObject(row.establishments);
+                          if (!establishment) return null;
 
-                        return (
-                          <tr key={String(row.establishment_id)}>
-                            <td>{row.position}</td>
-                            <td>
-                              <div className="stack" style={{ gap: 6 }}>
-                                <strong>{String(establishment.company_name ?? "-")}</strong>
-                                <span className="muted">{String(establishment.trade_name ?? "")}</span>
-                              </div>
-                            </td>
-                            <td>{formatCnpj(String(establishment.cnpj ?? ""))}</td>
-                            <td>
-                              {String(establishment.city_name ?? "-")}/{String(establishment.state_code ?? "-")}
-                            </td>
-                            <td>{String(establishment.registration_status ?? "-")}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                          return (
+                            <Fragment key={String(row.establishment_id)}>
+                              <tr key={String(row.establishment_id)}>
+                                <td>{row.position}</td>
+                                <td>
+                                  <div className="stack" style={{ gap: 6 }}>
+                                    <strong>{String(establishment.company_name ?? "-")}</strong>
+                                    <span className="muted">{String(establishment.trade_name ?? "")}</span>
+                                  </div>
+                                </td>
+                                <td>{formatCnpj(String(establishment.cnpj ?? ""))}</td>
+                                <td>
+                                  {String(establishment.city_name ?? "-")}/{String(establishment.state_code ?? "-")}
+                                </td>
+                                <td>
+                                  <div className="stack" style={{ gap: 6 }}>
+                                    <span className="muted">{String(establishment.phone ?? "-")}</span>
+                                    <span className="muted">{String(establishment.email ?? "-")}</span>
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="stack" style={{ gap: 6 }}>
+                                    <span className="muted">{String(establishment.address_line ?? "-")}</span>
+                                    <span className="muted">{String(establishment.neighborhood ?? "-")}</span>
+                                  </div>
+                                </td>
+                                <td>{String(establishment.registration_status ?? "-")}</td>
+                              </tr>
+                              <tr key={`${String(row.establishment_id)}-details`}>
+                                <td colSpan={7}>
+                                  <details>
+                                    <summary>Ver todos os campos consolidados</summary>
+                                    <div style={{ marginTop: 16 }}>
+                                      <EstablishmentDetails establishment={establishment} />
+                                    </div>
+                                  </details>
+                                </td>
+                              </tr>
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ) : (
                 <div className="notice success">Nenhum estabelecimento foi encontrado para esse filtro.</div>

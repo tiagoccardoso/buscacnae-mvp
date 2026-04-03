@@ -1,4 +1,4 @@
-export type DiscoveryProvider = "cnpjws" | "casadosdados";
+export type DiscoveryProvider = "hybrid" | "cnpjws" | "casadosdados";
 
 export type SubscriptionStatus =
   | "trialing"

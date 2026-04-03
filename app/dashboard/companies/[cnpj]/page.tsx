@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
-import { fetchCasaDosDadosCompanyByCnpj } from "@/lib/discovery/providers/casadosdados";
-import { formatCnpj, formatMoney } from "@/lib/format";
+import { EstablishmentDetails } from "@/components/establishment-details";
+import { fetchCnpjWsCompanyByCnpj } from "@/lib/discovery/providers/cnpjws";
+import { formatCnpj } from "@/lib/format";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NormalizedEstablishment } from "@/lib/types";
@@ -56,40 +57,31 @@ function needsDetailedEnrichment(row: EstablishmentRow) {
     row.cep,
     row.address_line,
     row.email,
-    row.phone
+    row.phone,
+    row.legal_nature_description
   ];
 
-  return detailedFields.filter(hasValue).length < 6;
+  return detailedFields.filter(hasValue).length < 8;
 }
 
 function mergeProviderPayload(existingPayload: unknown, detailedPayload: Record<string, unknown>) {
-  if (
-    existingPayload &&
-    typeof existingPayload === "object" &&
-    !Array.isArray(existingPayload) &&
-    "consulta_cnpj" in (existingPayload as Record<string, unknown>)
-  ) {
-    return {
-      ...(existingPayload as Record<string, unknown>),
-      consulta_cnpj: detailedPayload
-    };
-  }
-
   if (existingPayload && typeof existingPayload === "object" && !Array.isArray(existingPayload)) {
     return {
-      pesquisa: existingPayload as Record<string, unknown>,
-      consulta_cnpj: detailedPayload
+      ...(existingPayload as Record<string, unknown>),
+      cnpjws_consulta: detailedPayload
     };
   }
 
   if (existingPayload) {
     return {
-      pesquisa: existingPayload,
-      consulta_cnpj: detailedPayload
+      casadosdados_pesquisa: existingPayload,
+      cnpjws_consulta: detailedPayload
     };
   }
 
-  return detailedPayload;
+  return {
+    cnpjws_consulta: detailedPayload
+  };
 }
 
 function mergeEstablishmentRow(
@@ -164,23 +156,6 @@ function buildEstablishmentUpdatePayload(row: EstablishmentRow) {
   };
 }
 
-function formatCityState(cityName?: string | null, stateCode?: string | null) {
-  if (cityName && stateCode) return `${cityName}/${stateCode}`;
-  return cityName || stateCode || "-";
-}
-
-function formatAddress(
-  addressLine?: string | null,
-  addressNumber?: string | null,
-  complement?: string | null
-) {
-  if (!addressLine) return "-";
-
-  const numberPart = addressNumber?.trim() ? addressNumber.trim() : "s/n";
-  const complementPart = complement?.trim() ? ` ${complement.trim()}` : "";
-  return `${addressLine}, ${numberPart}${complementPart}`;
-}
-
 export default async function CompanyPage({ params }: CompanyPageProps) {
   const { cnpj } = await params;
   const supabase = await createSupabaseServerClient();
@@ -208,7 +183,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
 
   if (needsDetailedEnrichment(company)) {
     try {
-      const detail = await fetchCasaDosDadosCompanyByCnpj(company.cnpj);
+      const detail = await fetchCnpjWsCompanyByCnpj(company.cnpj);
       if (detail.normalized) {
         company = mergeEstablishmentRow(company, detail.normalized, detail.raw);
 
@@ -223,7 +198,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
         }
       }
     } catch (error) {
-      console.error("Falha ao enriquecer ficha com dados detalhados da Casa dos Dados", error);
+      console.error("Falha ao enriquecer ficha com dados detalhados da CNPJ.ws", error);
     }
   }
 
@@ -234,38 +209,11 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
         <h2 className="section-title" style={{ fontSize: "2.1rem", marginBottom: 0 }}>
           {company.company_name}
         </h2>
-        <span className="muted">
-          {formatCnpj(company.cnpj)} · {formatCityState(company.city_name, company.state_code)}
-        </span>
-      </div>
-
-      <div className="grid-2">
-        <div className="surface-premium card-lg stack">
-          <strong>Dados principais</strong>
-          <span className="muted">Nome fantasia: {company.trade_name || "-"}</span>
-          <span className="muted">Status cadastral: {company.registration_status || "-"}</span>
-          <span className="muted">CNAE principal: {company.primary_cnae_code || "-"}</span>
-          <span className="muted">Descrição CNAE: {company.primary_cnae_description || "-"}</span>
-          <span className="muted">Abertura: {company.opened_at || "-"}</span>
-          <span className="muted">Capital social: {formatMoney(company.capital_social)}</span>
-        </div>
-
-        <div className="surface-premium card-lg stack">
-          <strong>Contato e endereço</strong>
-          <span className="muted">Email: {company.email || "-"}</span>
-          <span className="muted">Telefone: {company.phone || "-"}</span>
-          <span className="muted">Site: {company.website || "-"}</span>
-          <span className="muted">CEP: {company.cep || "-"}</span>
-          <span className="muted">Bairro: {company.neighborhood || "-"}</span>
-          <span className="muted">
-            Endereço: {formatAddress(company.address_line, company.address_number, company.complement)}
-          </span>
-        </div>
+        <span className="muted">{formatCnpj(company.cnpj)}</span>
       </div>
 
       <div className="surface-premium card-lg stack">
-        <strong>Payload bruto do provedor</strong>
-        <pre className="code-block">{JSON.stringify(company.provider_payload ?? {}, null, 2)}</pre>
+        <EstablishmentDetails establishment={company as unknown as Record<string, unknown>} />
       </div>
     </div>
   );

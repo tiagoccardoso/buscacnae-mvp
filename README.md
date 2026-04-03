@@ -93,8 +93,9 @@ O projeto está configurado para usar a **Casa dos Dados como motor principal de
 Defina:
 
 ```bash
-DISCOVERY_PROVIDER=casadosdados
+DISCOVERY_PROVIDER=hybrid
 CASA_DOS_DADOS_API_KEY=sua_api_key
+CNPJWS_API_TOKEN=seu_token_cnpjws
 ```
 
 A integração usa:
@@ -104,7 +105,7 @@ A integração usa:
 
 Observação:
 - o código foi ajustado para priorizar a Casa dos Dados no fluxo principal
-- `DISCOVERY_PROVIDER` pode continuar no `.env`, mas o projeto já nasce com a Casa dos Dados como provider padrão
+- `DISCOVERY_PROVIDER` pode continuar no `.env`, mas o projeto já nasce com o motor híbrido Casa dos Dados + CNPJ.ws como padrão
 
 ## 5) Variáveis de ambiente
 

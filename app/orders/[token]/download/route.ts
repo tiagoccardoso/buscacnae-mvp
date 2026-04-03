@@ -29,6 +29,16 @@ function toCell(value: unknown) {
   return String(value).trim();
 }
 
+function stringify(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.trim();
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 export async function GET(_request: Request, { params }: DownloadRouteProps) {
   const { token } = await params;
   const initialOrder = await getSearchAccessOrderByAccessToken(token);
@@ -61,25 +71,33 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
     [
       "Posição",
       "CNPJ",
+      "Raiz do CNPJ",
       "Razão Social",
       "Nome Fantasia",
       "Situação Cadastral",
+      "Data de Abertura",
       "CNAE Principal",
-      "Descrição CNAE",
+      "Descrição CNAE Principal",
+      "CNAEs Secundários",
+      "Código Natureza Jurídica",
+      "Natureza Jurídica",
+      "Porte",
+      "Simples",
+      "MEI",
+      "Capital Social",
       "Telefone",
       "E-mail",
       "Site",
+      "País",
       "UF",
       "Cidade",
+      "IBGE Cidade",
       "Bairro",
       "CEP",
       "Endereço",
       "Número",
       "Complemento",
-      "Porte",
-      "Natureza Jurídica",
-      "Capital Social",
-      "Data de Abertura"
+      "Payload Consolidado (JSON)"
     ]
   ];
 
@@ -90,25 +108,33 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
     workbookRows.push([
       toCell(row.position),
       formatCnpj(toCell(establishment.cnpj)),
+      toCell(establishment.cnpj_root),
       toCell(establishment.company_name),
       toCell(establishment.trade_name),
       toCell(establishment.registration_status),
+      toCell(establishment.opened_at),
       toCell(establishment.primary_cnae_code),
       toCell(establishment.primary_cnae_description),
+      stringify(establishment.secondary_cnaes),
+      toCell(establishment.legal_nature_code),
+      toCell(establishment.legal_nature_description),
+      toCell(establishment.company_size),
+      toCell(establishment.simples_opt_in),
+      toCell(establishment.mei_opt_in),
+      toCell(establishment.capital_social),
       toCell(establishment.phone),
       toCell(establishment.email),
       toCell(establishment.website),
+      toCell(establishment.country),
       toCell(establishment.state_code),
       toCell(establishment.city_name),
+      toCell(establishment.city_ibge),
       toCell(establishment.neighborhood),
       toCell(establishment.cep),
       toCell(establishment.address_line),
       toCell(establishment.address_number),
       toCell(establishment.complement),
-      toCell(establishment.company_size),
-      toCell(establishment.legal_nature_description),
-      toCell(establishment.capital_social),
-      toCell(establishment.opened_at)
+      stringify(establishment.provider_payload)
     ]);
   }
 

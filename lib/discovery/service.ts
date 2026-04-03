@@ -1,10 +1,11 @@
-import crypto from "node:crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getDiscoveryCacheTtlHours, getDiscoveryProvider, getMinimumCheckoutAmountCents } from "@/lib/env";
-import { DiscoverySearchInput, ServiceResult } from "@/lib/types";
+import { getDiscoveryCacheTtlHours, getDiscoveryProvider } from "@/lib/env";
+import { DiscoverySearchInput, NormalizedEstablishment, ServiceResult } from "@/lib/types";
 import { normalizeCode, normalizeCnpj, normalizeText, sha256, toTitleCase } from "@/lib/utils";
 import { searchWithCasaDosDados } from "./providers/casadosdados";
 import { searchWithCnpjWs } from "./providers/cnpjws";
+import { searchWithHybrid } from "./providers/hybrid";
+import { ensureSearchAccessOrderForSearch } from "@/lib/billing";
 
 type PublicCitySelection = {
   cityName: string;
@@ -200,7 +201,7 @@ export async function prepareSearchOrder(
     let searchTargets: SearchTarget[] = [];
 
     if (input.stateWide) {
-      if (provider === "casadosdados") {
+      if (provider === "casadosdados" || provider === "hybrid") {
         searchTargets = stateCodes.map((stateCode) => ({ cityName: "", stateCode }));
       } else {
         const groups = await Promise.all(stateCodes.map((stateCode) => fetchCitiesByState(stateCode)));
@@ -223,10 +224,10 @@ export async function prepareSearchOrder(
       );
     }
 
-    const aggregatedByCnpj = new Map<string, Awaited<ReturnType<typeof searchWithCnpjWs>>["normalized"][number]>();
+    const aggregatedByCnpj = new Map<string, NormalizedEstablishment>();
     const searchCombos = cnaes.flatMap((cnaeCode) => searchTargets.map((target) => ({ cnaeCode, target })));
 
-    const searchResponses = await mapWithConcurrency(searchCombos, provider === "casadosdados" ? 4 : 2, async ({ cnaeCode, target }) => {
+    const searchResponses = await mapWithConcurrency(searchCombos, provider === "cnpjws" ? 2 : 4, async ({ cnaeCode, target }) => {
       const providerResponse =
         provider === "casadosdados"
           ? await searchWithCasaDosDados({
@@ -240,13 +241,25 @@ export async function prepareSearchOrder(
               requirePhone: input.requirePhone,
               mobileOnly: input.mobileOnly
             })
-          : await searchWithCnpjWs({
-              profileId: input.profileId ?? "public",
-              cnae: cnaeCode,
-              stateCode: target.stateCode,
-              cityName: target.cityName,
-              cityIbge: ""
-            });
+          : provider === "hybrid"
+            ? await searchWithHybrid({
+                profileId: input.profileId ?? "public",
+                cnae: cnaeCode,
+                stateCode: target.stateCode,
+                cityName: target.cityName,
+                cityIbge: "",
+                requireEmail: input.requireEmail,
+                requireAddress: input.requireAddress,
+                requirePhone: input.requirePhone,
+                mobileOnly: input.mobileOnly
+              })
+            : await searchWithCnpjWs({
+                profileId: input.profileId ?? "public",
+                cnae: cnaeCode,
+                stateCode: target.stateCode,
+                cityName: target.cityName,
+                cityIbge: ""
+              });
 
       return provider === "casadosdados"
         ? applyPublicFilters(providerResponse.normalized, input, {
@@ -383,38 +396,15 @@ export async function prepareSearchOrder(
       }
     }
 
-    const unitAmountCents = 5;
-    const exactTotalAmountCents = allRows.length * unitAmountCents;
-    const minimumCheckoutAmountCents = getMinimumCheckoutAmountCents();
-    const totalAmountCents = allRows.length > 0 ? Math.max(exactTotalAmountCents, minimumCheckoutAmountCents, 0) : 0;
-    const status = allRows.length === 0 ? "free" : "pending";
-    const now = new Date().toISOString();
-    const accessToken = crypto.randomBytes(24).toString("hex");
+    const order = await ensureSearchAccessOrderForSearch({
+      searchQueryId: insertedSearch.id,
+      profileId: input.profileId,
+      email,
+      provider,
+      totalResults: allRows.length
+    });
 
-    const { data: order, error: orderError } = await admin
-      .from("search_access_orders")
-      .insert({
-        access_token: accessToken,
-        profile_id: input.profileId,
-        email,
-        provider,
-        search_query_id: insertedSearch.id,
-        result_count: allRows.length,
-        unit_amount_cents: unitAmountCents,
-        total_amount_cents: totalAmountCents,
-        currency: "brl",
-        status,
-        paid_at: status === "free" ? now : null,
-        unlocked_at: status === "free" ? now : null
-      })
-      .select("id")
-      .single();
-
-    if (orderError || !order) {
-      throw orderError ?? new Error("Não foi possível preparar o pedido da pesquisa.");
-    }
-
-    return { ok: true, data: { orderId: order.id, searchId: insertedSearch.id, accessToken } };
+    return { ok: true, data: { orderId: order.id, searchId: insertedSearch.id, accessToken: order.access_token } };
   } catch (error) {
     return {
       ok: false,
@@ -471,7 +461,7 @@ export async function runDiscoverySearch(
       .maybeSingle();
 
     let raw: unknown;
-    let normalizedRows: Awaited<ReturnType<typeof searchWithCnpjWs>>["normalized"] = [];
+    let normalizedRows: NormalizedEstablishment[] = [];
     let cachedHit = false;
 
     if (cached?.response_payload) {
@@ -484,7 +474,9 @@ export async function runDiscoverySearch(
       const providerResponse =
         provider === "casadosdados"
           ? await searchWithCasaDosDados(normalizedInput)
-          : await searchWithCnpjWs(normalizedInput);
+          : provider === "hybrid"
+            ? await searchWithHybrid(normalizedInput)
+            : await searchWithCnpjWs(normalizedInput);
 
       raw = providerResponse.raw;
       normalizedRows = providerResponse.normalized;

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/empty-state";
 import { LeadToggleForm } from "@/components/lead-toggle-form";
-import { getSearchAccessOrderById, syncSearchAccessOrderPaymentStatus } from "@/lib/billing";
+import { ensureSearchAccessOrderForSearch, syncSearchAccessOrderPaymentStatus, type SearchAccessOrderRecord } from "@/lib/billing";
 import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
 import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
@@ -36,24 +37,30 @@ export default async function SearchResultPage({ params }: SearchResultPageProps
 
   const summary = getSearchSummary(search.data);
 
-  const orderLookup = await supabase
-    .from("search_access_orders")
-    .select("id")
-    .eq("search_query_id", id)
-    .eq("profile_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  let order: SearchAccessOrderRecord | null = null;
+  let orderErrorMessage = "";
 
-  const rawOrder = orderLookup.data?.id ? await getSearchAccessOrderById(orderLookup.data.id) : null;
-  const order = rawOrder ? await syncSearchAccessOrderPaymentStatus(rawOrder) : null;
+  try {
+    const ensuredOrder = await ensureSearchAccessOrderForSearch({
+      searchQueryId: id,
+      profileId: user.id,
+      email: user.email ?? undefined,
+      provider: typeof search.data.provider === "string" ? search.data.provider : undefined,
+      totalResults: typeof search.data.total_results === "number" ? search.data.total_results : undefined
+    });
+
+    order = await syncSearchAccessOrderPaymentStatus(ensuredOrder);
+  } catch (error) {
+    orderErrorMessage = error instanceof Error ? error.message : "Não foi possível preparar o pedido comercial desta busca.";
+  }
+
   const orderUnlocked = order?.status === "paid" || order?.status === "free";
+  const admin = createSupabaseAdminClient();
 
-  const { data: rows } = await supabase
+  const { data: rows } = await admin
     .from("search_results")
     .select("position, establishment_id, establishments(*)")
     .eq("search_query_id", id)
-    .eq("profile_id", user.id)
     .order("position", { ascending: true });
 
   const establishmentIds = (rows ?? []).map((row) => row.establishment_id);
@@ -161,7 +168,7 @@ export default async function SearchResultPage({ params }: SearchResultPageProps
               </div>
             </>
           ) : (
-            <div className="notice warning">Não foi possível localizar o pedido comercial associado a esta busca.</div>
+            <div className="notice warning">{orderErrorMessage || "Não foi possível preparar o pedido comercial desta busca."}</div>
           )}
         </div>
       </div>

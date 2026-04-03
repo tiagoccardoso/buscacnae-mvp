@@ -469,6 +469,48 @@ main {
   overflow-x: auto;
 }
 
+.history-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.history-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.history-select-col,
+.history-select-cell {
+  width: 88px;
+}
+
+.history-select-cell {
+  vertical-align: middle;
+}
+
+.history-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #7c5cff;
+  cursor: pointer;
+}
+
+.history-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.history-action-button {
+  min-width: 112px;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -804,7 +846,9 @@ main {
   .nav-links,
   .inline-actions,
   .action-row,
-  .dashboard-nav {
+  .dashboard-nav,
+  .history-toolbar-actions,
+  .history-row-actions {
     width: 100%;
   }
 

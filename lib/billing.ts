@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe";
+import { getMinimumCheckoutAmountCents } from "@/lib/env";
 
 export type SearchAccessOrderRecord = {
   id: string;
@@ -125,6 +127,198 @@ export async function getSearchAccessOrderByCheckoutSessionId(sessionId: string)
     .eq("stripe_checkout_session_id", sessionId)
     .maybeSingle();
   return (data as SearchAccessOrderRecord | null) ?? null;
+}
+
+function getSearchAccessOrderPricing(resultCount: number) {
+  const unitAmountCents = 5;
+  const minimumCheckoutAmountCents = getMinimumCheckoutAmountCents();
+  const totalAmountCents = resultCount > 0 ? Math.max(resultCount * unitAmountCents, minimumCheckoutAmountCents, 0) : 0;
+  const status = resultCount === 0 ? "free" : "pending";
+
+  return {
+    resultCount,
+    unitAmountCents,
+    totalAmountCents,
+    status
+  };
+}
+
+function resolveFiniteInteger(...values: Array<number | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.max(0, Math.trunc(value));
+    }
+  }
+
+  return null;
+}
+
+export async function getLatestSearchAccessOrderBySearchQueryId(
+  searchQueryId: string
+): Promise<SearchAccessOrderRecord | null> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin
+    .from("search_access_orders")
+    .select("*")
+    .eq("search_query_id", searchQueryId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return (data as SearchAccessOrderRecord | null) ?? null;
+}
+
+export async function ensureSearchAccessOrderForSearch(args: {
+  searchQueryId: string;
+  profileId?: string | null;
+  email?: string | null;
+  provider?: string | null;
+  totalResults?: number | null;
+}): Promise<SearchAccessOrderRecord> {
+  const admin = createSupabaseAdminClient();
+  const normalizedEmail = typeof args.email === "string" ? args.email.trim().toLowerCase() : "";
+  let resolvedProfileId = args.profileId ?? null;
+  let resolvedProvider = args.provider ?? null;
+  let resolvedTotalResults = resolveFiniteInteger(args.totalResults);
+
+  const existing = await getLatestSearchAccessOrderBySearchQueryId(args.searchQueryId);
+
+  if (!resolvedProfileId || !resolvedProvider || resolvedTotalResults === null) {
+    const { data: search, error: searchError } = await admin
+      .from("search_queries")
+      .select("id, profile_id, provider, total_results")
+      .eq("id", args.searchQueryId)
+      .maybeSingle();
+
+    if (searchError || !search) {
+      throw searchError ?? new Error("Não foi possível localizar a busca da lista comercial.");
+    }
+
+    resolvedProfileId = resolvedProfileId ?? search.profile_id ?? null;
+    resolvedProvider = resolvedProvider ?? (typeof search.provider === "string" ? search.provider : null);
+    resolvedTotalResults = resolveFiniteInteger(resolvedTotalResults, search.total_results);
+  }
+
+  if (resolvedTotalResults === null) {
+    const { count, error: countError } = await admin
+      .from("search_results")
+      .select("id", { count: "exact", head: true })
+      .eq("search_query_id", args.searchQueryId);
+
+    if (countError) {
+      throw countError;
+    }
+
+    resolvedTotalResults = resolveFiniteInteger(count ?? 0) ?? 0;
+  }
+
+  let resolvedEmail = normalizedEmail;
+
+  if (!resolvedEmail && resolvedProfileId) {
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("email")
+      .eq("id", resolvedProfileId)
+      .maybeSingle();
+
+    resolvedEmail = typeof profile?.email === "string" ? profile.email.trim().toLowerCase() : "";
+  }
+
+  if (!resolvedEmail) {
+    throw new Error("Não foi possível determinar o e-mail do pedido comercial desta busca.");
+  }
+
+  const pricing = getSearchAccessOrderPricing(resolvedTotalResults);
+
+  if (existing) {
+    const updates: Partial<SearchAccessOrderRecord> = {};
+
+    if (resolvedProfileId && existing.profile_id !== resolvedProfileId) {
+      updates.profile_id = resolvedProfileId;
+    }
+
+    if (existing.email !== resolvedEmail) {
+      updates.email = resolvedEmail;
+    }
+
+    if (resolvedProvider && existing.provider !== resolvedProvider) {
+      updates.provider = resolvedProvider;
+    }
+
+    const canSyncPricing = existing.status !== "paid";
+    if (canSyncPricing) {
+      if (existing.result_count !== pricing.resultCount) {
+        updates.result_count = pricing.resultCount;
+      }
+      if (existing.unit_amount_cents !== pricing.unitAmountCents) {
+        updates.unit_amount_cents = pricing.unitAmountCents;
+      }
+      if (existing.total_amount_cents !== pricing.totalAmountCents) {
+        updates.total_amount_cents = pricing.totalAmountCents;
+      }
+      if (existing.currency !== "brl") {
+        updates.currency = "brl";
+      }
+
+      if (pricing.status === "free" && existing.status !== "free") {
+        const now = new Date().toISOString();
+        updates.status = "free";
+        updates.paid_at = existing.paid_at ?? now;
+        updates.unlocked_at = existing.unlocked_at ?? now;
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return existing;
+    }
+
+    const { data: updatedOrder, error: updateError } = await admin
+      .from("search_access_orders")
+      .update(updates)
+      .eq("id", existing.id)
+      .select("*")
+      .single();
+
+    if (updateError || !updatedOrder) {
+      throw updateError ?? new Error("Não foi possível atualizar o pedido comercial da busca.");
+    }
+
+    return updatedOrder as SearchAccessOrderRecord;
+  }
+
+  const now = new Date().toISOString();
+  const accessToken = crypto.randomBytes(24).toString("hex");
+  const { data: insertedOrder, error: insertError } = await admin
+    .from("search_access_orders")
+    .insert({
+      access_token: accessToken,
+      profile_id: resolvedProfileId,
+      email: resolvedEmail,
+      provider: resolvedProvider ?? "unknown",
+      search_query_id: args.searchQueryId,
+      result_count: pricing.resultCount,
+      unit_amount_cents: pricing.unitAmountCents,
+      total_amount_cents: pricing.totalAmountCents,
+      currency: "brl",
+      status: pricing.status,
+      paid_at: pricing.status === "free" ? now : null,
+      unlocked_at: pricing.status === "free" ? now : null
+    })
+    .select("*")
+    .single();
+
+  if (insertError || !insertedOrder) {
+    if ((insertError as { code?: string } | null)?.code === "23505") {
+      const concurrentOrder = await getLatestSearchAccessOrderBySearchQueryId(args.searchQueryId);
+      if (concurrentOrder) {
+        return concurrentOrder;
+      }
+    }
+
+    throw insertError ?? new Error("Não foi possível criar o pedido comercial da busca.");
+  }
+
+  return insertedOrder as SearchAccessOrderRecord;
 }
 
 
