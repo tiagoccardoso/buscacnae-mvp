@@ -6,9 +6,8 @@ import {
   syncSearchAccessOrderPaymentStatus,
   syncSearchAiFormatOrderPaymentStatus
 } from "@/lib/billing";
-import { ensureSearchAiFormattingPayload } from "@/lib/ai-formatting";
+import { buildAiFormattedPdfInput, ensureSearchAiFormattingPayload } from "@/lib/ai-formatting";
 import { createFormattedListPdf } from "@/lib/export/pdf";
-import { formatDateTime } from "@/lib/format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,14 +71,18 @@ export async function GET(_request: Request, { params }: RouteProps) {
     return new NextResponse("A cobrança da formatação por IA ainda não foi confirmada.", { status: 403 });
   }
 
-  const payload = await ensureSearchAiFormattingPayload(syncedAiOrder);
-  const pdf = createFormattedListPdf({
-    title: `${payload.headline} · Lista formatada por IA`,
-    subtitle: payload.subtitle,
-    generatedAt: formatDateTime(payload.generatedAt),
-    summary: payload.summary,
-    records: payload.records
-  });
+  const [payload, { data: rows }] = await Promise.all([
+    ensureSearchAiFormattingPayload(syncedAiOrder),
+    supabase
+      .from("search_results")
+      .select("position, provider_payload, establishments(*)")
+      .eq("search_query_id", id)
+      .order("position", { ascending: true })
+  ]);
+
+  const pdf = createFormattedListPdf(
+    buildAiFormattedPdfInput(payload, (rows ?? []) as Array<Record<string, unknown>>)
+  );
 
   const fileParts = [
     "buscacnae",

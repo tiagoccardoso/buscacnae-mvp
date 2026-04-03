@@ -6,7 +6,7 @@ import {
   syncSearchAccessOrderPaymentStatus,
   syncSearchAiFormatOrderPaymentStatus
 } from "@/lib/billing";
-import { ensureSearchAiFormattingPayload, buildAiFormattedWorkbookRows } from "@/lib/ai-formatting";
+import { buildAiFormattedWorkbookSheets, ensureSearchAiFormattingPayload } from "@/lib/ai-formatting";
 import { createXlsxWorkbook } from "@/lib/export/xlsx";
 
 export const runtime = "nodejs";
@@ -71,23 +71,17 @@ export async function GET(_request: Request, { params }: RouteProps) {
     return new NextResponse("A cobrança da formatação por IA ainda não foi confirmada.", { status: 403 });
   }
 
-  const payload = await ensureSearchAiFormattingPayload(syncedAiOrder);
-  const workbookRows = buildAiFormattedWorkbookRows(payload);
+  const [payload, { data: rows }] = await Promise.all([
+    ensureSearchAiFormattingPayload(syncedAiOrder),
+    supabase
+      .from("search_results")
+      .select("position, provider_payload, establishments(*)")
+      .eq("search_query_id", id)
+      .order("position", { ascending: true })
+  ]);
+
   const workbook = createXlsxWorkbook({
-    sheets: [
-      {
-        name: "Resumo IA",
-        rows: workbookRows.summaryRows,
-        columnWidths: [24, 72],
-        wrapColumns: [1]
-      },
-      {
-        name: "Lista formatada IA",
-        rows: workbookRows.listRows,
-        columnWidths: [10, 30, 24, 22, 16, 14, 30, 34, 26, 16, 20, 16, 18, 34, 18, 30, 26, 18, 14, 34],
-        wrapColumns: [1, 2, 6, 7, 8, 10, 13, 15, 16, 17, 19]
-      }
-    ]
+    sheets: buildAiFormattedWorkbookSheets(payload, (rows ?? []) as Array<Record<string, unknown>>)
   });
 
   const fileParts = [

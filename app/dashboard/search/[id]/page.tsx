@@ -222,14 +222,14 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                     <div className="stack" style={{ gap: 6 }}>
                       <span className="kicker">Entrega</span>
                       <strong style={{ fontSize: "1.1rem" }}>{aiFormatUnlocked ? "IA liberada" : "Aguardando liberação"}</strong>
-                      <span className="muted">Quando liberada, esta mesma lista poderá ser baixada em XLSX e PDF já normalizados.</span>
+                      <span className="muted">Quando liberada, esta mesma lista poderá ser baixada em XLSX com 4 abas organizadas e em PDF no formato ficha por registro.</span>
                     </div>
                   </div>
 
                   <div className="notice">
                     {aiFormatUnlocked
-                      ? "A organização por IA desta lista já foi contratada. Ao clicar em um dos downloads, o sistema mostra o processamento e inicia o arquivo automaticamente assim que a geração terminar."
-                      : "O botão só aparece depois da compra efetivada da lista. Ao contratar, esta lista recebe uma cobrança avulsa de R$ 10,00 para formatação por IA."}
+                      ? "A organização por IA desta lista já foi contratada. Ao clicar em um dos downloads, o sistema gera um XLSX estruturado com quatro abas e um PDF em formato de ficha cadastral, iniciando o arquivo automaticamente ao concluir."
+                      : "O botão só aparece depois da compra efetivada da lista. Ao contratar, esta lista recebe uma cobrança avulsa de R$ 10,00 para gerar um XLSX estruturado e um PDF legível por registro."}
                   </div>
 
                   <div className="inline-actions">

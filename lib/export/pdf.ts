@@ -1,15 +1,24 @@
 type PdfFontKey = "F1" | "F2";
 
-type PdfTextLine = {
-  text: string;
-  x: number;
-  y: number;
-  size?: number;
-  font?: PdfFontKey;
-};
+type PdfCommand =
+  | {
+      type: "text";
+      text: string;
+      x: number;
+      y: number;
+      size?: number;
+      font?: PdfFontKey;
+    }
+  | {
+      type: "line";
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+    };
 
 type PdfPage = {
-  lines: PdfTextLine[];
+  commands: PdfCommand[];
 };
 
 const A4_WIDTH = 595.28;
@@ -21,76 +30,140 @@ const PAGE_MARGIN_TOP = 54;
 const PAGE_MARGIN_BOTTOM = 42;
 const CONTENT_WIDTH = A4_WIDTH - PAGE_MARGIN_X * 2;
 
-function escapePdfText(value: string) {
+const CP1252_EXTRA = new Map<string, number>([
+  ["€", 0x80],
+  ["‚", 0x82],
+  ["ƒ", 0x83],
+  ["„", 0x84],
+  ["…", 0x85],
+  ["†", 0x86],
+  ["‡", 0x87],
+  ["ˆ", 0x88],
+  ["‰", 0x89],
+  ["Š", 0x8a],
+  ["‹", 0x8b],
+  ["Œ", 0x8c],
+  ["Ž", 0x8e],
+  ["‘", 0x91],
+  ["’", 0x92],
+  ["“", 0x93],
+  ["”", 0x94],
+  ["•", 0x95],
+  ["–", 0x96],
+  ["—", 0x97],
+  ["˜", 0x98],
+  ["™", 0x99],
+  ["š", 0x9a],
+  ["›", 0x9b],
+  ["œ", 0x9c],
+  ["ž", 0x9e],
+  ["Ÿ", 0x9f]
+]);
+
+function sanitizePdfText(value: string) {
   return value
-    .replace(/\\/g, "\\\\")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)")
     .replace(/\r/g, "")
-    .replace(/\n/g, " ");
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ");
+}
+
+function encodePdfTextHex(value: string) {
+  const bytes: number[] = [];
+  const text = sanitizePdfText(value);
+
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0x3f;
+
+    if (code === 10) {
+      bytes.push(0x20);
+      continue;
+    }
+
+    if (code <= 0x7f || (code >= 0xa0 && code <= 0xff)) {
+      bytes.push(code);
+      continue;
+    }
+
+    const mapped = CP1252_EXTRA.get(char);
+    bytes.push(mapped ?? 0x3f);
+  }
+
+  return Buffer.from(bytes).toString("hex").toUpperCase();
 }
 
 function estimateLineWidth(value: string, fontSize = DEFAULT_FONT_SIZE) {
-  return value.length * fontSize * 0.52;
+  return sanitizePdfText(value).length * fontSize * 0.52;
 }
 
 function wrapText(value: string, maxWidth = CONTENT_WIDTH, fontSize = DEFAULT_FONT_SIZE) {
-  const text = value.replace(/\s+/g, " ").trim();
-  if (!text) return [""];
+  const paragraphs = sanitizePdfText(value)
+    .split(/\n+/)
+    .map((part) => part.replace(/\s+/g, " ").trim());
 
-  const words = text.split(" ");
   const lines: string[] = [];
-  let current = "";
 
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (estimateLineWidth(candidate, fontSize) <= maxWidth) {
-      current = candidate;
+  for (const paragraph of paragraphs) {
+    if (!paragraph) {
+      lines.push("");
       continue;
+    }
+
+    const words = paragraph.split(" ");
+    let current = "";
+
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (estimateLineWidth(candidate, fontSize) <= maxWidth) {
+        current = candidate;
+        continue;
+      }
+
+      if (current) {
+        lines.push(current);
+        current = "";
+      }
+
+      if (estimateLineWidth(word, fontSize) <= maxWidth) {
+        current = word;
+        continue;
+      }
+
+      let buffer = "";
+      for (const char of word) {
+        const next = `${buffer}${char}`;
+        if (estimateLineWidth(next, fontSize) > maxWidth && buffer) {
+          lines.push(buffer);
+          buffer = char;
+        } else {
+          buffer = next;
+        }
+      }
+      current = buffer;
     }
 
     if (current) {
       lines.push(current);
-      current = "";
     }
-
-    if (estimateLineWidth(word, fontSize) <= maxWidth) {
-      current = word;
-      continue;
-    }
-
-    let buffer = "";
-    for (const char of word) {
-      const next = `${buffer}${char}`;
-      if (estimateLineWidth(next, fontSize) > maxWidth && buffer) {
-        lines.push(buffer);
-        buffer = char;
-      } else {
-        buffer = next;
-      }
-    }
-    current = buffer;
-  }
-
-  if (current) {
-    lines.push(current);
   }
 
   return lines.length > 0 ? lines : [""];
 }
 
 function buildContentStream(page: PdfPage) {
-  const commands = page.lines
-    .map((line) => {
-      const font = line.font ?? "F1";
-      const size = line.size ?? DEFAULT_FONT_SIZE;
-      return `BT /${font} ${size} Tf 1 0 0 1 ${line.x.toFixed(2)} ${line.y.toFixed(2)} Tm (${escapePdfText(
-        line.text
-      )}) Tj ET`;
+  const commands = page.commands
+    .map((command) => {
+      if (command.type === "line") {
+        return `${command.x1.toFixed(2)} ${command.y1.toFixed(2)} m ${command.x2.toFixed(2)} ${command.y2.toFixed(2)} l S`;
+      }
+
+      const font = command.font ?? "F1";
+      const size = command.size ?? DEFAULT_FONT_SIZE;
+      return `BT /${font} ${size} Tf 1 0 0 1 ${command.x.toFixed(2)} ${command.y.toFixed(2)} Tm <${encodePdfTextHex(
+        command.text
+      )}> Tj ET`;
     })
     .join("\n");
 
-  return `${commands}\n`;
+  return `0 G\n${commands}\n`;
 }
 
 function createPdfDocument(pages: PdfPage[]) {
@@ -102,8 +175,10 @@ function createPdfDocument(pages: PdfPage[]) {
 
   const catalogId = pushObject("<< /Type /Catalog /Pages 2 0 R >>");
   const pagesId = pushObject("<< /Type /Pages /Kids [] /Count 0 >>");
-  const fontRegularId = pushObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  const fontBoldId = pushObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+  const fontRegularId = pushObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+  const fontBoldId = pushObject(
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
+  );
 
   const pageIds: number[] = [];
 
@@ -144,25 +219,15 @@ function createPdfDocument(pages: PdfPage[]) {
 
 export type FormattedPdfRecord = {
   position: number;
-  companyName: string;
-  tradeName?: string;
-  cnpjFormatted: string;
-  registrationStatus: string;
-  primaryActivity: string;
-  secondaryCnaes?: string;
-  legalNature: string;
-  companySize: string;
-  taxProfile: string;
-  openedAt: string;
-  capitalSocial: string;
-  location: string;
-  address: string;
-  phone: string;
-  email: string;
-  website: string;
-  contactChannel: string;
-  dataCompleteness: string;
-  commercialNote: string;
+  title: string;
+  subtitle?: string;
+  sections: Array<{
+    title: string;
+    fields: Array<{
+      label: string;
+      value: string;
+    }>;
+  }>;
 };
 
 export type FormattedPdfInput = {
@@ -175,36 +240,55 @@ export type FormattedPdfInput = {
 
 export function createFormattedListPdf(input: FormattedPdfInput) {
   const pages: PdfPage[] = [];
-  let currentPage: PdfPage = { lines: [] };
+  let currentPage: PdfPage = { commands: [] };
   let cursorY = A4_HEIGHT - PAGE_MARGIN_TOP;
+  let activeRecordHeader: { title: string; subtitle?: string } | null = null;
 
-  const ensureSpace = (requiredHeight: number) => {
-    if (cursorY - requiredHeight < PAGE_MARGIN_BOTTOM) {
-      pages.push(currentPage);
-      currentPage = { lines: [] };
-      cursorY = A4_HEIGHT - PAGE_MARGIN_TOP;
-    }
+  const pushCurrentPage = () => {
+    pages.push(currentPage);
+    currentPage = { commands: [] };
+    cursorY = A4_HEIGHT - PAGE_MARGIN_TOP;
   };
 
-  const addLine = (text: string, options?: { size?: number; font?: PdfFontKey; indent?: number }) => {
-    const size = options?.size ?? DEFAULT_FONT_SIZE;
-    const font = options?.font ?? "F1";
-    const x = PAGE_MARGIN_X + (options?.indent ?? 0);
-    ensureSpace(DEFAULT_LINE_HEIGHT + 2);
-    currentPage.lines.push({ text, x, y: cursorY, size, font });
-    cursorY -= DEFAULT_LINE_HEIGHT;
+  const addLineBreak = (height = 8) => {
+    cursorY -= height;
+  };
+
+  const addRule = () => {
+    currentPage.commands.push({
+      type: "line",
+      x1: PAGE_MARGIN_X,
+      y1: cursorY,
+      x2: PAGE_MARGIN_X + CONTENT_WIDTH,
+      y2: cursorY
+    });
+    cursorY -= 10;
   };
 
   const addWrapped = (text: string, options?: { size?: number; font?: PdfFontKey; indent?: number; width?: number }) => {
     const size = options?.size ?? DEFAULT_FONT_SIZE;
     const indent = options?.indent ?? 0;
-    const lines = wrapText(text, options?.width ?? CONTENT_WIDTH - indent, size);
-    ensureSpace(lines.length * DEFAULT_LINE_HEIGHT + 4);
+    const x = PAGE_MARGIN_X + indent;
+    const maxWidth = options?.width ?? CONTENT_WIDTH - indent;
+    const lines = wrapText(text, maxWidth, size);
 
     for (const line of lines) {
-      currentPage.lines.push({
+      if (cursorY - DEFAULT_LINE_HEIGHT < PAGE_MARGIN_BOTTOM) {
+        pushCurrentPage();
+        if (activeRecordHeader) {
+          const continuationTitle = `${activeRecordHeader.title} (continuação)`;
+          addWrapped(continuationTitle, { size: 12, font: "F2" });
+          if (activeRecordHeader.subtitle) {
+            addWrapped(activeRecordHeader.subtitle, { size: 9 });
+          }
+          addRule();
+        }
+      }
+
+      currentPage.commands.push({
+        type: "text",
         text: line,
-        x: PAGE_MARGIN_X + indent,
+        x,
         y: cursorY,
         size,
         font: options?.font ?? "F1"
@@ -213,50 +297,66 @@ export function createFormattedListPdf(input: FormattedPdfInput) {
     }
   };
 
+  const addField = (label: string, value: string, indent = 8) => {
+    addWrapped(`${label}: ${value}`, { size: 9.5, indent });
+  };
+
   addWrapped(input.title, { size: 18, font: "F2" });
   addWrapped(input.subtitle, { size: 11 });
-  addLine(`Gerado em ${input.generatedAt}`, { size: 9 });
-  cursorY -= 8;
+  addWrapped(`Gerado em ${input.generatedAt}`, { size: 9 });
+  addLineBreak(6);
 
   if (input.summary.length > 0) {
-    addLine("Resumo executivo", { size: 12, font: "F2" });
+    addWrapped("Resumo executivo", { size: 12, font: "F2" });
     for (const item of input.summary) {
-      addWrapped(`${item.label}: ${item.value}`, { size: 10, indent: 8 });
+      addField(item.label, item.value, 8);
     }
-    cursorY -= 10;
+    addLineBreak(4);
   }
 
-  addLine("Empresas organizadas pela IA", { size: 12, font: "F2" });
-  cursorY -= 4;
+  addWrapped(
+    "Formato de leitura: cada registro é exibido como ficha cadastral para preservar legibilidade, quebras corretas e estabilidade visual.",
+    { size: 9 }
+  );
 
-  for (const record of input.records) {
-    const blockLines = [
-      `#${record.position} ${record.companyName} • ${record.cnpjFormatted}`,
-      `Fantasia: ${record.tradeName || "-"}`,
-      `Status: ${record.registrationStatus} • Atividade: ${record.primaryActivity}`,
-      `CNAEs secundários: ${record.secondaryCnaes || "-"}`,
-      `Natureza/Porte: ${record.legalNature} • ${record.companySize}`,
-      `Regime/Capital/Abertura: ${record.taxProfile} • ${record.capitalSocial} • ${record.openedAt}`,
-      `Localização: ${record.location}`,
-      `Endereço: ${record.address}`,
-      `Contato: ${record.phone} • ${record.email} • ${record.website}`,
-      `Canal recomendado: ${record.contactChannel} • Completude: ${record.dataCompleteness}`,
-      `Nota comercial: ${record.commercialNote}`
-    ];
-
-    const requiredHeight = blockLines.reduce((sum, line, index) => {
-      const wrapped = wrapText(line, CONTENT_WIDTH - 8, index === 0 ? 11 : 9);
-      return sum + wrapped.length * DEFAULT_LINE_HEIGHT;
-    }, 16);
-
-    ensureSpace(requiredHeight + 8);
-    addWrapped(blockLines[0], { size: 11, font: "F2" });
-    for (const line of blockLines.slice(1)) {
-      addWrapped(line, { size: 9, indent: 8 });
-    }
-    cursorY -= 10;
+  if (input.records.length === 0) {
+    addLineBreak(8);
+    addWrapped("Nenhum registro disponível para exibição.", { size: 10 });
+    pages.push(currentPage);
+    return createPdfDocument(pages);
   }
 
-  pages.push(currentPage);
+  pushCurrentPage();
+
+  input.records.forEach((record, recordIndex) => {
+    if (recordIndex > 0 && currentPage.commands.length > 0) {
+      pushCurrentPage();
+    }
+
+    activeRecordHeader = {
+      title: `#${record.position} ${record.title}`,
+      subtitle: record.subtitle
+    };
+
+    addWrapped(activeRecordHeader.title, { size: 15, font: "F2" });
+    if (record.subtitle) {
+      addWrapped(record.subtitle, { size: 10.5 });
+    }
+    addRule();
+
+    for (const section of record.sections) {
+      if (section.fields.length === 0) continue;
+      addWrapped(section.title, { size: 11, font: "F2" });
+      for (const field of section.fields) {
+        addField(field.label, field.value, 8);
+      }
+      addLineBreak(4);
+    }
+  });
+
+  if (currentPage.commands.length > 0) {
+    pages.push(currentPage);
+  }
+
   return createPdfDocument(pages);
 }

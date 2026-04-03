@@ -5,6 +5,8 @@ type WorkbookSheet = {
   rows: string[][];
   columnWidths?: number[];
   wrapColumns?: number[];
+  autoFilter?: boolean;
+  freezeHeader?: boolean;
 };
 
 type LegacyWorkbookInput = {
@@ -12,6 +14,8 @@ type LegacyWorkbookInput = {
   rows: string[][];
   columnWidths?: number[];
   wrapColumns?: number[];
+  autoFilter?: boolean;
+  freezeHeader?: boolean;
 };
 
 type WorkbookInput =
@@ -78,7 +82,9 @@ function normalizeSheets(input: WorkbookInput) {
     return input.sheets.map((sheet) => ({
       ...sheet,
       rows: sheet.rows.length > 0 ? sheet.rows : [[""]],
-      wrapColumns: sheet.wrapColumns ?? []
+      wrapColumns: sheet.wrapColumns ?? [],
+      autoFilter: sheet.autoFilter !== false,
+      freezeHeader: sheet.freezeHeader !== false
     }));
   }
 
@@ -87,7 +93,9 @@ function normalizeSheets(input: WorkbookInput) {
       name: input.sheetName,
       rows: input.rows.length > 0 ? input.rows : [[""]],
       columnWidths: input.columnWidths,
-      wrapColumns: input.wrapColumns ?? []
+      wrapColumns: input.wrapColumns ?? [],
+      autoFilter: input.autoFilter !== false,
+      freezeHeader: input.freezeHeader !== false
     }
   ];
 }
@@ -164,7 +172,7 @@ function buildSheetXml(sheet: WorkbookSheet, matrix: number[][]) {
           const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
           const rawValue = sheet.rows[rowIndex]?.[columnIndex] ?? "";
           const shouldWrap = wrapColumns.has(columnIndex) || rawValue.includes("\n") || rawValue.length > 90;
-          const styleIndex = rowIndex === 0 ? 1 : shouldWrap ? 2 : 0;
+          const styleIndex = rowIndex === 0 ? (shouldWrap ? 3 : 1) : shouldWrap ? 2 : 0;
           return `<c r="${ref}" t="s" s="${styleIndex}"><v>${sharedStringIndex}</v></c>`;
         })
         .join("");
@@ -173,18 +181,27 @@ function buildSheetXml(sheet: WorkbookSheet, matrix: number[][]) {
     })
     .join("");
 
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <dimension ref="A1:${lastColumn}${lastRow}"/>
-  <sheetViews>
+  const sheetViewsXml = sheet.freezeHeader === false
+    ? `<sheetViews><sheetView workbookViewId="0"/></sheetViews>`
+    : `<sheetViews>
     <sheetView workbookViewId="0">
       <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
       <selection pane="bottomLeft" activeCell="A2" sqref="A2"/>
     </sheetView>
-  </sheetViews>
+  </sheetViews>`;
+
+  const autoFilterXml = sheet.autoFilter !== false && maxColumns > 0 && lastRow > 1
+    ? `<autoFilter ref="A1:${lastColumn}1"/>`
+    : "";
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:${lastColumn}${lastRow}"/>
+  ${sheetViewsXml}
   <sheetFormatPr defaultRowHeight="18"/>
   ${colsXml}
   <sheetData>${sheetRowsXml}</sheetData>
+  ${autoFilterXml}
 </worksheet>`;
 }
 
@@ -204,20 +221,40 @@ function buildStylesXml() {
       <family val="2"/>
     </font>
   </fonts>
-  <fills count="2">
+  <fills count="3">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
+    <fill>
+      <patternFill patternType="solid">
+        <fgColor rgb="FFF3F4F6"/>
+        <bgColor indexed="64"/>
+      </patternFill>
+    </fill>
   </fills>
-  <borders count="1">
+  <borders count="2">
     <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border>
+      <left style="thin"><color auto="1"/></left>
+      <right style="thin"><color auto="1"/></right>
+      <top style="thin"><color auto="1"/></top>
+      <bottom style="thin"><color auto="1"/></bottom>
+      <diagonal/>
+    </border>
   </borders>
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
-  <cellXfs count="3">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyFont="1"/>
-    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1">
+  <cellXfs count="4">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1">
+      <alignment vertical="top"/>
+    </xf>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+      <alignment vertical="top"/>
+    </xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1">
+      <alignment vertical="top" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment vertical="top" wrapText="1"/>
     </xf>
   </cellXfs>

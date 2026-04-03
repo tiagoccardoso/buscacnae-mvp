@@ -26,6 +26,18 @@ type FormattingSourceRecord = {
   secondaryCnaes: string;
 };
 
+type SearchAiExportSourceRow = Record<string, unknown>;
+
+type PreparedExportRecord = {
+  position: number;
+  aiRecord: SearchAiFormattedRecord;
+  sourceRecord: FormattingSourceRecord;
+  establishment: Record<string, unknown>;
+  flattenedFields: Map<string, string>;
+  jsonAudit: string;
+  searchResultPayloadText: string;
+};
+
 export type SearchAiFormattedRecord = {
   position: number;
   cnpj: string;
@@ -61,6 +73,13 @@ export type SearchAiFormattedPayload = {
   totalRecords: number;
   summary: Array<{ label: string; value: string }>;
   records: SearchAiFormattedRecord[];
+};
+
+export type AiFormattedWorkbookSheet = {
+  name: string;
+  rows: string[][];
+  columnWidths?: number[];
+  wrapColumns?: number[];
 };
 
 function extractFirstJsonObject(value: string) {
@@ -266,8 +285,8 @@ async function formatChunkWithOpenAi(records: FormattingSourceRecord[]) {
     body: JSON.stringify({
       model: getOpenAiModel(),
       instructions:
-        "Você organiza e normaliza listas comerciais B2B no Brasil para exportação em XLSX e PDF. Responda apenas JSON válido com o formato {\"items\":[{\"position\": number, \"companyName\": string, \"tradeName\": string, \"registrationStatus\": string, \"openedAt\": string, \"primaryActivity\": string, \"secondaryCnaes\": string, \"legalNature\": string, \"companySize\": string, \"taxProfile\": string, \"capitalSocial\": string, \"location\": string, \"address\": string, \"phone\": string, \"email\": string, \"website\": string, \"contactChannel\": string, \"dataCompleteness\": string, \"commercialNote\": string}]}. Analise todos os campos recebidos de cada item e preserve a mesma quantidade de registros e a mesma posição. Use somente os dados fornecidos. Nunca invente dados ausentes. Nunca remova ou esconda telefone, e-mail, site, endereço, CNAE secundário, capital social, status, data de abertura ou outras informações já presentes. Normalize nomes, telefones, e-mails, sites, localização e endereço em português do Brasil. Em contactChannel, indique o melhor canal com base nos contatos disponíveis. Em dataCompleteness, classifique como Alta, Média ou Baixa considerando principalmente telefone, e-mail, site e endereço. Em commercialNote, faça uma observação comercial objetiva com no máximo 22 palavras usando os dados reais do item.",
-      input: safeJsonStringify({ goal: "Gerar arquivos XLSX e PDF completos com todos os dados disponíveis", items: records }, 2),
+        "Você recebe registros empresariais do sistema e organiza uma visão principal para exportação em XLSX e PDF. Preserve integralmente os dados recebidos, nunca invente valores e nunca remova informações úteis. Responda apenas JSON válido no formato {\"items\":[{\"position\": number, \"companyName\": string, \"tradeName\": string, \"registrationStatus\": string, \"openedAt\": string, \"primaryActivity\": string, \"secondaryCnaes\": string, \"legalNature\": string, \"companySize\": string, \"taxProfile\": string, \"capitalSocial\": string, \"location\": string, \"address\": string, \"phone\": string, \"email\": string, \"website\": string, \"contactChannel\": string, \"dataCompleteness\": string, \"commercialNote\": string}]}. Use somente os dados fornecidos. Normalize nomes, telefones, e-mails, sites, localização e endereço em português do Brasil. Em contactChannel, indique o melhor canal baseado nos contatos disponíveis. Em dataCompleteness, classifique como Alta, Média ou Baixa considerando principalmente telefone, e-mail, site e endereço. Em commercialNote, faça uma observação objetiva com no máximo 22 palavras usando apenas dados reais do item.",
+      input: safeJsonStringify({ goal: "Gerar visão principal organizada sem perda de dados", items: records }, 2),
       max_output_tokens: 4500,
       temperature: 0.2
     })
@@ -399,6 +418,264 @@ function isStoredPayload(value: unknown): value is SearchAiFormattedPayload {
   return Array.isArray(record.records) && typeof record.searchQueryId === "string";
 }
 
+function blankWhenMissing(value: unknown) {
+  if (value === null || value === undefined) return "";
+  const text = String(value).trim();
+  return !text || text === "-" ? "" : text;
+}
+
+function toRawCell(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value === "string") return value.trim();
+  return safeJsonStringify(value, 0);
+}
+
+function toReadablePrimitive(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "Sim" : "Não";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value === "string") return value.trim();
+  return safeJsonStringify(value, 0);
+}
+
+function maybeParseStructuredString(value: string) {
+  const text = value.trim();
+  if (!text) return null;
+  if (!(text.startsWith("{") || text.startsWith("["))) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildReadableArrayText(values: unknown[]) {
+  return values
+    .map((item) => {
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        const record = item as Record<string, unknown>;
+        const code = toReadablePrimitive(record.codigo);
+        const description = toReadablePrimitive(record.descricao);
+        const name = toReadablePrimitive(record.nome ?? record.name ?? record.tipo ?? record.type);
+        const itemValue = toReadablePrimitive(record.valor ?? record.value ?? record.numero ?? record.email);
+
+        if (code && description) return `${code} - ${description}`;
+        if (name && itemValue) return `${name}: ${itemValue}`;
+        return safeJsonStringify(item, 0);
+      }
+
+      return toReadablePrimitive(item);
+    })
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function expandStructuredValue(value: unknown, depth = 0): unknown {
+  if (depth > 6 || value === null || value === undefined) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = maybeParseStructuredString(value);
+    return parsed ? expandStructuredValue(parsed, depth + 1) : value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => expandStructuredValue(item, depth + 1));
+  }
+
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => [key, expandStructuredValue(nestedValue, depth + 1)])
+    );
+  }
+
+  return value;
+}
+
+function flattenValueToMap(value: unknown, path: string, out: Map<string, string>) {
+  if (value === null || value === undefined) {
+    if (path) out.set(path, "");
+    return;
+  }
+
+  if (typeof value === "string") {
+    const parsed = maybeParseStructuredString(value);
+    if (parsed) {
+      if (path) out.set(path, value.trim());
+      flattenValueToMap(parsed, path, out);
+      return;
+    }
+
+    if (path) out.set(path, value.trim());
+    return;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    if (path) out.set(path, toReadablePrimitive(value));
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    if (path) out.set(path, buildReadableArrayText(value));
+    if (value.length === 0) return;
+
+    value.forEach((item, index) => {
+      flattenValueToMap(item, `${path}[${index}]`, out);
+    });
+    return;
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      if (path) out.set(path, "{}");
+      return;
+    }
+
+    for (const [key, nestedValue] of entries) {
+      flattenValueToMap(nestedValue, path ? `${path}.${key}` : key, out);
+    }
+  }
+}
+
+function humanizeToken(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return "";
+
+  const upper = normalized.toUpperCase();
+  if (["CNPJ", "CNAE", "CEP", "UF", "IBGE", "MEI"].includes(upper)) {
+    return upper;
+  }
+
+  if (upper === "ID") {
+    return "ID";
+  }
+
+  if (upper === "JSON") {
+    return "JSON";
+  }
+
+  return normalized
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatFieldLabel(path: string) {
+  const rootLabelMap: Record<string, string> = {
+    position: "Posição",
+    organized: "Organizado",
+    establishment: "Cadastro",
+    provider_payload: "Payload bruto",
+    search_result_payload: "Payload da busca"
+  };
+
+  return path
+    .split(".")
+    .flatMap((segment, segmentIndex) => {
+      const base = segment.replace(/\[\d+\]/g, "");
+      const indexes = Array.from(segment.matchAll(/\[(\d+)\]/g), (match) => Number(match[1] ?? 0) + 1);
+      const label = segmentIndex === 0 && rootLabelMap[base] ? rootLabelMap[base] : humanizeToken(base);
+      const parts = [label, ...indexes.map((index) => String(index))].filter(Boolean);
+      return parts;
+    })
+    .join(" • ");
+}
+
+function formatMaybeDateValue(value: unknown) {
+  const text = blankWhenMissing(value);
+  if (!text) return "";
+  return /^\d{4}-\d{2}-\d{2}/.test(text) ? formatDate(text) : text;
+}
+
+function formatCep(value: unknown) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.length === 8) {
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+  }
+
+  return blankWhenMissing(value);
+}
+
+function buildPreparedExportRecords(payload: SearchAiFormattedPayload, rows: SearchAiExportSourceRow[]) {
+  const aiByPosition = new Map(payload.records.map((record) => [record.position, record]));
+
+  return rows
+    .map((row) => {
+      const establishment = extractSingleObject(row.establishments);
+      if (!establishment) return null;
+
+      const position = Number(row.position ?? 0);
+      const sourceRecord = buildSourceRecord(position, establishment);
+      const aiRecord = aiByPosition.get(position) ?? mergeAiRecord(sourceRecord);
+      const establishmentPayload = expandStructuredValue(establishment.provider_payload);
+      const searchResultPayload = expandStructuredValue(row.provider_payload);
+      const establishmentWithoutPayload = { ...establishment };
+      delete establishmentWithoutPayload.provider_payload;
+
+      const flatObject = {
+        position,
+        organized: {
+          company_name: blankWhenMissing(aiRecord.companyName),
+          trade_name: blankWhenMissing(aiRecord.tradeName),
+          cnpj: blankWhenMissing(aiRecord.cnpj),
+          cnpj_formatted: blankWhenMissing(aiRecord.cnpjFormatted),
+          registration_status: blankWhenMissing(aiRecord.registrationStatus),
+          opened_at: blankWhenMissing(aiRecord.openedAt),
+          primary_activity: blankWhenMissing(aiRecord.primaryActivity),
+          secondary_cnaes: blankWhenMissing(aiRecord.secondaryCnaes),
+          legal_nature: blankWhenMissing(aiRecord.legalNature),
+          company_size: blankWhenMissing(aiRecord.companySize),
+          tax_profile: blankWhenMissing(aiRecord.taxProfile),
+          capital_social: blankWhenMissing(aiRecord.capitalSocial),
+          location: blankWhenMissing(aiRecord.location),
+          address: blankWhenMissing(aiRecord.address),
+          phone: blankWhenMissing(aiRecord.phone),
+          email: blankWhenMissing(aiRecord.email),
+          website: blankWhenMissing(aiRecord.website),
+          contact_channel: blankWhenMissing(aiRecord.contactChannel),
+          data_completeness: blankWhenMissing(aiRecord.dataCompleteness),
+          commercial_note: blankWhenMissing(aiRecord.commercialNote)
+        },
+        establishment: establishmentWithoutPayload,
+        provider_payload: establishmentPayload,
+        search_result_payload: searchResultPayload
+      };
+
+      const flattenedFields = new Map<string, string>();
+      flattenValueToMap(flatObject, "", flattenedFields);
+
+      const jsonAudit = safeJsonStringify(
+        {
+          position,
+          organized: aiRecord,
+          establishment,
+          provider_payload: establishmentPayload,
+          search_result_payload: searchResultPayload
+        },
+        2
+      );
+
+      return {
+        position,
+        aiRecord,
+        sourceRecord,
+        establishment,
+        flattenedFields,
+        jsonAudit,
+        searchResultPayloadText: safeJsonStringify(row.provider_payload, 2)
+      } satisfies PreparedExportRecord;
+    })
+    .filter((item): item is PreparedExportRecord => Boolean(item))
+    .sort((left, right) => left.position - right.position);
+}
+
 export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrderRecord) {
   if (isStoredPayload(order.formatted_payload)) {
     return order.formatted_payload;
@@ -418,13 +695,13 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
       .order("position", { ascending: true })
   ]);
 
-  const sourceRecords = (rows ?? [])
-    .map((row) => {
+  const sourceRecords = ((rows ?? []) as Array<{ position?: number | string | null; establishments?: unknown }>)
+    .map((row: { position?: number | string | null; establishments?: unknown }) => {
       const establishment = extractSingleObject(row.establishments);
       if (!establishment) return null;
       return buildSourceRecord(Number(row.position ?? 0), establishment);
     })
-    .filter((item): item is FormattingSourceRecord => Boolean(item));
+    .filter((item: FormattingSourceRecord | null): item is FormattingSourceRecord => Boolean(item));
 
   const fallbackRecords = createFallbackRecords(sourceRecords);
   let formattedRecords = fallbackRecords;
@@ -543,5 +820,335 @@ export function buildAiFormattedWorkbookRows(payload: SearchAiFormattedPayload) 
   return {
     summaryRows,
     listRows
+  };
+}
+
+export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload, rows: SearchAiExportSourceRow[]): AiFormattedWorkbookSheet[] {
+  const preparedRecords = buildPreparedExportRecords(payload, rows);
+
+  const organizedRows: string[][] = [
+    [
+      "Posição",
+      "Empresa",
+      "Nome fantasia",
+      "CNPJ",
+      "Situação cadastral",
+      "Data de abertura",
+      "CNAE principal",
+      "CNAEs secundários",
+      "Natureza jurídica",
+      "Porte",
+      "Regime tributário",
+      "Capital social",
+      "País",
+      "Cidade",
+      "UF",
+      "Bairro",
+      "CEP",
+      "Endereço completo",
+      "Telefone",
+      "E-mail",
+      "Site",
+      "Canal recomendado",
+      "Completude",
+      "Observação comercial"
+    ]
+  ];
+
+  for (const record of preparedRecords) {
+    organizedRows.push([
+      String(record.position),
+      blankWhenMissing(record.aiRecord.companyName),
+      blankWhenMissing(record.aiRecord.tradeName),
+      blankWhenMissing(record.aiRecord.cnpjFormatted || formatCnpj(record.aiRecord.cnpj)),
+      blankWhenMissing(record.aiRecord.registrationStatus),
+      blankWhenMissing(record.aiRecord.openedAt),
+      blankWhenMissing(record.aiRecord.primaryActivity),
+      blankWhenMissing(record.aiRecord.secondaryCnaes),
+      blankWhenMissing(record.aiRecord.legalNature),
+      blankWhenMissing(record.aiRecord.companySize),
+      blankWhenMissing(record.aiRecord.taxProfile),
+      blankWhenMissing(record.aiRecord.capitalSocial),
+      blankWhenMissing(record.establishment.country),
+      blankWhenMissing(record.establishment.city_name),
+      blankWhenMissing(record.establishment.state_code),
+      blankWhenMissing(record.establishment.neighborhood),
+      formatCep(record.establishment.cep),
+      blankWhenMissing(record.aiRecord.address),
+      blankWhenMissing(record.aiRecord.phone),
+      blankWhenMissing(record.aiRecord.email),
+      blankWhenMissing(record.aiRecord.website),
+      blankWhenMissing(record.aiRecord.contactChannel),
+      blankWhenMissing(record.aiRecord.dataCompleteness),
+      blankWhenMissing(record.aiRecord.commercialNote)
+    ]);
+  }
+
+  const completePaths: string[] = [];
+  const seenPaths = new Set<string>();
+
+  for (const record of preparedRecords) {
+    for (const path of record.flattenedFields.keys()) {
+      if (!seenPaths.has(path)) {
+        seenPaths.add(path);
+        completePaths.push(path);
+      }
+    }
+  }
+
+  const completeRows: string[][] = [completePaths.map((path) => formatFieldLabel(path))];
+  for (const record of preparedRecords) {
+    completeRows.push(completePaths.map((path) => record.flattenedFields.get(path) ?? ""));
+  }
+
+  const rawRows: string[][] = [
+    [
+      "Posição",
+      "CNPJ",
+      "Raiz do CNPJ",
+      "Razão social",
+      "Nome fantasia",
+      "Situação cadastral",
+      "Data de abertura",
+      "Código CNAE principal",
+      "Descrição CNAE principal",
+      "CNAEs secundários",
+      "Código natureza jurídica",
+      "Natureza jurídica",
+      "Porte",
+      "Simples",
+      "MEI",
+      "Capital social",
+      "Telefone",
+      "E-mail",
+      "Site",
+      "País",
+      "UF",
+      "Cidade",
+      "IBGE cidade",
+      "Bairro",
+      "CEP",
+      "Endereço",
+      "Número",
+      "Complemento",
+      "Payload do estabelecimento (JSON)",
+      "Payload do resultado da busca (JSON)"
+    ]
+  ];
+
+  for (const record of preparedRecords) {
+    rawRows.push([
+      String(record.position),
+      toRawCell(record.establishment.cnpj),
+      toRawCell(record.establishment.cnpj_root),
+      toRawCell(record.establishment.company_name),
+      toRawCell(record.establishment.trade_name),
+      toRawCell(record.establishment.registration_status),
+      toRawCell(record.establishment.opened_at),
+      toRawCell(record.establishment.primary_cnae_code),
+      toRawCell(record.establishment.primary_cnae_description),
+      toRawCell(record.establishment.secondary_cnaes),
+      toRawCell(record.establishment.legal_nature_code),
+      toRawCell(record.establishment.legal_nature_description),
+      toRawCell(record.establishment.company_size),
+      toRawCell(record.establishment.simples_opt_in),
+      toRawCell(record.establishment.mei_opt_in),
+      toRawCell(record.establishment.capital_social),
+      toRawCell(record.establishment.phone),
+      toRawCell(record.establishment.email),
+      toRawCell(record.establishment.website),
+      toRawCell(record.establishment.country),
+      toRawCell(record.establishment.state_code),
+      toRawCell(record.establishment.city_name),
+      toRawCell(record.establishment.city_ibge),
+      toRawCell(record.establishment.neighborhood),
+      toRawCell(record.establishment.cep),
+      toRawCell(record.establishment.address_line),
+      toRawCell(record.establishment.address_number),
+      toRawCell(record.establishment.complement),
+      safeJsonStringify(record.establishment.provider_payload, 2),
+      record.searchResultPayloadText
+    ]);
+  }
+
+  const jsonRows: string[][] = [["Posição", "Empresa", "CNPJ", "JSON legível"]];
+  for (const record of preparedRecords) {
+    jsonRows.push([
+      String(record.position),
+      blankWhenMissing(record.aiRecord.companyName),
+      blankWhenMissing(record.aiRecord.cnpjFormatted),
+      record.jsonAudit
+    ]);
+    jsonRows.push(["", "", "", ""]);
+  }
+
+  return [
+    {
+      name: "Empresas organizadas",
+      rows: organizedRows,
+      columnWidths: [10, 34, 28, 22, 20, 14, 36, 36, 26, 14, 22, 16, 12, 22, 8, 18, 12, 38, 18, 30, 28, 18, 14, 36],
+      wrapColumns: [1, 2, 6, 7, 8, 10, 17, 19, 20, 23]
+    },
+    {
+      name: "Campos completos",
+      rows: completeRows,
+      columnWidths: [10, 20, 20, 20, 22, 18, 30, 30, 24, 16],
+      wrapColumns: completePaths
+        .map((path, index) => (/payload|secondary|address|note|website|email/i.test(path) ? index : -1))
+        .filter((index) => index >= 0)
+    },
+    {
+      name: "Dados brutos organizados",
+      rows: rawRows,
+      columnWidths: [10, 20, 16, 34, 28, 18, 14, 16, 30, 34, 16, 28, 14, 10, 10, 16, 18, 28, 24, 12, 8, 20, 14, 18, 12, 28, 12, 18, 70, 70],
+      wrapColumns: [8, 9, 11, 28, 29]
+    },
+    {
+      name: "JSON legível",
+      rows: jsonRows,
+      columnWidths: [10, 34, 22, 92],
+      wrapColumns: [3]
+    }
+  ];
+}
+
+function buildPdfFields(fields: Array<{ label: string; value: unknown }>) {
+  return fields
+    .map((field) => ({
+      label: field.label,
+      value: blankWhenMissing(field.value)
+    }))
+    .filter((field) => field.value);
+}
+
+export function buildAiFormattedPdfInput(payload: SearchAiFormattedPayload, rows: SearchAiExportSourceRow[]) {
+  const preparedRecords = buildPreparedExportRecords(payload, rows);
+
+  const records = preparedRecords.map((record) => {
+    const excludedAdditionalPaths = new Set<string>([
+      "position",
+      "organized.company_name",
+      "organized.trade_name",
+      "organized.cnpj",
+      "organized.cnpj_formatted",
+      "organized.registration_status",
+      "organized.opened_at",
+      "organized.primary_activity",
+      "organized.secondary_cnaes",
+      "organized.legal_nature",
+      "organized.company_size",
+      "organized.tax_profile",
+      "organized.capital_social",
+      "organized.location",
+      "organized.address",
+      "organized.phone",
+      "organized.email",
+      "organized.website",
+      "organized.contact_channel",
+      "organized.data_completeness",
+      "organized.commercial_note",
+      "establishment.company_name",
+      "establishment.trade_name",
+      "establishment.cnpj",
+      "establishment.registration_status",
+      "establishment.opened_at",
+      "establishment.primary_cnae_code",
+      "establishment.primary_cnae_description",
+      "establishment.secondary_cnaes",
+      "establishment.legal_nature_code",
+      "establishment.legal_nature_description",
+      "establishment.company_size",
+      "establishment.simples_opt_in",
+      "establishment.mei_opt_in",
+      "establishment.capital_social",
+      "establishment.country",
+      "establishment.state_code",
+      "establishment.city_name",
+      "establishment.city_ibge",
+      "establishment.neighborhood",
+      "establishment.cep",
+      "establishment.address_line",
+      "establishment.address_number",
+      "establishment.complement",
+      "establishment.phone",
+      "establishment.email",
+      "establishment.website"
+    ]);
+
+    const additionalFields = Array.from(record.flattenedFields.entries())
+      .filter(([path, value]) => !excludedAdditionalPaths.has(path) && blankWhenMissing(value))
+      .map(([path, value]) => ({
+        label: formatFieldLabel(path),
+        value
+      }));
+
+    return {
+      position: record.position,
+      title: blankWhenMissing(record.aiRecord.companyName) || blankWhenMissing(record.establishment.company_name) || "Registro sem nome",
+      subtitle: [blankWhenMissing(record.aiRecord.cnpjFormatted), blankWhenMissing(record.aiRecord.tradeName)].filter(Boolean).join(" • "),
+      sections: [
+        {
+          title: "Identificação e situação cadastral",
+          fields: buildPdfFields([
+            { label: "Posição", value: String(record.position) },
+            { label: "Razão social", value: record.aiRecord.companyName },
+            { label: "Nome fantasia", value: record.aiRecord.tradeName },
+            { label: "CNPJ", value: record.aiRecord.cnpjFormatted },
+            { label: "Situação cadastral", value: record.aiRecord.registrationStatus },
+            { label: "Data de abertura", value: record.aiRecord.openedAt },
+            { label: "Raiz do CNPJ", value: record.establishment.cnpj_root }
+          ])
+        },
+        {
+          title: "Atividade e enquadramento",
+          fields: buildPdfFields([
+            { label: "CNAE principal", value: record.aiRecord.primaryActivity },
+            { label: "CNAEs secundários", value: record.aiRecord.secondaryCnaes },
+            { label: "Natureza jurídica", value: record.aiRecord.legalNature },
+            { label: "Porte", value: record.aiRecord.companySize },
+            { label: "Regime tributário", value: record.aiRecord.taxProfile },
+            { label: "Capital social", value: record.aiRecord.capitalSocial }
+          ])
+        },
+        {
+          title: "Localização",
+          fields: buildPdfFields([
+            { label: "Localização resumida", value: record.aiRecord.location },
+            { label: "Endereço completo", value: record.aiRecord.address },
+            { label: "País", value: record.establishment.country },
+            { label: "Cidade", value: record.establishment.city_name },
+            { label: "UF", value: record.establishment.state_code },
+            { label: "IBGE da cidade", value: record.establishment.city_ibge },
+            { label: "Bairro", value: record.establishment.neighborhood },
+            { label: "CEP", value: formatCep(record.establishment.cep) },
+            { label: "Número", value: record.establishment.address_number },
+            { label: "Complemento", value: record.establishment.complement }
+          ])
+        },
+        {
+          title: "Contato e leitura comercial",
+          fields: buildPdfFields([
+            { label: "Telefone", value: record.aiRecord.phone },
+            { label: "E-mail", value: record.aiRecord.email },
+            { label: "Site", value: record.aiRecord.website },
+            { label: "Canal recomendado", value: record.aiRecord.contactChannel },
+            { label: "Completude", value: record.aiRecord.dataCompleteness },
+            { label: "Observação comercial", value: record.aiRecord.commercialNote }
+          ])
+        },
+        {
+          title: "Campos adicionais expandidos",
+          fields: additionalFields
+        }
+      ]
+    };
+  });
+
+  return {
+    title: `${payload.headline} · Lista formatada por IA`,
+    subtitle: payload.subtitle,
+    generatedAt: formatDateTime(payload.generatedAt),
+    summary: payload.summary,
+    records
   };
 }
