@@ -35,10 +35,7 @@ const PRIMARY_ORDER: Array<{ key: string; label: string }> = [
   { key: "company_size", label: "Porte" },
   { key: "simples_opt_in", label: "Simples" },
   { key: "mei_opt_in", label: "MEI" },
-  { key: "capital_social", label: "Capital social" }
-];
-
-const CONTACT_ORDER: Array<{ key: string; label: string }> = [
+  { key: "capital_social", label: "Capital social" },
   { key: "email", label: "E-mail" },
   { key: "phone", label: "Telefone" },
   { key: "website", label: "Site" },
@@ -50,45 +47,8 @@ const CONTACT_ORDER: Array<{ key: string; label: string }> = [
   { key: "cep", label: "CEP" },
   { key: "address_line", label: "Logradouro" },
   { key: "address_number", label: "Número" },
-  { key: "complement", label: "Complemento" }
-];
-
-const CONTACT_KEYWORDS = [
-  "email",
-  "mail",
-  "telefone",
-  "phone",
-  "celular",
-  "whatsapp",
-  "site",
-  "website",
-  "url",
-  "contato",
-  "contact",
-  "endereco",
-  "endereço",
-  "address",
-  "logradouro",
-  "numero",
-  "número",
-  "complemento",
-  "bairro",
-  "cidade",
-  "city",
-  "municipio",
-  "município",
-  "uf",
-  "estado",
-  "state",
-  "cep",
-  "ibge",
-  "pais",
-  "país",
-  "country",
-  "latitude",
-  "longitude",
-  "geo",
-  "maps"
+  { key: "complement", label: "Complemento" },
+  { key: "address_summary", label: "Endereço completo" }
 ];
 
 function hasContent(value: unknown): boolean {
@@ -188,11 +148,6 @@ export function buildAddressSummary(establishment: Record<string, unknown>) {
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
-function isContactField(keyOrPath: string) {
-  const normalized = normalizeComparableText(keyOrPath).replace(/[_.-]+/g, " ");
-  return CONTACT_KEYWORDS.some((keyword) => normalized.includes(normalizeComparableText(keyword)));
-}
-
 export function buildEstablishmentDetailSections(
   displayEstablishment: Record<string, unknown>,
   rawJsonPayload: unknown
@@ -231,30 +186,14 @@ export function buildEstablishmentDetailSections(
     push(primaryFields, {
       label: field.label,
       key: field.key,
-      value: displayEstablishment[field.key]
+      value: field.key === "address_summary" ? buildAddressSummary(displayEstablishment) : displayEstablishment[field.key]
     });
   }
-
-  for (const field of CONTACT_ORDER) {
-    usedDisplayKeys.add(field.key);
-    push(contactFields, {
-      label: field.label,
-      key: field.key,
-      value: displayEstablishment[field.key]
-    });
-  }
-
-  push(contactFields, {
-    label: "Endereço completo",
-    key: "address_summary",
-    value: buildAddressSummary(displayEstablishment)
-  });
 
   for (const [key, value] of Object.entries(displayEstablishment)) {
     if (OMIT_DISPLAY_KEYS.has(key) || usedDisplayKeys.has(key)) continue;
 
-    const target = isContactField(key) ? contactFields : primaryFields;
-    push(target, {
+    push(primaryFields, {
       label: formatEstablishmentLabel(key),
       key,
       value
@@ -266,9 +205,7 @@ export function buildEstablishmentDetailSections(
     if (!hasContent(row.value)) continue;
 
     const simplifiedPath = simplifyPath(row.path);
-    const target = isContactField(simplifiedPath) ? contactFields : primaryFields;
-
-    push(target, {
+    push(primaryFields, {
       label: formatEstablishmentPathLabel(simplifiedPath),
       key: simplifiedPath || row.path,
       value: row.value,

@@ -39,24 +39,36 @@ function parseMoneyValue(value: number | string) {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
-  const sanitized = trimmed.replace(/\s+/g, "").replace(/R\$/gi, "");
+  const sanitized = trimmed
+    .replace(/\s+/g, "")
+    .replace(/R\$/gi, "")
+    .replace(/[^\d,.-]/g, "");
+
   if (!sanitized) return null;
+
+  const commaCount = (sanitized.match(/,/g) ?? []).length;
+  const dotCount = (sanitized.match(/\./g) ?? []).length;
 
   let normalized = sanitized;
 
-  if (sanitized.includes(",") && sanitized.includes(".")) {
+  if (commaCount > 0 && dotCount > 0) {
     normalized = sanitized.lastIndexOf(",") > sanitized.lastIndexOf(".")
-      ? sanitized.replace(/\./g, "").replace(",", ".")
+      ? sanitized.replace(/\./g, "").replace(/,/g, ".")
       : sanitized.replace(/,/g, "");
-  } else if (sanitized.includes(",")) {
-    const parts = sanitized.split(",");
-    normalized = parts.length === 2 && parts[1].length <= 2
-      ? sanitized.replace(/\./g, "").replace(",", ".")
+  } else if (commaCount > 0) {
+    const lastCommaIndex = sanitized.lastIndexOf(",");
+    const decimalDigits = sanitized.length - lastCommaIndex - 1;
+    normalized = decimalDigits <= 2
+      ? sanitized.replace(/\./g, "").replace(/,/g, ".")
       : sanitized.replace(/,/g, "");
-  } else if ((sanitized.match(/\./g) ?? []).length > 1) {
+  } else if (dotCount > 1) {
     normalized = sanitized.replace(/\./g, "");
-  } else if (/^\d+\.\d{3}$/.test(sanitized)) {
-    normalized = sanitized.replace(/\./g, "");
+  } else if (dotCount === 1) {
+    const lastDotIndex = sanitized.lastIndexOf(".");
+    const decimalDigits = sanitized.length - lastDotIndex - 1;
+    if (decimalDigits === 3) {
+      normalized = sanitized.replace(/\./g, "");
+    }
   }
 
   const amount = Number(normalized);

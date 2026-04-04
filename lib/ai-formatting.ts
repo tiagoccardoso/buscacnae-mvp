@@ -1046,7 +1046,7 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
     const display = buildDisplayEstablishment(record.establishment);
     const payloadData = getEstablishmentPayload(display);
     const rawJsonPayload = payloadData ?? display.provider_payload;
-    const { primaryFields, contactFields } = buildEstablishmentDetailSections(display, rawJsonPayload);
+    const { primaryFields } = buildEstablishmentDetailSections(display, rawJsonPayload);
 
     for (const field of primaryFields) {
       fichaRows.push([
@@ -1059,16 +1059,6 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
       ]);
     }
 
-    for (const field of contactFields) {
-      fichaRows.push([
-        String(record.position),
-        blankWhenMissing(display.cnpj ? formatCnpj(String(display.cnpj)) : record.aiRecord.cnpjFormatted),
-        blankWhenMissing(display.company_name || record.aiRecord.companyName),
-        "Contato e endereço",
-        field.label,
-        blankWhenMissing(formatFichaValue(field.key, field.value)) || "-"
-      ]);
-    }
 
     fichaRows.push([
       String(record.position),
@@ -1143,24 +1133,21 @@ export function buildAiFormattedPdfInput(payload: SearchAiFormattedPayload, rows
     const display = buildDisplayEstablishment(record.establishment);
     const payloadData = getEstablishmentPayload(display);
     const rawJsonPayload = payloadData ?? display.provider_payload;
-    const { primaryFields, contactFields } = buildEstablishmentDetailSections(display, rawJsonPayload);
+    const { primaryFields } = buildEstablishmentDetailSections(display, rawJsonPayload);
+
+    const enrichmentFields = [
+      { label: "Canal recomendado", value: record.aiRecord.contactChannel },
+      { label: "Completude", value: record.aiRecord.dataCompleteness },
+      { label: "Observação comercial", value: record.aiRecord.commercialNote }
+    ];
 
     const primarySectionFields = [
       { label: "Posição", value: String(record.position) },
       ...primaryFields.map((field) => ({
         label: field.label,
         value: formatPdfSectionValue(field.key, field.value)
-      }))
-    ];
-
-    const contactSectionFields = [
-      ...contactFields.map((field) => ({
-        label: field.label,
-        value: formatPdfSectionValue(field.key, field.value)
       })),
-      { label: "Canal recomendado", value: record.aiRecord.contactChannel },
-      { label: "Completude", value: record.aiRecord.dataCompleteness },
-      { label: "Observação comercial", value: record.aiRecord.commercialNote }
+      ...enrichmentFields
     ];
 
     return {
@@ -1171,10 +1158,6 @@ export function buildAiFormattedPdfInput(payload: SearchAiFormattedPayload, rows
         {
           title: "Dados principais",
           fields: buildPdfFields(primarySectionFields)
-        },
-        {
-          title: "Contato e endereço",
-          fields: buildPdfFields(contactSectionFields)
         }
       ]
     };

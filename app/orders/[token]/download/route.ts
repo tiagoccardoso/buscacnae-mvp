@@ -76,7 +76,7 @@ function buildFichaRows(position: unknown, establishment: Record<string, unknown
   const display = buildDisplayEstablishment(establishment);
   const payload = getEstablishmentPayload(display);
   const rawJsonPayload = payload ?? display.provider_payload;
-  const { primaryFields, contactFields } = buildEstablishmentDetailSections(display, rawJsonPayload);
+  const { primaryFields } = buildEstablishmentDetailSections(display, rawJsonPayload);
 
   const rows: string[][] = [];
   const push = (group: string, field: string, value: unknown, keepEmpty = false) => {
@@ -104,9 +104,6 @@ function buildFichaRows(position: unknown, establishment: Record<string, unknown
     push("Dados principais", field.label, value, true);
   }
 
-  for (const field of contactFields) {
-    push("Contato e endereço", field.label, field.value, true);
-  }
 
   push("Dados brutos formatados (JSON)", "JSON", rawJsonPayload ? stringifyMultiline(rawJsonPayload) : "");
 

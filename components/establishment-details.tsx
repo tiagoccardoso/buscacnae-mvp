@@ -17,6 +17,12 @@ type SectionField = {
   value: unknown;
 };
 
+type FieldGroup = {
+  title: string;
+  description?: string;
+  fields: SectionField[];
+};
+
 const LABEL_OVERRIDES: Record<string, string> = {
   cnpj: "CNPJ",
   cnpj_root: "Raiz do CNPJ",
@@ -43,26 +49,34 @@ const LABEL_OVERRIDES: Record<string, string> = {
   complement: "Complemento"
 };
 
-const DETAILS_GRID_STYLE = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12
-} as const;
-
-const DETAIL_CARD_STYLE = {
-  borderRadius: 16,
+const PANEL_STYLE = {
+  borderRadius: 18,
   border: "1px solid rgba(255, 255, 255, 0.08)",
-  background: "rgba(7, 16, 37, 0.42)",
-  padding: 14,
-  display: "flex",
-  flexDirection: "column",
-  gap: 6,
-  minWidth: 0
+  background: "rgba(7, 16, 37, 0.36)",
+  padding: 18,
+  display: "grid",
+  gap: 14
 } as const;
 
-const DETAIL_CARD_FULL_STYLE = {
-  ...DETAIL_CARD_STYLE,
-  gridColumn: "1 / -1"
+const FIELD_ROW_STYLE = {
+  borderRadius: 14,
+  border: "1px solid rgba(255, 255, 255, 0.08)",
+  background: "rgba(255, 255, 255, 0.03)",
+  padding: "12px 14px",
+  display: "grid",
+  gap: 6
+} as const;
+
+const GROUP_STYLE = {
+  display: "grid",
+  gap: 12,
+  alignContent: "start"
+} as const;
+
+const GROUP_GRID_STYLE = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 18
 } as const;
 
 function hasContent(value: unknown): boolean {
@@ -76,6 +90,16 @@ function hasContent(value: unknown): boolean {
 function formatLabel(key: string) {
   if (LABEL_OVERRIDES[key]) return LABEL_OVERRIDES[key];
   return formatEstablishmentLabel(key);
+}
+
+function normalizeText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_.-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 function isIsoDate(value: string) {
@@ -101,7 +125,7 @@ function formatCep(value: string) {
 }
 
 function renderPrimitive(key: string, value: string | number | boolean): ReactNode {
-  const loweredKey = key.toLowerCase();
+  const loweredKey = normalizeText(key);
 
   if (typeof value === "boolean") {
     return value ? "Sim" : "Não";
@@ -122,7 +146,7 @@ function renderPrimitive(key: string, value: string | number | boolean): ReactNo
     return formatMoney(trimmed);
   }
 
-  if ((loweredKey.includes("cnpj") || loweredKey.includes("cnpj_root") || loweredKey.includes("cnpj_raiz")) && trimmed.replace(/\D/g, "").length >= 8) {
+  if ((loweredKey.includes("cnpj") || loweredKey.includes("cnpj raiz")) && trimmed.replace(/\D/g, "").length >= 8) {
     return loweredKey === "cnpj" ? formatCnpj(trimmed) : trimmed;
   }
 
@@ -154,81 +178,135 @@ function renderPrimitive(key: string, value: string | number | boolean): ReactNo
   return trimmed;
 }
 
-function renderArrayValue(key: string, value: unknown[], path: string) {
-  const items = value.filter((item) => hasContent(item));
-  if (items.length === 0) return null;
-
-  return (
-    <div style={DETAIL_CARD_FULL_STYLE} key={path}>
-      <span className="kicker">{formatLabel(key)}</span>
-      <div className="tag-list">
-        {items.map((item, index) => (
-          <span className="pill" key={`${path}-${index}`}>
-            {typeof item === "string" || typeof item === "number" || typeof item === "boolean"
-              ? renderPrimitive(key, item)
-              : safeJsonStringify(item, 0)}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function renderValueNode(label: string, key: string, value: unknown, path: string): ReactNode {
-  if (!hasContent(value)) return null;
+function renderStructuredValue(key: string, value: unknown, path: string): ReactNode {
+  if (!hasContent(value)) return <span>-</span>;
 
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return (
-      <div key={path} style={DETAIL_CARD_STYLE}>
-        <span className="kicker">{label}</span>
-        <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{renderPrimitive(key, value)}</div>
-      </div>
-    );
+    return <span>{renderPrimitive(key, value)}</span>;
   }
 
   if (Array.isArray(value)) {
-    return renderArrayValue(key, value, path);
-  }
+    const items = value.filter((item) => hasContent(item));
+    if (items.length === 0) return <span>-</span>;
 
-  if (value && typeof value === "object") {
     return (
-      <div key={path} style={DETAIL_CARD_FULL_STYLE}>
-        <span className="kicker">{label}</span>
-        <div style={DETAILS_GRID_STYLE}>{renderObjectFields(value as Record<string, unknown>, path)}</div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {items.map((item, index) => (
+          <div key={`${path}-${index}`} style={{ ...FIELD_ROW_STYLE, padding: "10px 12px" }}>
+            {typeof item === "string" || typeof item === "number" || typeof item === "boolean"
+              ? renderPrimitive(key, item)
+              : <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{safeJsonStringify(item, 2)}</pre>}
+          </div>
+        ))}
       </div>
     );
   }
 
-  return null;
+  return <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{safeJsonStringify(value, 2)}</pre>;
 }
 
-function renderObjectFields(record: Record<string, unknown>, path = "root", omitKeys: string[] = []) {
-  return Object.entries(record)
-    .filter(([key, value]) => !omitKeys.includes(key) && hasContent(value))
-    .map(([key, value]) => renderValueNode(formatLabel(key), key, value, `${path}-${key}`));
+function buildFieldGroups(fields: SectionField[]): FieldGroup[] {
+  const groupDefinitions: Array<{ title: string; description?: string; matchers: string[] }> = [
+    {
+      title: "Identificação da empresa",
+      description: "Dados centrais do cadastro para localizar e reconhecer o estabelecimento.",
+      matchers: ["cnpj", "razao social", "company name", "nome fantasia", "trade name", "registration status", "status cadastral", "abertura", "opened at"]
+    },
+    {
+      title: "Atividades e enquadramento",
+      description: "Classificação econômica, natureza jurídica, porte e regime tributário.",
+      matchers: ["cnae", "atividade", "natureza juridica", "legal nature", "porte", "company size", "simples", "mei", "capital social"]
+    },
+    {
+      title: "Contato",
+      description: "Canais diretos para prospecção e contato comercial.",
+      matchers: ["email", "mail", "telefone", "phone", "celular", "whatsapp", "site", "website", "url", "contact"]
+    },
+    {
+      title: "Endereço e localização",
+      description: "Informações do endereço físico e códigos de localização.",
+      matchers: ["pais", "country", "uf", "estado", "state", "cidade", "city", "municipio", "bairro", "cep", "logradouro", "numero", "número", "complemento", "endereco", "endereço", "ibge", "address"]
+    }
+  ];
+
+  const buckets = groupDefinitions.map((group) => ({ ...group, fields: [] as SectionField[] }));
+  const leftovers: SectionField[] = [];
+
+  for (const field of fields) {
+    const haystack = `${field.label} ${field.key}`;
+    const normalized = normalizeText(haystack);
+    const bucket = buckets.find((group) =>
+      group.matchers.some((matcher) => normalized.includes(normalizeText(matcher)))
+    );
+
+    if (bucket) {
+      bucket.fields.push(field);
+    } else {
+      leftovers.push(field);
+    }
+  }
+
+  const groups: FieldGroup[] = buckets
+    .filter((group) => group.fields.length > 0)
+    .map((group) => ({
+      title: group.title,
+      description: group.description,
+      fields: group.fields
+    }));
+
+  if (leftovers.length > 0) {
+    groups.push({
+      title: "Demais informações extraídas do JSON",
+      description: "Campos adicionais encontrados no JSON bruto e consolidados na ficha principal.",
+      fields: leftovers
+    });
+  }
+
+  return groups;
 }
 
-function renderSectionFields(fields: SectionField[], sectionKey: string) {
-  return fields.map((field, index) => renderValueNode(field.label, field.key, field.value, `${sectionKey}-${index}-${field.key}`));
+function renderFieldRow(field: SectionField, index: number, groupKey: string) {
+  return (
+    <div key={`${groupKey}-${index}-${field.key}`} style={FIELD_ROW_STYLE}>
+      <span className="kicker">{field.label}</span>
+      <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.65 }}>
+        {renderStructuredValue(field.key, field.value, `${groupKey}-${index}-${field.key}`)}
+      </div>
+    </div>
+  );
 }
 
 export function EstablishmentDetails({ establishment }: EstablishmentDetailsProps) {
   const displayEstablishment = buildDisplayEstablishment(establishment);
   const payload = getEstablishmentPayload(displayEstablishment);
   const rawJsonPayload = payload ?? displayEstablishment.provider_payload;
-  const { primaryFields, contactFields } = buildEstablishmentDetailSections(displayEstablishment, rawJsonPayload);
+  const { primaryFields } = buildEstablishmentDetailSections(displayEstablishment, rawJsonPayload);
+  const groupedFields = buildFieldGroups(primaryFields);
 
   return (
     <div className="stack">
-      <div className="grid-2">
-        <div className="surface-soft card stack">
+      <div className="surface-soft card stack">
+        <div className="stack" style={{ gap: 8 }}>
           <strong>Dados principais</strong>
-          <div style={DETAILS_GRID_STYLE}>{renderSectionFields(primaryFields, "primary")}</div>
+          <span className="muted" style={{ lineHeight: 1.7 }}>
+            Todas as informações consolidadas da pesquisa e do JSON bruto foram reunidas abaixo em uma leitura única.
+          </span>
         </div>
 
-        <div className="surface-soft card stack">
-          <strong>Contato e endereço</strong>
-          <div style={DETAILS_GRID_STYLE}>{renderSectionFields(contactFields, "contact")}</div>
+        <div style={GROUP_GRID_STYLE}>
+          {groupedFields.map((group) => (
+            <section key={group.title} style={PANEL_STYLE}>
+              <div style={GROUP_STYLE}>
+                <div className="stack" style={{ gap: 4 }}>
+                  <strong style={{ fontSize: "1rem" }}>{group.title}</strong>
+                  {group.description ? <span className="muted" style={{ lineHeight: 1.6 }}>{group.description}</span> : null}
+                </div>
+                <div style={GROUP_STYLE}>
+                  {group.fields.map((field, index) => renderFieldRow(field, index, group.title))}
+                </div>
+              </div>
+            </section>
+          ))}
         </div>
       </div>
 
