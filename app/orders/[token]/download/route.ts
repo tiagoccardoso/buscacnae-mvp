@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSearchAccessOrderByAccessToken, syncSearchAccessOrderPaymentStatus } from "@/lib/billing";
+import { buildDisplayEstablishment, getEstablishmentPayload } from "@/lib/establishment-presenter";
 import { createXlsxWorkbook } from "@/lib/export/xlsx";
 import { formatCnpj, formatDate, formatMoney } from "@/lib/format";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -62,6 +63,63 @@ function formatMaybeMoney(value: unknown) {
   return formatMoney(value as number | string);
 }
 
+function toRawSection(path: string) {
+  const root = path.split(/[\[.]/, 1)[0] || "raiz";
+  return root
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/^./, (char) => char.toUpperCase());
+}
+
+function buildFichaRows(position: unknown, establishment: Record<string, unknown>) {
+  const display = buildDisplayEstablishment(establishment);
+  const payload = getEstablishmentPayload(display);
+
+  const rows: string[][] = [];
+  const push = (group: string, field: string, value: unknown) => {
+    const formatted = toCell(value);
+    if (!formatted) return;
+    rows.push([
+      toCell(position),
+      formatCnpj(toCell(display.cnpj)),
+      toCell(display.company_name),
+      group,
+      field,
+      formatted
+    ]);
+  };
+
+  push("Identificação", "CNPJ", formatCnpj(toCell(display.cnpj)));
+  push("Identificação", "Razão social", display.company_name);
+  push("Identificação", "Nome fantasia", display.trade_name);
+  push("Identificação", "Status cadastral", display.registration_status);
+  push("Identificação", "Data de abertura", formatMaybeDate(display.opened_at));
+  push("Atividade", "CNAE principal", display.primary_cnae_code);
+  push("Atividade", "Descrição do CNAE", display.primary_cnae_description);
+  push("Atividade", "CNAEs secundários", formatSecondaryCnaes(display.secondary_cnaes));
+  push("Enquadramento", "Natureza jurídica", display.legal_nature_description);
+  push("Enquadramento", "Porte", display.company_size);
+  push("Enquadramento", "Simples", display.simples_opt_in);
+  push("Enquadramento", "MEI", display.mei_opt_in);
+  push("Enquadramento", "Capital social", formatMaybeMoney(display.capital_social));
+  push("Contato", "Telefone", display.phone);
+  push("Contato", "E-mail", display.email);
+  push("Contato", "Site", display.website);
+  push("Endereço", "País", display.country);
+  push("Endereço", "UF", display.state_code);
+  push("Endereço", "Cidade", display.city_name);
+  push("Endereço", "IBGE da cidade", display.city_ibge);
+  push("Endereço", "Bairro", display.neighborhood);
+  push("Endereço", "CEP", display.cep);
+  push("Endereço", "Logradouro", display.address_line);
+  push("Endereço", "Número", display.address_number);
+  push("Endereço", "Complemento", display.complement);
+  push("Dados brutos", "JSON formatado", payload ? stringifyMultiline(payload) : "");
+
+  rows.push(["", "", "", "", "", ""]);
+  return rows;
+}
+
 export async function GET(_request: Request, { params }: DownloadRouteProps) {
   const { token } = await params;
   const initialOrder = await getSearchAccessOrderByAccessToken(token);
@@ -90,7 +148,7 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
       .order("position", { ascending: true })
   ]);
 
-  const listSheetRows: string[][] = [
+  const crmSheetRows: string[][] = [
     [
       "Posição",
       "CNPJ",
@@ -124,73 +182,90 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
     ]
   ];
 
+  const fichaSheetRows: string[][] = [
+    ["Posição", "CNPJ", "Razão Social", "Grupo", "Campo", "Valor"]
+  ];
+
   const rawSheetRows: string[][] = [
-    ["Posição", "CNPJ", "Razão Social", "Campo bruto", "Valor bruto"]
+    ["Posição", "CNPJ", "Razão Social", "Seção", "Campo bruto", "Valor bruto"]
   ];
 
   for (const row of rows ?? []) {
     const establishment = extractSingleObject(row.establishments);
     if (!establishment) continue;
 
-    const formattedPayload = stringifyMultiline(establishment.provider_payload);
+    const display = buildDisplayEstablishment(establishment);
+    const payload = getEstablishmentPayload(display);
+    const formattedPayload = stringifyMultiline(payload ?? display.provider_payload);
 
-    listSheetRows.push([
+    crmSheetRows.push([
       toCell(row.position),
-      formatCnpj(toCell(establishment.cnpj)),
-      toCell(establishment.cnpj_root),
-      toCell(establishment.company_name),
-      toCell(establishment.trade_name),
-      toCell(establishment.registration_status),
-      formatMaybeDate(establishment.opened_at),
-      toCell(establishment.primary_cnae_code),
-      toCell(establishment.primary_cnae_description),
-      formatSecondaryCnaes(establishment.secondary_cnaes),
-      toCell(establishment.legal_nature_code),
-      toCell(establishment.legal_nature_description),
-      toCell(establishment.company_size),
-      toCell(establishment.simples_opt_in),
-      toCell(establishment.mei_opt_in),
-      formatMaybeMoney(establishment.capital_social),
-      toCell(establishment.phone),
-      toCell(establishment.email),
-      toCell(establishment.website),
-      toCell(establishment.country),
-      toCell(establishment.state_code),
-      toCell(establishment.city_name),
-      toCell(establishment.city_ibge),
-      toCell(establishment.neighborhood),
-      toCell(establishment.cep),
-      toCell(establishment.address_line),
-      toCell(establishment.address_number),
-      toCell(establishment.complement),
+      formatCnpj(toCell(display.cnpj)),
+      toCell(display.cnpj_root),
+      toCell(display.company_name),
+      toCell(display.trade_name),
+      toCell(display.registration_status),
+      formatMaybeDate(display.opened_at),
+      toCell(display.primary_cnae_code),
+      toCell(display.primary_cnae_description),
+      formatSecondaryCnaes(display.secondary_cnaes),
+      toCell(display.legal_nature_code),
+      toCell(display.legal_nature_description),
+      toCell(display.company_size),
+      toCell(display.simples_opt_in),
+      toCell(display.mei_opt_in),
+      formatMaybeMoney(display.capital_social),
+      toCell(display.phone),
+      toCell(display.email),
+      toCell(display.website),
+      toCell(display.country),
+      toCell(display.state_code),
+      toCell(display.city_name),
+      toCell(display.city_ibge),
+      toCell(display.neighborhood),
+      toCell(display.cep),
+      toCell(display.address_line),
+      toCell(display.address_number),
+      toCell(display.complement),
       formattedPayload
     ]);
 
-    const flattenedRawRows = flattenUnknownToRows(establishment.provider_payload);
+    fichaSheetRows.push(...buildFichaRows(row.position, establishment));
+
+    const flattenedRawRows = flattenUnknownToRows(payload ?? display.provider_payload);
     for (const flatRow of flattenedRawRows) {
       rawSheetRows.push([
         toCell(row.position),
-        formatCnpj(toCell(establishment.cnpj)),
-        toCell(establishment.company_name),
+        formatCnpj(toCell(display.cnpj)),
+        toCell(display.company_name),
+        toRawSection(flatRow.path),
         flatRow.path,
         flatRow.value
       ]);
     }
+
+    rawSheetRows.push(["", "", "", "", "", ""]);
   }
 
   const workbook = createXlsxWorkbook({
     sheets: [
       {
-        name: "Lista",
-        rows: listSheetRows,
+        name: "Leads CRM",
+        rows: crmSheetRows,
         columnWidths: [10, 22, 16, 34, 28, 18, 14, 14, 32, 36, 16, 28, 18, 10, 10, 16, 18, 30, 24, 16, 8, 22, 14, 18, 14, 30, 12, 18, 86],
         wrapColumns: [8, 9, 11, 16, 17, 24, 25, 27, 28]
       },
       {
+        name: "Ficha completa",
+        rows: fichaSheetRows,
+        columnWidths: [10, 22, 34, 18, 24, 96],
+        wrapColumns: [5]
+      },
+      {
         name: "Dados brutos",
         rows: rawSheetRows,
-        columnWidths: [10, 22, 34, 48, 96],
-        wrapColumns: [3, 4]
+        columnWidths: [10, 22, 34, 18, 44, 96],
+        wrapColumns: [4, 5]
       }
     ]
   });

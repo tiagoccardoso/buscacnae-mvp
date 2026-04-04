@@ -2825,3 +2825,31 @@ main {
   line-height: 1.6;
   max-height: 540px;
 }
+
+
+.raw-data-table-wrap {
+  max-height: 520px;
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(7, 16, 37, 0.52);
+}
+
+.raw-data-table {
+  min-width: 100%;
+}
+
+.raw-data-table td,
+.raw-data-table th {
+  vertical-align: top;
+}
+
+.raw-data-table td:first-child,
+.raw-data-table th:first-child {
+  width: 34%;
+}
+
+.raw-data-table td:last-child {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

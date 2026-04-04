@@ -82,8 +82,8 @@ function revalidateHistoryPaths(searchIds: string[] = []) {
   }
 }
 
-export async function deleteSearchHistoryItemAction(formData: FormData) {
-  const searchId = String(formData.get("searchId") ?? "").trim();
+export async function deleteSearchHistoryItemAction(searchId: string) {
+  const normalizedSearchId = String(searchId ?? "").trim();
   const supabase = await createSupabaseServerClient();
   const {
     data: { user }
@@ -93,11 +93,11 @@ export async function deleteSearchHistoryItemAction(formData: FormData) {
     redirect("/sign-in");
   }
 
-  if (!searchId) {
+  if (!normalizedSearchId) {
     redirect("/dashboard/history?error=busca-invalida");
   }
 
-  const ownedIds = await resolveOwnedSearchIds([searchId], user.id);
+  const ownedIds = await resolveOwnedSearchIds([normalizedSearchId], user.id);
   if (ownedIds.length === 0) {
     redirect("/dashboard/history?error=busca-nao-encontrada");
   }

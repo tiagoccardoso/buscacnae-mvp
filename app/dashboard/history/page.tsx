@@ -168,8 +168,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                       <Link href={`/dashboard/search/${search.id}`} className="button-ghost history-action-button">
                         Abrir
                       </Link>
-                      <form action={deleteSearchHistoryItemAction}>
-                        <input type="hidden" name="searchId" value={search.id} />
+                      <form action={deleteSearchHistoryItemAction.bind(null, search.id)}>
                         <button type="submit" className="button-danger history-action-button">
                           Excluir
                         </button>
