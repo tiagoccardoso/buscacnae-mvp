@@ -3177,3 +3177,151 @@ svg {
     padding-bottom: 40px;
   }
 }
+
+/* dashboard search mobile hardening */
+@media (max-width: 1180px) {
+  .immersive-search-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .immersive-search-form-side,
+  .immersive-search-visual-side {
+    min-width: 0;
+  }
+
+  .immersive-search-visual-side {
+    order: 2;
+  }
+
+  .search-immersive-stage {
+    min-height: 540px;
+  }
+}
+
+@media (max-width: 820px) {
+  .immersive-search-layout {
+    gap: 18px;
+    padding: 18px;
+  }
+
+  .immersive-search-form,
+  .dashboard-search-picker-form,
+  .search-builder-stack,
+  .search-builder-stack-premium,
+  .dashboard-search-picker-grid,
+  .search-builder-grid,
+  .search-builder-grid-immersive,
+  .search-builder-footer,
+  .home-form-shell .search-builder-grid,
+  .home-form-shell .search-builder-footer,
+  .dashboard-search-grid .form-grid,
+  .form-grid,
+  .public-form-grid,
+  .public-form-grid-wide {
+    grid-template-columns: 1fr !important;
+  }
+
+  .search-builder-headline,
+  .search-selection-stats,
+  .hero-stage-grid,
+  .command-kpi-grid,
+  .dashboard-visual-grid,
+  .dashboard-command-center,
+  .panel-grid.two,
+  .dashboard-hero,
+  .hero-premium-stack,
+  .hero-form-section,
+  .search-builder-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .search-immersive-stage {
+    min-height: auto;
+    padding: 16px;
+    gap: 12px;
+    align-content: start;
+  }
+
+  .search-immersive-lines,
+  .search-immersive-grid,
+  .search-immersive-noise,
+  .search-immersive-particle {
+    display: none;
+  }
+
+  .search-floating-window,
+  .search-immersive-core,
+  .search-immersive-card,
+  .card-main,
+  .card-cnaes,
+  .card-states,
+  .card-cities {
+    position: relative !important;
+    inset: auto !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    transform: none !important;
+  }
+
+  .search-immersive-core strong,
+  .search-immersive-card strong {
+    line-height: 1.25;
+  }
+
+  .dashboard-search-picker-form .picker-popover,
+  .picker-popover,
+  .picker-popover-portal {
+    width: min(calc(100vw - 24px), 520px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    max-width: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .immersive-search-layout.surface-premium.card-lg,
+  .dashboard-command-center.surface-premium.card-lg {
+    padding: 16px;
+  }
+
+  .immersive-search-title {
+    font-size: clamp(1.45rem, 7vw, 1.9rem);
+  }
+
+  .section-copy,
+  .lead-copy,
+  .hero p {
+    font-size: 0.98rem;
+    line-height: 1.65;
+  }
+
+  .selection-stat-pill,
+  .signal-card,
+  .search-immersive-core,
+  .search-immersive-card,
+  .command-kpi,
+  .metric-card,
+  .hero-stage-card {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .search-selection-stats,
+  .metric-inline-grid,
+  .bar-chart {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-nav-premium a,
+  .inline-actions > *,
+  .action-row > *,
+  .dashboard-nav > *,
+  .history-toolbar-actions > *,
+  .history-row-actions > * {
+    width: 100%;
+  }
+}
