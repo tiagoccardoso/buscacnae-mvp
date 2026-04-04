@@ -2925,3 +2925,255 @@ main {
     width: 100%;
   }
 }
+
+
+/* responsive hardening */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+@media (max-width: 980px) {
+  .container {
+    width: min(calc(100% - 24px), var(--content-width));
+  }
+
+  .hero-premium-stack,
+  .hero-form-section,
+  .dashboard-command-center,
+  .dashboard-visual-grid,
+  .dashboard-hero,
+  .auth-grid,
+  .pricing-grid,
+  .pricing-stage,
+  .auth-grid-premium,
+  .panel-grid.two,
+  .footer-grid,
+  .command-kpi-grid,
+  .stat-grid,
+  .details-grid,
+  .onboarding-grid,
+  .dashboard-search-grid .form-grid,
+  .public-form-grid,
+  .public-form-grid-wide,
+  .search-builder-headline,
+  .search-builder-grid-immersive,
+  .home-form-shell .search-builder-grid,
+  .home-form-shell .search-builder-footer,
+  .search-selection-stats,
+  .cnae-chat-suggestions,
+  .hero-signal-grid,
+  .hero-signal-grid.compact-two,
+  .hero-stage-grid,
+  .dashboard-search-picker-grid,
+  .ranking-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .search-immersive-stage,
+  .hero-stage-canvas,
+  .hero-orb {
+    min-height: auto;
+  }
+
+  .lead-list-create-form,
+  .lead-list-assign-form,
+  .history-toolbar,
+  .history-toolbar-actions,
+  .history-row-actions,
+  .hero-stage-topline,
+  .cnae-chat-header,
+  .cnae-chat-prompts,
+  .lead-lists-toolbar {
+    width: 100%;
+  }
+}
+
+@media (max-width: 820px) {
+  .page {
+    padding: 22px 0 64px;
+  }
+
+  .hero,
+  .pricing-hero,
+  .auth-hero {
+    padding-top: 24px;
+  }
+
+  .card,
+  .card-lg {
+    padding: 20px;
+  }
+
+  .nav-shell {
+    padding-top: 8px;
+  }
+
+  .nav {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .brand {
+    width: 100%;
+  }
+
+  .nav-links,
+  .inline-actions,
+  .inline-list,
+  .action-row,
+  .dashboard-nav,
+  .history-toolbar-actions,
+  .history-row-actions,
+  .lead-list-create-form,
+  .lead-list-assign-form,
+  .lead-list-pills,
+  .lead-list-pill-item,
+  .cnae-chat-prompts {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .nav-links,
+  .inline-actions,
+  .action-row,
+  .dashboard-nav,
+  .history-toolbar-actions,
+  .history-row-actions,
+  .lead-list-create-form,
+  .lead-list-assign-form,
+  .lead-list-pill-item {
+    flex-direction: column;
+  }
+
+  .nav-links > *,
+  .inline-actions > *,
+  .action-row > *,
+  .dashboard-nav > *,
+  .history-toolbar-actions > *,
+  .history-row-actions > *,
+  .lead-list-create-form > *,
+  .lead-list-assign-form > * {
+    width: 100%;
+  }
+
+  .dashboard-nav a,
+  .button,
+  .button-ghost,
+  .button-danger,
+  .button-secondary {
+    width: 100%;
+  }
+
+  .search-builder-headline {
+    gap: 14px;
+  }
+
+  .search-selection-stats {
+    gap: 12px;
+  }
+
+  .selection-stat-pill {
+    min-width: 0;
+  }
+
+  .floating-card,
+  .floating-card-sm,
+  .floating-card-lg,
+  .search-floating-window,
+  .hero-data-card-main,
+  .hero-data-card-chart,
+  .hero-data-card-curve {
+    position: relative;
+    inset: auto !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+    width: 100% !important;
+    max-width: none;
+  }
+
+  .hero-orb,
+  .search-immersive-stage,
+  .hero-stage-canvas-network {
+    display: grid;
+    gap: 14px;
+    align-content: start;
+    padding: 16px;
+  }
+
+  .hero-orb::before,
+  .hero-orb::after {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .container {
+    width: min(calc(100% - 18px), var(--content-width));
+  }
+
+  .display-title,
+  .hero h1 {
+    line-height: 1.02;
+    letter-spacing: -0.045em;
+  }
+
+  .section-title {
+    line-height: 1.08;
+  }
+
+  .table-wrap,
+  .raw-data-table-wrap,
+  .payload-json-block {
+    max-width: 100%;
+  }
+
+  .table,
+  .raw-data-table {
+    min-width: 720px;
+  }
+
+  .history-select-col,
+  .history-select-cell {
+    width: 64px;
+  }
+
+  .history-action-button {
+    min-width: 0;
+  }
+
+  .command-kpi strong,
+  .metric strong,
+  .stat-box strong {
+    word-break: break-word;
+  }
+
+  .picker-popover,
+  .picker-popover-portal {
+    width: min(calc(100vw - 24px), 560px) !important;
+    left: 12px !important;
+    right: 12px !important;
+  }
+
+  .search-selection-stats,
+  .metric-inline-grid,
+  .bar-chart {
+    grid-template-columns: 1fr;
+  }
+
+  .footer {
+    padding-bottom: 40px;
+  }
+}
