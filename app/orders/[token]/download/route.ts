@@ -74,47 +74,109 @@ function toRawSection(path: string) {
 function buildFichaRows(position: unknown, establishment: Record<string, unknown>) {
   const display = buildDisplayEstablishment(establishment);
   const payload = getEstablishmentPayload(display);
+  const rawJsonPayload = payload ?? display.provider_payload;
+  const flattenedPayload = rawJsonPayload ? flattenUnknownToRows(rawJsonPayload) : [];
 
   const rows: string[][] = [];
-  const push = (group: string, field: string, value: unknown) => {
+  const push = (group: string, field: string, value: unknown, keepEmpty = false) => {
     const formatted = toCell(value);
-    if (!formatted) return;
+    if (!formatted && !keepEmpty) return;
     rows.push([
       toCell(position),
       formatCnpj(toCell(display.cnpj)),
       toCell(display.company_name),
       group,
       field,
-      formatted
+      formatted || "-"
     ]);
   };
 
-  push("Identificação", "CNPJ", formatCnpj(toCell(display.cnpj)));
-  push("Identificação", "Razão social", display.company_name);
-  push("Identificação", "Nome fantasia", display.trade_name);
-  push("Identificação", "Status cadastral", display.registration_status);
-  push("Identificação", "Data de abertura", formatMaybeDate(display.opened_at));
-  push("Atividade", "CNAE principal", display.primary_cnae_code);
-  push("Atividade", "Descrição do CNAE", display.primary_cnae_description);
-  push("Atividade", "CNAEs secundários", formatSecondaryCnaes(display.secondary_cnaes));
-  push("Enquadramento", "Natureza jurídica", display.legal_nature_description);
-  push("Enquadramento", "Porte", display.company_size);
-  push("Enquadramento", "Simples", display.simples_opt_in);
-  push("Enquadramento", "MEI", display.mei_opt_in);
-  push("Enquadramento", "Capital social", formatMaybeMoney(display.capital_social));
-  push("Contato", "Telefone", display.phone);
-  push("Contato", "E-mail", display.email);
-  push("Contato", "Site", display.website);
-  push("Endereço", "País", display.country);
-  push("Endereço", "UF", display.state_code);
-  push("Endereço", "Cidade", display.city_name);
-  push("Endereço", "IBGE da cidade", display.city_ibge);
-  push("Endereço", "Bairro", display.neighborhood);
-  push("Endereço", "CEP", display.cep);
-  push("Endereço", "Logradouro", display.address_line);
-  push("Endereço", "Número", display.address_number);
-  push("Endereço", "Complemento", display.complement);
-  push("Dados brutos", "JSON formatado", payload ? stringifyMultiline(payload) : "");
+  const addressSummary = [display.address_line, display.address_number, display.complement]
+    .map((value) => toCell(value))
+    .filter(Boolean)
+    .join(", ");
+
+  const primaryFields: Array<[string, unknown]> = [
+    ["CNPJ", formatCnpj(toCell(display.cnpj))],
+    ["Raiz do CNPJ", display.cnpj_root],
+    ["Razão social", display.company_name],
+    ["Nome fantasia", display.trade_name],
+    ["Status cadastral", display.registration_status],
+    ["Data de abertura", formatMaybeDate(display.opened_at)],
+    ["CNAE principal", display.primary_cnae_code],
+    ["Descrição do CNAE principal", display.primary_cnae_description],
+    ["CNAEs secundários", formatSecondaryCnaes(display.secondary_cnaes)],
+    ["Código da natureza jurídica", display.legal_nature_code],
+    ["Natureza jurídica", display.legal_nature_description],
+    ["Porte", display.company_size],
+    ["Simples", display.simples_opt_in],
+    ["MEI", display.mei_opt_in],
+    ["Capital social", formatMaybeMoney(display.capital_social)]
+  ];
+
+  const contactFields: Array<[string, unknown]> = [
+    ["E-mail", display.email],
+    ["Telefone", display.phone],
+    ["Site", display.website],
+    ["País", display.country],
+    ["UF", display.state_code],
+    ["Cidade", display.city_name],
+    ["IBGE da cidade", display.city_ibge],
+    ["Bairro", display.neighborhood],
+    ["CEP", display.cep],
+    ["Logradouro", display.address_line],
+    ["Número", display.address_number],
+    ["Complemento", display.complement],
+    ["Endereço completo", addressSummary]
+  ];
+
+  for (const [field, value] of primaryFields) {
+    push("Dados principais", field, value, true);
+  }
+
+  for (const [field, value] of contactFields) {
+    push("Contato e endereço", field, value, true);
+  }
+
+  const normalizedFields: Array<[string, unknown]> = [
+    ["CNPJ", display.cnpj],
+    ["Raiz do CNPJ", display.cnpj_root],
+    ["Razão social", display.company_name],
+    ["Nome fantasia", display.trade_name],
+    ["Status cadastral", display.registration_status],
+    ["Data de abertura", formatMaybeDate(display.opened_at)],
+    ["CNAE principal", display.primary_cnae_code],
+    ["Descrição do CNAE principal", display.primary_cnae_description],
+    ["CNAEs secundários", formatSecondaryCnaes(display.secondary_cnaes)],
+    ["Código da natureza jurídica", display.legal_nature_code],
+    ["Natureza jurídica", display.legal_nature_description],
+    ["Porte", display.company_size],
+    ["Simples", display.simples_opt_in],
+    ["MEI", display.mei_opt_in],
+    ["Capital social", formatMaybeMoney(display.capital_social)],
+    ["E-mail", display.email],
+    ["Telefone", display.phone],
+    ["Site", display.website],
+    ["País", display.country],
+    ["UF", display.state_code],
+    ["Cidade", display.city_name],
+    ["IBGE da cidade", display.city_ibge],
+    ["Bairro", display.neighborhood],
+    ["CEP", display.cep],
+    ["Logradouro", display.address_line],
+    ["Número", display.address_number],
+    ["Complemento", display.complement]
+  ];
+
+  for (const [field, value] of normalizedFields) {
+    push("Campos normalizados da pesquisa", field, value);
+  }
+
+  for (const flatRow of flattenedPayload) {
+    push("Campos normalizados da pesquisa", flatRow.path, flatRow.value);
+  }
+
+  push("Dados brutos formatados (JSON)", "JSON", rawJsonPayload ? stringifyMultiline(rawJsonPayload) : "");
 
   rows.push(["", "", "", "", "", ""]);
   return rows;

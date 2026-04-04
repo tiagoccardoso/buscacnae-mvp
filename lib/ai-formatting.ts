@@ -1045,76 +1045,6 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
     completeRows.push(completePaths.map((path) => record.flattenedFields.get(path) ?? ""));
   }
 
-  const rawRows: string[][] = [
-    [
-      "Posição",
-      "CNPJ",
-      "Raiz do CNPJ",
-      "Razão social",
-      "Nome fantasia",
-      "Situação cadastral",
-      "Data de abertura",
-      "Código CNAE principal",
-      "Descrição CNAE principal",
-      "CNAEs secundários",
-      "Código natureza jurídica",
-      "Natureza jurídica",
-      "Porte",
-      "Simples",
-      "MEI",
-      "Capital social",
-      "Telefone",
-      "E-mail",
-      "Site",
-      "País",
-      "UF",
-      "Cidade",
-      "IBGE cidade",
-      "Bairro",
-      "CEP",
-      "Endereço",
-      "Número",
-      "Complemento",
-      "Payload do estabelecimento (JSON)",
-      "Payload do resultado da busca (JSON)"
-    ]
-  ];
-
-  for (const record of preparedRecords) {
-    rawRows.push([
-      String(record.position),
-      toRawCell(record.establishment.cnpj),
-      toRawCell(record.establishment.cnpj_root),
-      toRawCell(record.establishment.company_name),
-      toRawCell(record.establishment.trade_name),
-      toRawCell(record.establishment.registration_status),
-      toRawCell(record.establishment.opened_at),
-      toRawCell(record.establishment.primary_cnae_code),
-      toRawCell(record.establishment.primary_cnae_description),
-      toRawCell(record.establishment.secondary_cnaes),
-      toRawCell(record.establishment.legal_nature_code),
-      toRawCell(record.establishment.legal_nature_description),
-      toRawCell(record.establishment.company_size),
-      toRawCell(record.establishment.simples_opt_in),
-      toRawCell(record.establishment.mei_opt_in),
-      toRawCell(record.establishment.capital_social),
-      toRawCell(record.establishment.phone),
-      toRawCell(record.establishment.email),
-      toRawCell(record.establishment.website),
-      toRawCell(record.establishment.country),
-      toRawCell(record.establishment.state_code),
-      toRawCell(record.establishment.city_name),
-      toRawCell(record.establishment.city_ibge),
-      toRawCell(record.establishment.neighborhood),
-      toRawCell(record.establishment.cep),
-      toRawCell(record.establishment.address_line),
-      toRawCell(record.establishment.address_number),
-      toRawCell(record.establishment.complement),
-      safeJsonStringify(record.establishment.provider_payload, 2),
-      record.searchResultPayloadText
-    ]);
-  }
-
   const jsonRows: string[][] = [["Posição", "Empresa", "CNPJ", "JSON legível"]];
   for (const record of preparedRecords) {
     jsonRows.push([
@@ -1134,18 +1064,12 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
       wrapColumns: [1, 2, 6, 7, 8, 10, 17, 19, 20, 23]
     },
     {
-      name: "Campos completos",
+      name: "Campos normalizados da pesquisa",
       rows: completeRows,
       columnWidths: [10, 20, 20, 20, 22, 18, 30, 30, 24, 16],
       wrapColumns: completePaths
         .map((path, index) => (/payload|secondary|address|note|website|email/i.test(path) ? index : -1))
         .filter((index) => index >= 0)
-    },
-    {
-      name: "Dados brutos organizados",
-      rows: rawRows,
-      columnWidths: [10, 20, 16, 34, 28, 18, 14, 16, 30, 34, 16, 28, 14, 10, 10, 16, 18, 28, 24, 12, 8, 20, 14, 18, 12, 28, 12, 18, 70, 70],
-      wrapColumns: [8, 9, 11, 28, 29]
     },
     {
       name: "JSON legível",
@@ -1281,7 +1205,7 @@ export function buildAiFormattedPdfInput(payload: SearchAiFormattedPayload, rows
           ])
         },
         {
-          title: "Campos adicionais expandidos",
+          title: "Campos normalizados da pesquisa",
           fields: additionalFields
         }
       ]
