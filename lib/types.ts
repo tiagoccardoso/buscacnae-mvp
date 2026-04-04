@@ -21,6 +21,10 @@ export type DiscoverySearchInput = {
   requireAddress?: boolean;
   requirePhone?: boolean;
   mobileOnly?: boolean;
+  companySizes?: string[];
+  simplesOnly?: boolean;
+  capitalSocialMin?: number | null;
+  capitalSocialMax?: number | null;
 };
 
 export type DiscoverySearchOutput = {

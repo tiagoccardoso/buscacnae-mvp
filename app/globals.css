@@ -2853,3 +2853,75 @@ main {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.lead-lists-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.lead-list-create-form,
+.lead-list-assign-form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.lead-list-create-form {
+  min-width: min(100%, 520px);
+}
+
+.lead-list-create-form .input,
+.lead-list-assign-form .input,
+.lead-list-assign-form select {
+  min-width: 180px;
+}
+
+.lead-list-pills {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.lead-list-pill-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pill-active {
+  border-color: rgba(124, 92, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.18) inset;
+}
+
+.lead-list-delete-button {
+  padding: 8px 12px;
+}
+
+.ranking-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 980px) {
+  .ranking-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lead-list-create-form,
+  .lead-list-assign-form {
+    width: 100%;
+  }
+
+  .lead-list-create-form .input,
+  .lead-list-assign-form .input,
+  .lead-list-assign-form select {
+    width: 100%;
+  }
+}

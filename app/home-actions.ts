@@ -23,7 +23,24 @@ export async function startPublicSearchAction(formData: FormData) {
     requireEmail: formData.get("requireEmail") === "on",
     requireAddress: formData.get("requireAddress") === "on",
     requirePhone: formData.get("requirePhone") === "on",
-    mobileOnly: formData.get("mobileOnly") === "on"
+    mobileOnly: formData.get("mobileOnly") === "on",
+    companySizes: String(formData.get("companySizes") ?? "")
+      .split(/\n+/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+    simplesOnly: formData.get("simplesOnly") === "on",
+    capitalSocialMin: (() => {
+      const value = String(formData.get("capitalSocialMin") ?? "").trim();
+      if (!value) return null;
+      const parsed = Number(value.replace(/\./g, "").replace(",", "."));
+      return Number.isFinite(parsed) ? parsed : null;
+    })(),
+    capitalSocialMax: (() => {
+      const value = String(formData.get("capitalSocialMax") ?? "").trim();
+      if (!value) return null;
+      const parsed = Number(value.replace(/\./g, "").replace(",", "."));
+      return Number.isFinite(parsed) ? parsed : null;
+    })()
   });
 
   if (!result.ok) {

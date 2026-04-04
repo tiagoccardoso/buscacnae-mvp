@@ -82,6 +82,148 @@ function revalidateHistoryPaths(searchIds: string[] = []) {
   }
 }
 
+function revalidateLeadPaths() {
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/leads");
+}
+
+export async function createSavedLeadListAction(formData: FormData) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) {
+    redirect("/dashboard/leads?error=lista-sem-nome");
+  }
+
+  const { error } = await supabase.from("saved_lead_lists").upsert(
+    {
+      profile_id: user.id,
+      name
+    },
+    { onConflict: "profile_id,name" }
+  );
+
+  if (error) {
+    console.error("Falha ao criar lista", error);
+    redirect("/dashboard/leads?error=lista-duplicada");
+  }
+
+  revalidateLeadPaths();
+  redirect("/dashboard/leads?status=lista-criada");
+}
+
+export async function assignSavedLeadListAction(formData: FormData) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const establishmentId = String(formData.get("establishmentId") ?? "").trim();
+  const listId = String(formData.get("listId") ?? "").trim();
+  const newListName = String(formData.get("newListName") ?? "").trim();
+
+  if (!establishmentId) {
+    redirect("/dashboard/leads?error=lead-invalido");
+  }
+
+  let resolvedListId: string | null = listId || null;
+
+  if (newListName) {
+    const { data: createdList, error: createError } = await supabase
+      .from("saved_lead_lists")
+      .upsert(
+        {
+          profile_id: user.id,
+          name: newListName
+        },
+        { onConflict: "profile_id,name" }
+      )
+      .select("id")
+      .single();
+
+    if (createError || !createdList) {
+      console.error("Falha ao criar lista para atribuição", createError);
+      redirect("/dashboard/leads?error=lista-duplicada");
+    }
+
+    resolvedListId = createdList.id;
+  }
+
+  const { error } = await supabase
+    .from("saved_establishments")
+    .update({ list_id: resolvedListId })
+    .eq("profile_id", user.id)
+    .eq("establishment_id", establishmentId);
+
+  if (error) {
+    console.error("Falha ao vincular lead à lista", error);
+    redirect("/dashboard/leads?error=lista-vinculo");
+  }
+
+  revalidateLeadPaths();
+  redirect("/dashboard/leads?status=lead-vinculado");
+}
+
+export async function deleteSavedLeadListAction(formData: FormData) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const listId = String(formData.get("listId") ?? "").trim();
+  if (!listId) {
+    redirect("/dashboard/leads?error=lista-invalida");
+  }
+
+  const admin = createSupabaseAdminClient();
+  const { data: ownedList } = await supabase
+    .from("saved_lead_lists")
+    .select("id")
+    .eq("id", listId)
+    .eq("profile_id", user.id)
+    .maybeSingle();
+
+  if (!ownedList) {
+    redirect("/dashboard/leads?error=lista-invalida");
+  }
+
+  await admin
+    .from("saved_establishments")
+    .update({ list_id: null })
+    .eq("profile_id", user.id)
+    .eq("list_id", listId);
+
+  const { error } = await admin
+    .from("saved_lead_lists")
+    .delete()
+    .eq("id", listId)
+    .eq("profile_id", user.id);
+
+  if (error) {
+    console.error("Falha ao excluir lista", error);
+    redirect("/dashboard/leads?error=lista-exclusao");
+  }
+
+  revalidateLeadPaths();
+  redirect("/dashboard/leads?status=lista-excluida");
+}
+
 export async function deleteSearchHistoryItemAction(searchId: string) {
   const normalizedSearchId = String(searchId ?? "").trim();
   const supabase = await createSupabaseServerClient();

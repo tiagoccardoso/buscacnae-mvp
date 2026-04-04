@@ -28,8 +28,30 @@ type PrepareSearchOrderInput = {
   requireAddress: boolean;
   requirePhone: boolean;
   mobileOnly: boolean;
+  companySizes: string[];
+  simplesOnly: boolean;
+  capitalSocialMin: number | null;
+  capitalSocialMax: number | null;
 };
 
+
+function normalizeCompanySizeLabel(value: string) {
+  return normalizeText(value)
+    .replace(/empresa/g, "")
+    .replace(/porte/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseCapitalValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const normalized = value.replace(/\./g, "").replace(",", ".");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
 function formatServiceError(error: unknown, fallback: string) {
   if (error instanceof Error) {
     return error.message || fallback;
@@ -133,14 +155,29 @@ function buildPublicFilterLabels(input: PrepareSearchOrderInput) {
   if (input.requireEmail) labels.push("E-mail cadastrado");
   if (input.requireAddress) labels.push("Endereço cadastrado");
   if (input.requirePhone) labels.push(input.mobileOnly ? "Apenas Celular" : "Telefone (Fixo ou Celular)");
+  if (input.simplesOnly) labels.push("Simples Nacional");
+  if (input.companySizes.length > 0) labels.push(`Porte: ${input.companySizes.join(", ")}`);
+  if (input.capitalSocialMin !== null) labels.push(`Capital mínimo: R$ ${input.capitalSocialMin.toLocaleString("pt-BR")}`);
+  if (input.capitalSocialMax !== null) labels.push(`Capital máximo: R$ ${input.capitalSocialMax.toLocaleString("pt-BR")}`);
   return labels;
 }
 
-function applyPublicFilters<T extends { email?: string | null; addressLine?: string | null; phone?: string | null }>(
+function applyPublicFilters<
+  T extends {
+    email?: string | null;
+    addressLine?: string | null;
+    phone?: string | null;
+    companySize?: string | null;
+    simplesOptIn?: boolean | null;
+    capitalSocial?: number | string | null;
+  }
+>(
   rows: T[],
   input: PrepareSearchOrderInput,
   options?: { skipEmail?: boolean; skipPhone?: boolean; skipMobileOnly?: boolean }
 ) {
+  const normalizedSizes = input.companySizes.map((item) => normalizeCompanySizeLabel(item));
+
   return rows.filter((row) => {
     const hasEmail = !!row.email?.trim();
     const hasAddress = !!row.addressLine?.trim();
@@ -148,11 +185,17 @@ function applyPublicFilters<T extends { email?: string | null; addressLine?: str
     const phone = row.phone?.trim() ?? "";
     const digits = phone.replace(/\D/g, "");
     const mobileLike = digits.length >= 10 && ["9", "8", "7"].includes(digits.slice(-9, -8) || digits.charAt(2));
+    const companySize = normalizeCompanySizeLabel(row.companySize ?? "");
+    const capital = parseCapitalValue(row.capitalSocial);
 
     if (input.requireEmail && !options?.skipEmail && !hasEmail) return false;
     if (input.requireAddress && !hasAddress) return false;
     if (input.requirePhone && !options?.skipPhone && !hasPhone) return false;
     if (input.mobileOnly && !options?.skipMobileOnly && !(hasPhone && mobileLike)) return false;
+    if (input.simplesOnly && row.simplesOptIn !== true) return false;
+    if (normalizedSizes.length > 0 && (!companySize || !normalizedSizes.some((item) => companySize.includes(item)))) return false;
+    if (input.capitalSocialMin !== null && (capital === null || capital < input.capitalSocialMin)) return false;
+    if (input.capitalSocialMax !== null && (capital === null || capital > input.capitalSocialMax)) return false;
     return true;
   });
 }
@@ -186,6 +229,7 @@ export async function prepareSearchOrder(
           .filter((item) => item.length === 2)
       )
     );
+    input.companySizes = Array.from(new Set(input.companySizes.map((item) => item.trim()).filter(Boolean)));
 
     if (!email) {
       return { ok: false, error: "Informe um email válido para receber o acesso da pesquisa." };
@@ -289,6 +333,10 @@ export async function prepareSearchOrder(
       requireAddress: input.requireAddress,
       requirePhone: input.requirePhone,
       mobileOnly: input.mobileOnly,
+      companySizes: input.companySizes,
+      simplesOnly: input.simplesOnly,
+      capitalSocialMin: input.capitalSocialMin,
+      capitalSocialMax: input.capitalSocialMax,
       filterLabels: buildPublicFilterLabels(input)
     };
 
@@ -419,7 +467,11 @@ function normalizeInput(input: DiscoverySearchInput) {
     cnae: normalizeCode(input.cnae),
     stateCode: input.stateCode.trim().toUpperCase(),
     cityName: toTitleCase(normalizeText(input.cityName)),
-    cityIbge: normalizeCode(input.cityIbge ?? "")
+    cityIbge: normalizeCode(input.cityIbge ?? ""),
+    companySizes: input.companySizes ?? [],
+    simplesOnly: input.simplesOnly ?? false,
+    capitalSocialMin: input.capitalSocialMin ?? null,
+    capitalSocialMax: input.capitalSocialMax ?? null
   };
 }
 
@@ -430,7 +482,11 @@ function buildCacheKey(input: ReturnType<typeof normalizeInput>, provider: strin
       cnae: input.cnae,
       stateCode: input.stateCode,
       cityName: input.cityName,
-      cityIbge: input.cityIbge
+      cityIbge: input.cityIbge,
+      companySizes: input.companySizes,
+      simplesOnly: input.simplesOnly,
+      capitalSocialMin: input.capitalSocialMin,
+      capitalSocialMax: input.capitalSocialMax
     })
   );
 }

@@ -22,6 +22,10 @@ type SearchFilterBuilderProps = {
   defaultRequireAddress?: boolean;
   defaultRequirePhone?: boolean;
   defaultMobileOnly?: boolean;
+  defaultCompanySizes?: string[];
+  defaultSimplesOnly?: boolean;
+  defaultCapitalSocialMin?: string;
+  defaultCapitalSocialMax?: string;
 };
 
 function normalizeText(value: string) {
@@ -93,6 +97,13 @@ function buildDefaultCityOptions(values: Array<{ cityName: string; stateCode: st
   );
 }
 
+const COMPANY_SIZE_OPTIONS = [
+  "Micro Empresa",
+  "Empresa de Pequeno Porte",
+  "Demais",
+  "Médio Porte",
+  "Grande Porte"
+];
 
 function splitOptionLabel(label: string) {
   const [primary, ...rest] = label.split(" · ");
@@ -323,7 +334,11 @@ export function SearchFilterBuilder({
   defaultRequireEmail = false,
   defaultRequireAddress = false,
   defaultRequirePhone = false,
-  defaultMobileOnly = false
+  defaultMobileOnly = false,
+  defaultCompanySizes = [],
+  defaultSimplesOnly = false,
+  defaultCapitalSocialMin = "",
+  defaultCapitalSocialMax = ""
 }: SearchFilterBuilderProps) {
   const [selectedCnaes, setSelectedCnaes] = useState<PickerOption[]>(() => buildDefaultCnaeOptions(defaultCnaes));
   const [selectedStates, setSelectedStates] = useState<PickerOption[]>(() => buildDefaultStateOptions(defaultStateCodes));
@@ -342,6 +357,10 @@ export function SearchFilterBuilder({
   const [requireAddress, setRequireAddress] = useState(defaultRequireAddress);
   const [requirePhone, setRequirePhone] = useState(defaultRequirePhone || defaultMobileOnly);
   const [mobileOnly, setMobileOnly] = useState(defaultMobileOnly);
+  const [selectedCompanySizes, setSelectedCompanySizes] = useState<string[]>(() => Array.from(new Set(defaultCompanySizes.filter(Boolean))));
+  const [simplesOnly, setSimplesOnly] = useState(defaultSimplesOnly);
+  const [capitalSocialMin, setCapitalSocialMin] = useState(defaultCapitalSocialMin);
+  const [capitalSocialMax, setCapitalSocialMax] = useState(defaultCapitalSocialMax);
 
   const filteredCnaes = useMemo(() => {
     const selectedValues = new Set(selectedCnaes.map((item) => item.value));
@@ -559,6 +578,7 @@ export function SearchFilterBuilder({
 
   const cnaeValue = selectedCnaes.map((item) => item.value).join("\n");
   const stateValue = selectedStates.map((item) => item.value).join("\n");
+  const companySizesValue = selectedCompanySizes.join("\n");
   const importedCnaes = splitMultiValue(cnaeQuery).map((item) => normalizeCode(item)).filter(Boolean);
 
   return (
@@ -596,6 +616,7 @@ export function SearchFilterBuilder({
       <input type="hidden" name="cnae" value={cnaeValue} />
       <input type="hidden" name="stateCode" value={stateValue} />
       <input type="hidden" name="citySelection" value={citySelectionsValue} />
+      <input type="hidden" name="companySizes" value={companySizesValue} />
 
       <div className="search-builder-grid search-builder-grid-immersive">
         <PickerField
@@ -694,25 +715,82 @@ export function SearchFilterBuilder({
         </label>
 
         <div className="field" style={{ marginTop: 0 }}>
-          <label>Somente empresas com</label>
+          <label>Filtros avançados</label>
           <div className="checkbox-grid compact">
             <label className="filter-check filter-check-premium">
               <input type="checkbox" name="requireEmail" checked={requireEmail} onChange={(event) => setRequireEmail(event.target.checked)} />
-              <span>E-mail cadastrado</span>
+              <span>Com e-mail</span>
             </label>
             <label className="filter-check filter-check-premium">
               <input type="checkbox" name="requireAddress" checked={requireAddress} onChange={(event) => setRequireAddress(event.target.checked)} />
-              <span>Endereço cadastrado</span>
+              <span>Com endereço</span>
             </label>
             <label className="filter-check filter-check-premium">
               <input type="checkbox" name="requirePhone" checked={requirePhone} onChange={(event) => setRequirePhone(event.target.checked)} />
-              <span>Telefone</span>
+              <span>Com telefone</span>
             </label>
             <label className="filter-check filter-check-premium">
               <input type="checkbox" name="mobileOnly" checked={mobileOnly} onChange={(event) => setMobileOnly(event.target.checked)} />
               <span>Apenas celular</span>
             </label>
+            <label className="filter-check filter-check-premium">
+              <input type="checkbox" name="simplesOnly" checked={simplesOnly} onChange={(event) => setSimplesOnly(event.target.checked)} />
+              <span>Simples Nacional</span>
+            </label>
           </div>
+
+          <div className="field" style={{ marginTop: 14 }}>
+            <label>Porte da empresa</label>
+            <div className="checkbox-grid compact">
+              {COMPANY_SIZE_OPTIONS.map((option) => {
+                const checked = selectedCompanySizes.includes(option);
+                return (
+                  <label key={option} className="filter-check filter-check-premium">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => {
+                        setSelectedCompanySizes((current) =>
+                          event.target.checked ? Array.from(new Set([...current, option])) : current.filter((item) => item !== option)
+                        );
+                      }}
+                    />
+                    <span>{option}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid-2" style={{ marginTop: 14 }}>
+            <div className="field" style={{ marginTop: 0 }}>
+              <label htmlFor="capitalSocialMin">Capital social mínimo</label>
+              <input
+                id="capitalSocialMin"
+                name="capitalSocialMin"
+                type="text"
+                inputMode="decimal"
+                className="input input-premium"
+                placeholder="Ex.: 50000"
+                value={capitalSocialMin}
+                onChange={(event) => setCapitalSocialMin(event.target.value)}
+              />
+            </div>
+            <div className="field" style={{ marginTop: 0 }}>
+              <label htmlFor="capitalSocialMax">Capital social máximo</label>
+              <input
+                id="capitalSocialMax"
+                name="capitalSocialMax"
+                type="text"
+                inputMode="decimal"
+                className="input input-premium"
+                placeholder="Ex.: 500000"
+                value={capitalSocialMax}
+                onChange={(event) => setCapitalSocialMax(event.target.value)}
+              />
+            </div>
+          </div>
+
           <span className="tiny">
             {stateWide
               ? "Com busca estadual ativa, as cidades são ignoradas e a consulta roda em todos os municípios dos estados escolhidos."
