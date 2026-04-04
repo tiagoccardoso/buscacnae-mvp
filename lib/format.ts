@@ -31,13 +31,45 @@ export function formatDateTime(value?: string | null) {
   }).format(parsed);
 }
 
+function parseMoneyValue(value: number | string) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const sanitized = trimmed.replace(/\s+/g, "").replace(/R\$/gi, "");
+  if (!sanitized) return null;
+
+  let normalized = sanitized;
+
+  if (sanitized.includes(",") && sanitized.includes(".")) {
+    normalized = sanitized.lastIndexOf(",") > sanitized.lastIndexOf(".")
+      ? sanitized.replace(/\./g, "").replace(",", ".")
+      : sanitized.replace(/,/g, "");
+  } else if (sanitized.includes(",")) {
+    const parts = sanitized.split(",");
+    normalized = parts.length === 2 && parts[1].length <= 2
+      ? sanitized.replace(/\./g, "").replace(",", ".")
+      : sanitized.replace(/,/g, "");
+  } else if ((sanitized.match(/\./g) ?? []).length > 1) {
+    normalized = sanitized.replace(/\./g, "");
+  } else if (/^\d+\.\d{3}$/.test(sanitized)) {
+    normalized = sanitized.replace(/\./g, "");
+  }
+
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : null;
+}
+
 export function formatMoney(value?: number | string | null) {
   if (value === null || value === undefined || value === "") {
     return "-";
   }
 
-  const amount = typeof value === "string" ? Number(value) : value;
-  if (!Number.isFinite(amount)) {
+  const amount = parseMoneyValue(value);
+  if (amount === null) {
     return "-";
   }
 

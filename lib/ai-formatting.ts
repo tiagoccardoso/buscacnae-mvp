@@ -2,6 +2,8 @@ import { getOpenAiApiKey, getOpenAiModel } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatCnpj, formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { getSearchSummary } from "@/lib/search-summary";
+import { buildEstablishmentDetailSections } from "@/lib/establishment-detail-sections";
+import { buildDisplayEstablishment, getEstablishmentPayload } from "@/lib/establishment-presenter";
 import { extractSingleObject, safeJsonStringify } from "@/lib/utils";
 import { saveSearchAiFormatPayload, type SearchAiFormatOrderRecord } from "@/lib/billing";
 
@@ -978,7 +980,7 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
       "CNPJ",
       "Situação cadastral",
       "Data de abertura",
-      "CNAE principal",
+      "Atividade principal",
       "CNAEs secundários",
       "Natureza jurídica",
       "Porte",
@@ -998,6 +1000,20 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
       "Observação comercial"
     ]
   ];
+
+  const fichaRows: string[][] = [["Posição", "CNPJ", "Razão Social", "Grupo", "Campo", "Valor"]];
+
+  const formatFichaValue = (key: string, value: unknown) => {
+    if (value === null || value === undefined || value === "") return "";
+    if (key === "opened_at") return formatMaybeDateValue(value);
+    if (key === "secondary_cnaes") return blankWhenMissing(formatSecondaryCnaes(value));
+    if (key.toLowerCase().includes("capital")) return blankWhenMissing(formatMoney(value as number | string));
+    if (Array.isArray(value)) return blankWhenMissing(buildReadableArrayText(value));
+    if (typeof value === "boolean") return value ? "Sim" : "Não";
+    if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+    if (typeof value === "string") return value.trim();
+    return safeJsonStringify(value, 0);
+  };
 
   for (const record of preparedRecords) {
     organizedRows.push([
@@ -1026,23 +1042,44 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
       blankWhenMissing(record.aiRecord.dataCompleteness),
       blankWhenMissing(record.aiRecord.commercialNote)
     ]);
-  }
 
-  const completePaths: string[] = [];
-  const seenPaths = new Set<string>();
+    const display = buildDisplayEstablishment(record.establishment);
+    const payloadData = getEstablishmentPayload(display);
+    const rawJsonPayload = payloadData ?? display.provider_payload;
+    const { primaryFields, contactFields } = buildEstablishmentDetailSections(display, rawJsonPayload);
 
-  for (const record of preparedRecords) {
-    for (const path of record.flattenedFields.keys()) {
-      if (!seenPaths.has(path)) {
-        seenPaths.add(path);
-        completePaths.push(path);
-      }
+    for (const field of primaryFields) {
+      fichaRows.push([
+        String(record.position),
+        blankWhenMissing(display.cnpj ? formatCnpj(String(display.cnpj)) : record.aiRecord.cnpjFormatted),
+        blankWhenMissing(display.company_name || record.aiRecord.companyName),
+        "Dados principais",
+        field.label,
+        blankWhenMissing(formatFichaValue(field.key, field.value)) || "-"
+      ]);
     }
-  }
 
-  const completeRows: string[][] = [completePaths.map((path) => formatFieldLabel(path))];
-  for (const record of preparedRecords) {
-    completeRows.push(completePaths.map((path) => record.flattenedFields.get(path) ?? ""));
+    for (const field of contactFields) {
+      fichaRows.push([
+        String(record.position),
+        blankWhenMissing(display.cnpj ? formatCnpj(String(display.cnpj)) : record.aiRecord.cnpjFormatted),
+        blankWhenMissing(display.company_name || record.aiRecord.companyName),
+        "Contato e endereço",
+        field.label,
+        blankWhenMissing(formatFichaValue(field.key, field.value)) || "-"
+      ]);
+    }
+
+    fichaRows.push([
+      String(record.position),
+      blankWhenMissing(display.cnpj ? formatCnpj(String(display.cnpj)) : record.aiRecord.cnpjFormatted),
+      blankWhenMissing(display.company_name || record.aiRecord.companyName),
+      "Dados brutos formatados (JSON)",
+      "JSON",
+      record.jsonAudit
+    ]);
+
+    fichaRows.push(["", "", "", "", "", ""]);
   }
 
   const jsonRows: string[][] = [["Posição", "Empresa", "CNPJ", "JSON legível"]];
@@ -1064,12 +1101,10 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
       wrapColumns: [1, 2, 6, 7, 8, 10, 17, 19, 20, 23]
     },
     {
-      name: "Campos normalizados da pesquisa",
-      rows: completeRows,
-      columnWidths: [10, 20, 20, 20, 22, 18, 30, 30, 24, 16],
-      wrapColumns: completePaths
-        .map((path, index) => (/payload|secondary|address|note|website|email/i.test(path) ? index : -1))
-        .filter((index) => index >= 0)
+      name: "Ficha completa",
+      rows: fichaRows,
+      columnWidths: [10, 22, 34, 18, 24, 96],
+      wrapColumns: [5]
     },
     {
       name: "JSON legível",
@@ -1092,121 +1127,54 @@ function buildPdfFields(fields: Array<{ label: string; value: unknown }>) {
 export function buildAiFormattedPdfInput(payload: SearchAiFormattedPayload, rows: SearchAiExportSourceRow[]) {
   const preparedRecords = buildPreparedExportRecords(payload, rows);
 
-  const records = preparedRecords.map((record) => {
-    const excludedAdditionalPaths = new Set<string>([
-      "position",
-      "organized.company_name",
-      "organized.trade_name",
-      "organized.cnpj",
-      "organized.cnpj_formatted",
-      "organized.registration_status",
-      "organized.opened_at",
-      "organized.primary_activity",
-      "organized.secondary_cnaes",
-      "organized.legal_nature",
-      "organized.company_size",
-      "organized.tax_profile",
-      "organized.capital_social",
-      "organized.location",
-      "organized.address",
-      "organized.phone",
-      "organized.email",
-      "organized.website",
-      "organized.contact_channel",
-      "organized.data_completeness",
-      "organized.commercial_note",
-      "establishment.company_name",
-      "establishment.trade_name",
-      "establishment.cnpj",
-      "establishment.registration_status",
-      "establishment.opened_at",
-      "establishment.primary_cnae_code",
-      "establishment.primary_cnae_description",
-      "establishment.secondary_cnaes",
-      "establishment.legal_nature_code",
-      "establishment.legal_nature_description",
-      "establishment.company_size",
-      "establishment.simples_opt_in",
-      "establishment.mei_opt_in",
-      "establishment.capital_social",
-      "establishment.country",
-      "establishment.state_code",
-      "establishment.city_name",
-      "establishment.city_ibge",
-      "establishment.neighborhood",
-      "establishment.cep",
-      "establishment.address_line",
-      "establishment.address_number",
-      "establishment.complement",
-      "establishment.phone",
-      "establishment.email",
-      "establishment.website"
-    ]);
+  const formatPdfSectionValue = (key: string, value: unknown) => {
+    if (value === null || value === undefined || value === "") return "";
+    if (key === "opened_at") return formatMaybeDateValue(value);
+    if (key === "secondary_cnaes") return blankWhenMissing(formatSecondaryCnaes(value));
+    if (key.toLowerCase().includes("capital")) return blankWhenMissing(formatMoney(value as number | string));
+    if (Array.isArray(value)) return blankWhenMissing(buildReadableArrayText(value));
+    if (typeof value === "boolean") return value ? "Sim" : "Não";
+    if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+    if (typeof value === "string") return value.trim();
+    return safeJsonStringify(value, 0);
+  };
 
-    const additionalFields = Array.from(record.flattenedFields.entries())
-      .filter(([path, value]) => !excludedAdditionalPaths.has(path) && blankWhenMissing(value))
-      .map(([path, value]) => ({
-        label: formatFieldLabel(path),
-        value
-      }));
+  const records = preparedRecords.map((record) => {
+    const display = buildDisplayEstablishment(record.establishment);
+    const payloadData = getEstablishmentPayload(display);
+    const rawJsonPayload = payloadData ?? display.provider_payload;
+    const { primaryFields, contactFields } = buildEstablishmentDetailSections(display, rawJsonPayload);
+
+    const primarySectionFields = [
+      { label: "Posição", value: String(record.position) },
+      ...primaryFields.map((field) => ({
+        label: field.label,
+        value: formatPdfSectionValue(field.key, field.value)
+      }))
+    ];
+
+    const contactSectionFields = [
+      ...contactFields.map((field) => ({
+        label: field.label,
+        value: formatPdfSectionValue(field.key, field.value)
+      })),
+      { label: "Canal recomendado", value: record.aiRecord.contactChannel },
+      { label: "Completude", value: record.aiRecord.dataCompleteness },
+      { label: "Observação comercial", value: record.aiRecord.commercialNote }
+    ];
 
     return {
       position: record.position,
-      title: blankWhenMissing(record.aiRecord.companyName) || blankWhenMissing(record.establishment.company_name) || "Registro sem nome",
+      title: blankWhenMissing(record.aiRecord.companyName) || blankWhenMissing(display.company_name) || "Registro sem nome",
       subtitle: [blankWhenMissing(record.aiRecord.cnpjFormatted), blankWhenMissing(record.aiRecord.tradeName)].filter(Boolean).join(" • "),
       sections: [
         {
-          title: "Identificação e situação cadastral",
-          fields: buildPdfFields([
-            { label: "Posição", value: String(record.position) },
-            { label: "Razão social", value: record.aiRecord.companyName },
-            { label: "Nome fantasia", value: record.aiRecord.tradeName },
-            { label: "CNPJ", value: record.aiRecord.cnpjFormatted },
-            { label: "Situação cadastral", value: record.aiRecord.registrationStatus },
-            { label: "Data de abertura", value: record.aiRecord.openedAt },
-            { label: "Raiz do CNPJ", value: record.establishment.cnpj_root }
-          ])
+          title: "Dados principais",
+          fields: buildPdfFields(primarySectionFields)
         },
         {
-          title: "Atividade e enquadramento",
-          fields: buildPdfFields([
-            { label: "CNAE principal", value: record.aiRecord.primaryActivity },
-            { label: "CNAEs secundários", value: record.aiRecord.secondaryCnaes },
-            { label: "Natureza jurídica", value: record.aiRecord.legalNature },
-            { label: "Porte", value: record.aiRecord.companySize },
-            { label: "Regime tributário", value: record.aiRecord.taxProfile },
-            { label: "Capital social", value: record.aiRecord.capitalSocial }
-          ])
-        },
-        {
-          title: "Localização",
-          fields: buildPdfFields([
-            { label: "Localização resumida", value: record.aiRecord.location },
-            { label: "Endereço completo", value: record.aiRecord.address },
-            { label: "País", value: record.establishment.country },
-            { label: "Cidade", value: record.establishment.city_name },
-            { label: "UF", value: record.establishment.state_code },
-            { label: "IBGE da cidade", value: record.establishment.city_ibge },
-            { label: "Bairro", value: record.establishment.neighborhood },
-            { label: "CEP", value: formatCep(record.establishment.cep) },
-            { label: "Número", value: record.establishment.address_number },
-            { label: "Complemento", value: record.establishment.complement }
-          ])
-        },
-        {
-          title: "Contato e leitura comercial",
-          fields: buildPdfFields([
-            { label: "Telefone", value: record.aiRecord.phone },
-            { label: "E-mail", value: record.aiRecord.email },
-            { label: "Site", value: record.aiRecord.website },
-            { label: "Canal recomendado", value: record.aiRecord.contactChannel },
-            { label: "Completude", value: record.aiRecord.dataCompleteness },
-            { label: "Observação comercial", value: record.aiRecord.commercialNote }
-          ])
-        },
-        {
-          title: "Campos normalizados da pesquisa",
-          fields: additionalFields
+          title: "Contato e endereço",
+          fields: buildPdfFields(contactSectionFields)
         }
       ]
     };
