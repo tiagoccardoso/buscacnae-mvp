@@ -4,6 +4,29 @@ import { redirect } from "next/navigation";
 import { prepareSearchOrder } from "@/lib/discovery/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+function buildCitySelectionFromFormData(formData: FormData) {
+  const explicitSelection = String(formData.get("citySelection") ?? "").trim();
+  if (explicitSelection) {
+    return explicitSelection;
+  }
+
+  const cityName = String(formData.get("cityName") ?? "").trim();
+  const stateCode = String(formData.get("stateCode") ?? "").trim().toUpperCase();
+
+  if (!cityName || !stateCode) {
+    return "";
+  }
+
+  return JSON.stringify([{ cityName, stateCode }]);
+}
+
+function parseCapitalInput(value: FormDataEntryValue | null) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = Number(text.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export async function startPublicSearchAction(formData: FormData) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -18,7 +41,7 @@ export async function startPublicSearchAction(formData: FormData) {
     email,
     cnae: String(formData.get("cnae") ?? ""),
     stateCode: String(formData.get("stateCode") ?? ""),
-    citySelection: String(formData.get("citySelection") ?? ""),
+    citySelection: buildCitySelectionFromFormData(formData),
     stateWide: formData.get("stateWide") === "on",
     requireEmail: formData.get("requireEmail") === "on",
     requireAddress: formData.get("requireAddress") === "on",
@@ -29,23 +52,13 @@ export async function startPublicSearchAction(formData: FormData) {
       .map((item) => item.trim())
       .filter(Boolean),
     simplesOnly: formData.get("simplesOnly") === "on",
-    capitalSocialMin: (() => {
-      const value = String(formData.get("capitalSocialMin") ?? "").trim();
-      if (!value) return null;
-      const parsed = Number(value.replace(/\./g, "").replace(",", "."));
-      return Number.isFinite(parsed) ? parsed : null;
-    })(),
-    capitalSocialMax: (() => {
-      const value = String(formData.get("capitalSocialMax") ?? "").trim();
-      if (!value) return null;
-      const parsed = Number(value.replace(/\./g, "").replace(",", "."));
-      return Number.isFinite(parsed) ? parsed : null;
-    })()
+    capitalSocialMin: parseCapitalInput(formData.get("capitalSocialMin")),
+    capitalSocialMax: parseCapitalInput(formData.get("capitalSocialMax"))
   });
 
   if (!result.ok) {
     redirect(`/?error=${encodeURIComponent(result.error)}`);
   }
 
-  redirect(`/checkout/${result.data.orderId}`);
+  redirect(`/dashboard/search/${result.data.searchId}`);
 }

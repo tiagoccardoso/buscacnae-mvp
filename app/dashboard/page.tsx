@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatDateTime } from "@/lib/format";
 import { DashboardImpactVisuals } from "@/components/dashboard-impact-visuals";
 
@@ -13,11 +14,12 @@ export default async function DashboardPage() {
     return null;
   }
 
+  const admin = createSupabaseAdminClient();
   const [{ count: searchCount }, { count: leadCount }, { count: orderCount }, latestSearch] = await Promise.all([
-    supabase.from("search_queries").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
-    supabase.from("saved_establishments").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
-    supabase.from("search_access_orders").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
-    supabase
+    admin.from("search_queries").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
+    admin.from("saved_establishments").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
+    admin.from("search_access_orders").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
+    admin
       .from("search_queries")
       .select("id, cnae_code, city_name, state_code, created_at, total_results")
       .eq("profile_id", user.id)

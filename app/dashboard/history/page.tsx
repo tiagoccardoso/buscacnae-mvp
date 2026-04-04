@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/empty-state";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -13,46 +14,19 @@ type HistoryPageProps = {
 };
 
 function readStatusMessage(status: string) {
-  if (status === "item-excluido") {
-    return "Busca removida do histórico com sucesso.";
-  }
-
-  if (status === "selecionadas-excluidas") {
-    return "As buscas selecionadas foram removidas do histórico.";
-  }
-
-  if (status === "tudo-excluido") {
-    return "Todo o histórico de pesquisas foi excluído.";
-  }
-
+  if (status === "item-excluido") return "Busca removida do histórico com sucesso.";
+  if (status === "selecionadas-excluidas") return "As buscas selecionadas foram removidas do histórico.";
+  if (status === "tudo-excluido") return "Todo o histórico de pesquisas foi excluído.";
   return "";
 }
 
 function readErrorMessage(error: string) {
-  if (error === "busca-invalida") {
-    return "Busca inválida para exclusão.";
-  }
-
-  if (error === "nada-selecionado") {
-    return "Selecione ao menos uma busca para excluir em grupo.";
-  }
-
-  if (error === "busca-nao-encontrada") {
-    return "Não foi possível localizar a busca para exclusão.";
-  }
-
-  if (error === "falha-excluir-item") {
-    return "Falha ao excluir o item do histórico.";
-  }
-
-  if (error === "falha-excluir-selecionadas") {
-    return "Falha ao excluir as buscas selecionadas.";
-  }
-
-  if (error === "falha-excluir-tudo") {
-    return "Falha ao excluir todo o histórico.";
-  }
-
+  if (error === "busca-invalida") return "Busca inválida para exclusão.";
+  if (error === "nada-selecionado") return "Selecione ao menos uma busca para excluir em grupo.";
+  if (error === "busca-nao-encontrada") return "Não foi possível localizar a busca para exclusão.";
+  if (error === "falha-excluir-item") return "Falha ao excluir o item do histórico.";
+  if (error === "falha-excluir-selecionadas") return "Falha ao excluir as buscas selecionadas.";
+  if (error === "falha-excluir-tudo") return "Falha ao excluir todo o histórico.";
   return "";
 }
 
@@ -72,7 +46,8 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const statusMessage = readStatusMessage(status);
   const errorMessage = readErrorMessage(error);
 
-  const { data: searches } = await supabase
+  const admin = createSupabaseAdminClient();
+  const { data: searches } = await admin
     .from("search_queries")
     .select("*")
     .eq("profile_id", user.id)
@@ -131,54 +106,54 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
       </div>
 
       <div className="table-wrap">
-          <table className="table table-premium table-glow">
-            <thead>
-              <tr>
-                <th className="history-select-col">Selecionar</th>
-                <th>Quando</th>
-                <th>CNAE</th>
-                <th>Localidade</th>
-                <th>Resultados</th>
-                <th>Status</th>
-                <th>Ações</th>
+        <table className="table table-premium table-glow">
+          <thead>
+            <tr>
+              <th className="history-select-col">Selecionar</th>
+              <th>Quando</th>
+              <th>CNAE</th>
+              <th>Localidade</th>
+              <th>Resultados</th>
+              <th>Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {searches.map((search) => (
+              <tr key={search.id}>
+                <td className="history-select-cell">
+                  <input
+                    type="checkbox"
+                    name="searchIds"
+                    value={search.id}
+                    form="history-bulk-delete-form"
+                    aria-label={`Selecionar busca ${search.cnae_code} em ${search.city_name}/${search.state_code}`}
+                    className="history-checkbox"
+                  />
+                </td>
+                <td>{formatDateTime(search.created_at)}</td>
+                <td>{search.cnae_code}</td>
+                <td>
+                  {search.city_name}/{search.state_code}
+                </td>
+                <td>{search.total_results}</td>
+                <td>{search.cached ? "cache" : "consulta"}</td>
+                <td>
+                  <div className="history-row-actions">
+                    <Link href={`/dashboard/search/${search.id}`} className="button-ghost history-action-button">
+                      Abrir
+                    </Link>
+                    <form action={deleteSearchHistoryItemAction.bind(null, search.id)}>
+                      <button type="submit" className="button-danger history-action-button">
+                        Excluir
+                      </button>
+                    </form>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {searches.map((search) => (
-                <tr key={search.id}>
-                  <td className="history-select-cell">
-                    <input
-                      type="checkbox"
-                      name="searchIds"
-                      value={search.id}
-                      form="history-bulk-delete-form"
-                      aria-label={`Selecionar busca ${search.cnae_code} em ${search.city_name}/${search.state_code}`}
-                      className="history-checkbox"
-                    />
-                  </td>
-                  <td>{formatDateTime(search.created_at)}</td>
-                  <td>{search.cnae_code}</td>
-                  <td>
-                    {search.city_name}/{search.state_code}
-                  </td>
-                  <td>{search.total_results}</td>
-                  <td>{search.cached ? "cache" : "consulta"}</td>
-                  <td>
-                    <div className="history-row-actions">
-                      <Link href={`/dashboard/search/${search.id}`} className="button-ghost history-action-button">
-                        Abrir
-                      </Link>
-                      <form action={deleteSearchHistoryItemAction.bind(null, search.id)}>
-                        <button type="submit" className="button-danger history-action-button">
-                          Excluir
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
