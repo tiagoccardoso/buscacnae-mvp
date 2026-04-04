@@ -40,13 +40,59 @@ export function parseBoolean(value: unknown): boolean | null {
 }
 
 export function parseNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const normalized = value.replace(/\./g, "").replace(",", ".");
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
   }
-  return null;
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const sanitized = trimmed
+    .replace(/\s+/g, "")
+    .replace(/R\$/gi, "")
+    .replace(/[^\d,.-]/g, "");
+
+  if (!sanitized) {
+    return null;
+  }
+
+  const commaCount = (sanitized.match(/,/g) ?? []).length;
+  const dotCount = (sanitized.match(/\./g) ?? []).length;
+
+  let normalized = sanitized;
+
+  if (commaCount > 0 && dotCount > 0) {
+    normalized = sanitized.lastIndexOf(",") > sanitized.lastIndexOf(".")
+      ? sanitized.replace(/\./g, "").replace(/,/g, ".")
+      : sanitized.replace(/,/g, "");
+  } else if (commaCount > 0) {
+    const lastCommaIndex = sanitized.lastIndexOf(",");
+    const decimalDigits = sanitized.length - lastCommaIndex - 1;
+    normalized = decimalDigits <= 2
+      ? sanitized.replace(/\./g, "").replace(/,/g, ".")
+      : sanitized.replace(/,/g, "");
+  } else if (dotCount > 1) {
+    const lastDotIndex = sanitized.lastIndexOf(".");
+    const decimalDigits = sanitized.length - lastDotIndex - 1;
+    normalized = decimalDigits <= 2
+      ? sanitized.replace(/\./g, (match, offset) => (offset === lastDotIndex ? "." : ""))
+      : sanitized.replace(/\./g, "");
+  } else if (dotCount === 1) {
+    const lastDotIndex = sanitized.lastIndexOf(".");
+    const decimalDigits = sanitized.length - lastDotIndex - 1;
+    if (decimalDigits === 3) {
+      normalized = sanitized.replace(/\./g, "");
+    }
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function coalesceString(...values: unknown[]) {
