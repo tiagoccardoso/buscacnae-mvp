@@ -324,7 +324,13 @@ export async function prepareSearchOrder(
     }
 
     const allRows = Array.from(aggregatedByCnpj.values());
-    const pricingSummary = buildLeadPricingSummary(allRows.map((row) => ({ email: row.email, phone: row.phone })));
+    const pricingSummary = buildLeadPricingSummary(
+      allRows.map((row) => ({
+        email: row.email,
+        phone: row.phone,
+        providerPayload: row.providerPayload
+      }))
+    );
     const pricingTotalAmountCents = pricingSummary.totalLeads > 0
       ? Math.max(pricingSummary.totalAmountCents, getMinimumCheckoutAmountCents(), 0)
       : 0;

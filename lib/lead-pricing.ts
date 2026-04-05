@@ -19,6 +19,15 @@ export type LeadPricingSummary = {
 type ContactLike = {
   email?: string | null;
   phone?: string | null;
+  providerPayload?: unknown;
+  provider_payload?: unknown;
+};
+
+export type LeadContactSignals = {
+  emails: string[];
+  phones: string[];
+  hasEmail: boolean;
+  hasPhone: boolean;
 };
 
 const LEAD_PRICING_TABLE: Array<{ key: LeadPricingTierKey; label: string; unitAmountCents: number; helperText: string }> = [
@@ -28,17 +37,219 @@ const LEAD_PRICING_TABLE: Array<{ key: LeadPricingTierKey; label: string; unitAm
   { key: "complete", label: "Completo", unitAmountCents: 20, helperText: "Lead com telefone e e-mail." }
 ];
 
+const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const PHONE_KEY_HINT_REGEX = /(phone|telefone|celular|whatsapp|contato_telefonico|contato telefonico|completo|ddd|numero)/i;
+const EMAIL_KEY_HINT_REGEX = /(email|e-mail|mail|contato_email|contato email)/i;
+const INVALID_TEXT_REGEX = /^(nao informado|não informado|nao identificado|não identificado|sem email|sem e-mail|sem telefone|null|undefined|n\/a|na)$/i;
+
 function hasTrimmedText(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-export function classifyLeadPricingTier(lead: ContactLike): LeadPricingTierKey {
-  const hasEmail = hasTrimmedText(lead.email);
-  const hasPhone = hasTrimmedText(lead.phone);
+function normalizeEmailCandidate(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
 
-  if (hasEmail && hasPhone) return "complete";
-  if (hasEmail) return "email";
-  if (hasPhone) return "phone";
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || INVALID_TEXT_REGEX.test(normalized)) {
+    return null;
+  }
+
+  const match = normalized.match(/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i);
+  return match ? match[0] : null;
+}
+
+function normalizePhoneCandidate(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || INVALID_TEXT_REGEX.test(trimmed)) {
+    return null;
+  }
+
+  if (trimmed.includes("*") || trimmed.includes("x") || trimmed.includes("X")) {
+    return null;
+  }
+
+  let digits = trimmed.replace(/\D/g, "");
+  if (!digits) {
+    return null;
+  }
+
+  if (digits.startsWith("55") && digits.length >= 12) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.length < 8 || digits.length > 11) {
+    return null;
+  }
+
+  if (/^(\d)\1+$/.test(digits)) {
+    return null;
+  }
+
+  return digits;
+}
+
+function tryParseStructuredString(value: string): unknown {
+  const trimmed = value.trim();
+  if (!trimmed || (!["{", "["].includes(trimmed[0]) && !trimmed.includes("\"email\"") && !trimmed.includes("\"telefone\""))) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function collectFromString(value: string, keyHint: string, emails: Set<string>, phones: Set<string>) {
+  const normalizedDirectEmail = normalizeEmailCandidate(value);
+  if (normalizedDirectEmail) {
+    emails.add(normalizedDirectEmail);
+  }
+
+  const matchedEmails = value.match(EMAIL_REGEX) ?? [];
+  for (const email of matchedEmails) {
+    const normalizedEmail = normalizeEmailCandidate(email);
+    if (normalizedEmail) {
+      emails.add(normalizedEmail);
+    }
+  }
+
+  if (PHONE_KEY_HINT_REGEX.test(keyHint) || /^\+?[\d\s().-]+$/.test(value.trim())) {
+    const normalizedPhone = normalizePhoneCandidate(value);
+    if (normalizedPhone) {
+      phones.add(normalizedPhone);
+    }
+  }
+
+  const parsed = tryParseStructuredString(value);
+  if (parsed && parsed !== value) {
+    collectContactSignals(parsed, emails, phones, keyHint);
+  }
+}
+
+function collectFromObject(record: Record<string, unknown>, emails: Set<string>, phones: Set<string>, keyHint: string) {
+  const ddd = typeof record.ddd === "string" || typeof record.ddd === "number" ? String(record.ddd) : "";
+  const numero = typeof record.numero === "string" || typeof record.numero === "number" ? String(record.numero) : "";
+  const completo = typeof record.completo === "string" ? record.completo : "";
+
+  if (completo) {
+    const normalizedPhone = normalizePhoneCandidate(completo);
+    if (normalizedPhone) {
+      phones.add(normalizedPhone);
+    }
+  }
+
+  if (ddd || numero) {
+    const combined = `${ddd}${numero}`;
+    const normalizedPhone = normalizePhoneCandidate(combined);
+    if (normalizedPhone) {
+      phones.add(normalizedPhone);
+    }
+  }
+
+  for (const [nestedKey, nestedValue] of Object.entries(record)) {
+    const composedHint = keyHint ? `${keyHint}.${nestedKey}` : nestedKey;
+
+    if (EMAIL_KEY_HINT_REGEX.test(composedHint) && typeof nestedValue === "string") {
+      const normalizedEmail = normalizeEmailCandidate(nestedValue);
+      if (normalizedEmail) {
+        emails.add(normalizedEmail);
+      }
+    }
+
+    if (PHONE_KEY_HINT_REGEX.test(composedHint)) {
+      if (typeof nestedValue === "string") {
+        const normalizedPhone = normalizePhoneCandidate(nestedValue);
+        if (normalizedPhone) {
+          phones.add(normalizedPhone);
+        }
+      }
+      if (typeof nestedValue === "number") {
+        const normalizedPhone = normalizePhoneCandidate(String(nestedValue));
+        if (normalizedPhone) {
+          phones.add(normalizedPhone);
+        }
+      }
+    }
+
+    collectContactSignals(nestedValue, emails, phones, composedHint);
+  }
+}
+
+function collectContactSignals(value: unknown, emails: Set<string>, phones: Set<string>, keyHint = "") {
+  if (value === null || value === undefined) {
+    return;
+  }
+
+  if (typeof value === "string") {
+    collectFromString(value, keyHint, emails, phones);
+    return;
+  }
+
+  if (typeof value === "number") {
+    if (PHONE_KEY_HINT_REGEX.test(keyHint)) {
+      const normalizedPhone = normalizePhoneCandidate(String(value));
+      if (normalizedPhone) {
+        phones.add(normalizedPhone);
+      }
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectContactSignals(item, emails, phones, keyHint);
+    }
+    return;
+  }
+
+  if (typeof value === "object") {
+    collectFromObject(value as Record<string, unknown>, emails, phones, keyHint);
+  }
+}
+
+export function extractLeadContactSignals(lead: ContactLike): LeadContactSignals {
+  const emails = new Set<string>();
+  const phones = new Set<string>();
+
+  if (hasTrimmedText(lead.email)) {
+    const normalizedEmail = normalizeEmailCandidate(String(lead.email));
+    if (normalizedEmail) {
+      emails.add(normalizedEmail);
+    }
+  }
+
+  if (hasTrimmedText(lead.phone)) {
+    const normalizedPhone = normalizePhoneCandidate(String(lead.phone));
+    if (normalizedPhone) {
+      phones.add(normalizedPhone);
+    }
+  }
+
+  collectContactSignals(lead.providerPayload, emails, phones, "providerPayload");
+  collectContactSignals(lead.provider_payload, emails, phones, "provider_payload");
+
+  return {
+    emails: Array.from(emails),
+    phones: Array.from(phones),
+    hasEmail: emails.size > 0,
+    hasPhone: phones.size > 0
+  };
+}
+
+export function classifyLeadPricingTier(lead: ContactLike): LeadPricingTierKey {
+  const signals = extractLeadContactSignals(lead);
+
+  if (signals.hasEmail && signals.hasPhone) return "complete";
+  if (signals.hasEmail) return "email";
+  if (signals.hasPhone) return "phone";
   return "basic";
 }
 
