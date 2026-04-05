@@ -40,7 +40,7 @@ export default async function DashboardPage() {
         <div className="surface-premium card metric metric-card metric-card-premium">
           <span className="kicker">Modelo comercial</span>
           <strong>Pagamento avulso</strong>
-          <span className="muted">Cada lista é cobrada individualmente e liberada após a confirmação do checkout.</span>
+          <span className="muted">Cada lista é cobrada automaticamente pela composição dos leads encontrados e liberada após a confirmação do checkout.</span>
         </div>
         <div className="surface-premium card metric metric-card metric-card-premium">
           <span className="kicker">Buscas realizadas</span>

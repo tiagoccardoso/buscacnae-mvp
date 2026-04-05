@@ -23,13 +23,13 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             Encontre empresas por <span className="gradient-text">CNAE, estado e cidade com preço por resultado</span>.
           </h1>
           <p className="lead-copy">
-            Escolha os filtros, veja quantos CNPJs foram encontrados e pague <strong>R$ 0,05 por CNPJ</strong> para liberar a lista.
+            Escolha os filtros, veja quantos leads foram encontrados em cada faixa de valor e pague conforme a composição da lista: <strong>R$ 0,05 básico, R$ 0,10 com telefone, R$ 0,15 com e-mail e R$ 0,20 completo</strong>.
             Depois do pagamento, o cliente visualiza os resultados online e pode baixar o arquivo em XLSX.
           </p>
 
           <div className="inline-list">
             <span className="pill">Pesquisa pública</span>
-            <span className="pill">R$ 0,05 por CNPJ</span>
+            <span className="pill">Preço por tipo de lead</span>
             <span className="pill">Dashboard opcional</span>
           </div>
 
@@ -81,7 +81,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               <div className="home-form-actions home-form-actions-premium immersive-submit-row">
                 <PublicSearchSubmitButton />
                 <span className="tiny">
-                  Você só paga pelos CNPJs encontrados. Depois da busca, a próxima tela mostra a quantidade encontrada e o valor total antes do checkout.
+                  Você só paga pelos leads encontrados. Depois da busca, a próxima tela mostra a quantidade total, a distribuição por faixa de valor e o total antes do checkout.
                 </span>
               </div>
             </form>
@@ -113,7 +113,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             <ul className="feature-list">
               <li>Filtro por CNAE, estado e cidade com leitura clara.</li>
               <li>Sugestões automáticas para preencher filtros com mais rapidez.</li>
-              <li>Checkout proporcional à quantidade encontrada.</li>
+              <li>Checkout proporcional à composição dos leads encontrados.</li>
               <li>Visualização online e download da lista em XLSX.</li>
               <li>Dashboard opcional para histórico e detalhamento.</li>
             </ul>

@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe";
 import { getAiFormattingPriceCents, getMinimumCheckoutAmountCents } from "@/lib/env";
+import { readLeadPricingSummary, type LeadPricingSummary } from "@/lib/lead-pricing";
 
 export type SearchAccessOrderRecord = {
   id: string;
@@ -155,10 +156,12 @@ export async function getSearchAccessOrderByCheckoutSessionId(sessionId: string)
   return (data as SearchAccessOrderRecord | null) ?? null;
 }
 
-function getSearchAccessOrderPricing(resultCount: number) {
-  const unitAmountCents = 5;
+function getSearchAccessOrderPricing(resultCount: number, pricingSummary?: LeadPricingSummary | null) {
   const minimumCheckoutAmountCents = getMinimumCheckoutAmountCents();
-  const totalAmountCents = resultCount > 0 ? Math.max(resultCount * unitAmountCents, minimumCheckoutAmountCents, 0) : 0;
+  const computedSummary = pricingSummary ?? null;
+  const unitAmountCents = resultCount > 0 ? (computedSummary?.averageUnitAmountCents ?? 5) : 0;
+  const baseTotalAmountCents = resultCount > 0 ? (computedSummary?.totalAmountCents ?? resultCount * 5) : 0;
+  const totalAmountCents = resultCount > 0 ? Math.max(baseTotalAmountCents, minimumCheckoutAmountCents, 0) : 0;
   const status = resultCount === 0 ? "free" : "pending";
 
   return {
@@ -200,19 +203,21 @@ export async function ensureSearchAccessOrderForSearch(args: {
   email?: string | null;
   provider?: string | null;
   totalResults?: number | null;
+  pricingSummary?: LeadPricingSummary | null;
 }): Promise<SearchAccessOrderRecord> {
   const admin = createSupabaseAdminClient();
   const normalizedEmail = typeof args.email === "string" ? args.email.trim().toLowerCase() : "";
   let resolvedProfileId = args.profileId ?? null;
   let resolvedProvider = args.provider ?? null;
   let resolvedTotalResults = resolveFiniteInteger(args.totalResults);
+  let resolvedPricingSummary = args.pricingSummary ?? null;
 
   const existing = await getLatestSearchAccessOrderBySearchQueryId(args.searchQueryId);
 
-  if (!resolvedProfileId || !resolvedProvider || resolvedTotalResults === null) {
+  if (!resolvedProfileId || !resolvedProvider || resolvedTotalResults === null || !resolvedPricingSummary) {
     const { data: search, error: searchError } = await admin
       .from("search_queries")
-      .select("id, profile_id, provider, total_results")
+      .select("id, profile_id, provider, total_results, query_payload")
       .eq("id", args.searchQueryId)
       .maybeSingle();
 
@@ -223,6 +228,12 @@ export async function ensureSearchAccessOrderForSearch(args: {
     resolvedProfileId = resolvedProfileId ?? search.profile_id ?? null;
     resolvedProvider = resolvedProvider ?? (typeof search.provider === "string" ? search.provider : null);
     resolvedTotalResults = resolveFiniteInteger(resolvedTotalResults, search.total_results);
+    if (!resolvedPricingSummary) {
+      const payload = search.query_payload && typeof search.query_payload === "object" && !Array.isArray(search.query_payload)
+        ? (search.query_payload as Record<string, unknown>)
+        : null;
+      resolvedPricingSummary = readLeadPricingSummary(payload?.leadPricingSummary);
+    }
   }
 
   if (resolvedTotalResults === null) {
@@ -254,7 +265,7 @@ export async function ensureSearchAccessOrderForSearch(args: {
     throw new Error("Não foi possível determinar o e-mail do pedido comercial desta busca.");
   }
 
-  const pricing = getSearchAccessOrderPricing(resolvedTotalResults);
+  const pricing = getSearchAccessOrderPricing(resolvedTotalResults, resolvedPricingSummary);
 
   if (existing) {
     const updates: Partial<SearchAccessOrderRecord> = {};

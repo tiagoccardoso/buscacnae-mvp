@@ -58,8 +58,8 @@ export async function POST(request: Request) {
     orderAccessToken: order.access_token,
     successUrl: successUrl.toString(),
     cancelUrl: cancelUrl.toString(),
-    productName: "Acesso à lista de CNPJs da pesquisa",
-    productDescription: `Pedido ${order.id}`,
+    productName: "Acesso à lista de leads da pesquisa",
+    productDescription: `Pedido ${order.id} · cobrança automática por categoria de lead`,
     metadata: {
       order_type: "search_access",
       search_query_id: order.search_query_id

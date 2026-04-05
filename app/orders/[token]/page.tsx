@@ -7,6 +7,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
 import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
+import { readLeadPricingSummary } from "@/lib/lead-pricing";
+import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
 
 type OrderResultPageProps = {
   params: Promise<{ token: string }>;
@@ -43,6 +45,7 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
 
   const unlocked = currentOrder.status === "paid" || currentOrder.status === "free";
   const summary = getSearchSummary(search);
+  const pricingSummary = readLeadPricingSummary((search.query_payload as Record<string, unknown> | null)?.leadPricingSummary);
 
   return (
     <main className="page">
@@ -65,6 +68,8 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
               <span className="muted">Valor: {formatMoney(currentOrder.total_amount_cents / 100)}</span>
             </div>
           </div>
+
+          {pricingSummary ? <LeadPricingBreakdown summary={pricingSummary} /> : null}
 
           {!unlocked ? (
             <>

@@ -8,10 +8,10 @@ export default function PricingPage() {
           <div className="stack" style={{ gap: 14 }}>
             <span className="eyebrow">Preço por resultado</span>
             <h1 className="section-title" style={{ fontSize: "2.6rem", marginBottom: 0 }}>
-              Pague apenas <span className="gradient-text">R$ 0,05 por CNPJ encontrado</span>
+              Pague apenas <span className="gradient-text">conforme o valor de cada tipo de lead encontrado</span>
             </h1>
             <p className="section-copy">
-              A pesquisa é pública. Você informa os filtros, o sistema calcula a quantidade de resultados e o checkout libera a lista para visualização e download em XLSX após o pagamento.
+              A pesquisa é pública. Você informa os filtros, o sistema calcula a quantidade de resultados por categoria de lead e o checkout libera a lista para visualização e download em XLSX após o pagamento.
             </p>
             <div className="inline-list">
               <span className="pill">Sem plano obrigatório</span>
@@ -22,8 +22,8 @@ export default function PricingPage() {
 
           <div className="pricing-display-card">
             <span className="kicker">Exemplo de cobrança</span>
-            <strong>100 CNPJs = R$ 5,00</strong>
-            <span className="muted">O valor acompanha o resultado da pesquisa e não obriga assinatura para a primeira conversão.</span>
+            <strong>Exemplo: 40 básicos + 20 com telefone + 10 com e-mail + 5 completos</strong>
+            <span className="muted">Tabela automática: R$ 0,05 básico, R$ 0,10 com telefone, R$ 0,15 com e-mail e R$ 0,20 completo.</span>
           </div>
         </div>
 
@@ -34,7 +34,7 @@ export default function PricingPage() {
           </div>
           <div className="surface-premium card stack">
             <span className="eyebrow">2. Veja o valor</span>
-            <p className="section-copy">O sistema informa quantos CNPJs foram encontrados e calcula o total antes de qualquer pagamento.</p>
+            <p className="section-copy">O sistema informa quantos leads foram encontrados em cada faixa de valor e calcula o total antes de qualquer pagamento.</p>
           </div>
           <div className="surface-premium card stack">
             <span className="eyebrow">3. Libere a lista</span>

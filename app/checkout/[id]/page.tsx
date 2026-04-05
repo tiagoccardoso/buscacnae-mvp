@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSearchAccessOrderById } from "@/lib/billing";
 import { formatMoney } from "@/lib/format";
+import { readLeadPricingSummary } from "@/lib/lead-pricing";
+import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
 import { getSearchSummary } from "@/lib/search-summary";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -30,6 +32,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     .maybeSingle();
 
   const summary = getSearchSummary(search ?? {});
+  const pricingSummary = readLeadPricingSummary((search?.query_payload as Record<string, unknown> | null)?.leadPricingSummary);
 
   return (
     <main className="page">
@@ -50,17 +53,18 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
 
           <div className="grid-2">
             <div className="surface-soft card stack">
-              <span className="kicker">CNPJs encontrados</span>
+              <span className="kicker">Leads encontrados</span>
               <strong style={{ fontSize: "2rem" }}>{currentOrder.result_count}</strong>
               <span className="muted">Lista pronta para desbloqueio.</span>
             </div>
             <div className="surface-soft card stack">
               <span className="kicker">Total a pagar</span>
               <strong style={{ fontSize: "2rem" }}>{formatMoney(currentOrder.total_amount_cents / 100)}</strong>
-              <span className="muted">Cobrança unitária de {formatMoney(currentOrder.unit_amount_cents / 100)} por CNPJ encontrado.</span>
+              <span className="muted">Cobrança automática conforme o nível de contato de cada lead encontrado.</span>
             </div>
           </div>
 
+          {pricingSummary ? <LeadPricingBreakdown summary={pricingSummary} /> : null}
 
           {currentOrder.status === "paid" || currentOrder.status === "free" ? (
             <div className="inline-actions">

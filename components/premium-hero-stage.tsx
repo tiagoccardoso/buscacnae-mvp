@@ -111,7 +111,7 @@ export function PremiumHeroStage() {
             </div>
             <div>
               <span className="kicker">Preço</span>
-              <strong>R$ 0,05</strong>
+              <strong>R$ 0,05 até R$ 0,20</strong>
             </div>
           </div>
         </button>

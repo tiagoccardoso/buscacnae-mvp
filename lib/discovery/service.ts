@@ -1,7 +1,8 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getDiscoveryCacheTtlHours, getDiscoveryProvider } from "@/lib/env";
+import { getDiscoveryCacheTtlHours, getDiscoveryProvider, getMinimumCheckoutAmountCents } from "@/lib/env";
 import { DiscoverySearchInput, NormalizedEstablishment, ServiceResult } from "@/lib/types";
 import { normalizeCode, normalizeCnpj, normalizeText, sha256, toTitleCase } from "@/lib/utils";
+import { buildLeadPricingSummary } from "@/lib/lead-pricing";
 import { searchWithCasaDosDados } from "./providers/casadosdados";
 import { searchWithCnpjWs } from "./providers/cnpjws";
 import { searchWithHybrid } from "./providers/hybrid";
@@ -323,6 +324,10 @@ export async function prepareSearchOrder(
     }
 
     const allRows = Array.from(aggregatedByCnpj.values());
+    const pricingSummary = buildLeadPricingSummary(allRows.map((row) => ({ email: row.email, phone: row.phone })));
+    const pricingTotalAmountCents = pricingSummary.totalLeads > 0
+      ? Math.max(pricingSummary.totalAmountCents, getMinimumCheckoutAmountCents(), 0)
+      : 0;
     const queryPayload = {
       cnaes,
       stateCodes,
@@ -337,7 +342,15 @@ export async function prepareSearchOrder(
       simplesOnly: input.simplesOnly,
       capitalSocialMin: input.capitalSocialMin,
       capitalSocialMax: input.capitalSocialMax,
-      filterLabels: buildPublicFilterLabels(input)
+      filterLabels: buildPublicFilterLabels(input),
+      leadPricingSummary: {
+        basic: pricingSummary.tiers.find((tier) => tier.key === "basic")?.count ?? 0,
+        phone: pricingSummary.tiers.find((tier) => tier.key === "phone")?.count ?? 0,
+        email: pricingSummary.tiers.find((tier) => tier.key === "email")?.count ?? 0,
+        complete: pricingSummary.tiers.find((tier) => tier.key === "complete")?.count ?? 0,
+        totalLeads: pricingSummary.totalLeads,
+        totalAmountCents: pricingTotalAmountCents
+      }
     };
 
     const representativeLocation =
@@ -449,7 +462,8 @@ export async function prepareSearchOrder(
       profileId: input.profileId,
       email,
       provider,
-      totalResults: allRows.length
+      totalResults: allRows.length,
+      pricingSummary
     });
 
     return { ok: true, data: { orderId: order.id, searchId: insertedSearch.id, accessToken: order.access_token } };

@@ -9,6 +9,7 @@ export type EstablishmentDetailField = {
 };
 
 const OMIT_DISPLAY_KEYS = new Set(["id", "created_at", "updated_at", "provider_payload"]);
+const OMIT_RAW_PATH_SUFFIXES = new Set(["capital_social"]);
 const WRAPPER_SEGMENTS = new Set([
   "provider_payload",
   "cnpjws_consulta",
@@ -205,6 +206,14 @@ export function buildEstablishmentDetailSections(
     if (!hasContent(row.value)) continue;
 
     const simplifiedPath = simplifyPath(row.path);
+    const pathSegments = (simplifiedPath || row.path)
+      .split(".")
+      .map((segment) => segment.replace(/\[\d+\]/g, ""))
+      .filter(Boolean);
+    const pathSuffix = pathSegments[pathSegments.length - 1] ?? "";
+
+    if (OMIT_RAW_PATH_SUFFIXES.has(pathSuffix)) continue;
+
     push(primaryFields, {
       label: formatEstablishmentPathLabel(simplifiedPath),
       key: simplifiedPath || row.path,

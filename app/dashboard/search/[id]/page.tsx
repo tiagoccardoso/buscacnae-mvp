@@ -17,6 +17,8 @@ import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
 import { getAiFormattingPriceCents } from "@/lib/env";
 import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
+import { readLeadPricingSummary } from "@/lib/lead-pricing";
+import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
 
 type SearchResultPageProps = {
   params: Promise<{ id: string }>;
@@ -68,6 +70,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   }
 
   const summary = getSearchSummary(search.data);
+  const pricingSummary = readLeadPricingSummary((search.data.query_payload as Record<string, unknown> | null)?.leadPricingSummary);
 
   let order: SearchAccessOrderRecord | null = null;
   let orderErrorMessage = "";
@@ -170,16 +173,18 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
             <>
               <div className="grid-2">
                 <div className="surface-soft card stack">
-                  <span className="kicker">CNPJs encontrados</span>
+                  <span className="kicker">Leads encontrados</span>
                   <strong style={{ fontSize: "2rem" }}>{order.result_count}</strong>
                   <span className="muted">Quantidade pronta para desbloqueio.</span>
                 </div>
                 <div className="surface-soft card stack">
                   <span className="kicker">Total</span>
                   <strong style={{ fontSize: "2rem" }}>{formatMoney(order.total_amount_cents / 100)}</strong>
-                  <span className="muted">{formatMoney(order.unit_amount_cents / 100)} por CNPJ encontrado.</span>
+                  <span className="muted">Cobrança automática por tipo de lead encontrado.</span>
                 </div>
               </div>
+
+              {pricingSummary ? <LeadPricingBreakdown summary={pricingSummary} /> : null}
 
               <div className="notice">
                 {orderUnlocked
