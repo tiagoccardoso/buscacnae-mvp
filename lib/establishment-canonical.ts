@@ -12,6 +12,51 @@ function asCleanString(value: unknown): string | null {
   return null;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function cloneUnknown(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneUnknown(item));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [key, cloneUnknown(nested)])
+    );
+  }
+  return value;
+}
+
+function mergeUnknownObjects(base: unknown, overlay: unknown): unknown {
+  const baseRecord = asRecord(base);
+  const overlayRecord = asRecord(overlay);
+
+  if (!baseRecord && !overlayRecord) {
+    return overlay ?? base;
+  }
+
+  if (!baseRecord) return cloneUnknown(overlayRecord);
+  if (!overlayRecord) return cloneUnknown(baseRecord);
+
+  const result: Record<string, unknown> = { ...cloneUnknown(baseRecord) as Record<string, unknown> };
+
+  for (const [key, overlayValue] of Object.entries(overlayRecord)) {
+    const baseValue = result[key];
+    const merged = mergeUnknownObjects(baseValue, overlayValue);
+    result[key] = merged ?? cloneUnknown(overlayValue);
+  }
+
+  return result;
+}
+
+function pickPreferred<T>(primary: T | null | undefined, fallback: T | null | undefined): T | null {
+  if (primary !== null && primary !== undefined) return primary;
+  if (fallback !== null && fallback !== undefined) return fallback;
+  return null;
+}
+
 function parseBooleanLike(value: unknown): boolean | null {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") {
@@ -102,6 +147,25 @@ export type CanonicalEstablishment = {
   openedYear: number | null;
 };
 
+export function mergeProviderPayloads(base: unknown, overlay: unknown) {
+  return mergeUnknownObjects(base, overlay);
+}
+
+export function mergeEstablishmentSources(
+  base: Record<string, unknown>,
+  overlay: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
+  if (!overlay) return { ...base };
+
+  const mergedProviderPayload = mergeProviderPayloads(base.provider_payload, overlay.provider_payload);
+
+  return {
+    ...base,
+    ...overlay,
+    provider_payload: mergedProviderPayload,
+  };
+}
+
 export function canonicalizeEstablishment(source: Record<string, unknown>): CanonicalEstablishment {
   const display = buildDisplayEstablishment(source);
   const email = asCleanString(display.email);
@@ -186,6 +250,47 @@ export function hydrateNormalizedEstablishment(row: NormalizedEstablishment): No
     cityName: canonical.cityName ?? row.cityName ?? null,
     neighborhood: canonical.neighborhood ?? row.neighborhood ?? null,
     addressLine: canonical.addressLine,
+  };
+}
+
+export function mergeNormalizedEstablishments(
+  primary: NormalizedEstablishment,
+  secondary: NormalizedEstablishment
+): NormalizedEstablishment {
+  const hydratedPrimary = hydrateNormalizedEstablishment(primary);
+  const hydratedSecondary = hydrateNormalizedEstablishment(secondary);
+  const primaryCanonical = canonicalizeEstablishment(normalizedToPresenterSource(hydratedPrimary));
+  const secondaryCanonical = canonicalizeEstablishment(normalizedToPresenterSource(hydratedSecondary));
+
+  return {
+    cnpj: primary.cnpj || secondary.cnpj,
+    cnpjRoot: pickPreferred(hydratedPrimary.cnpjRoot, hydratedSecondary.cnpjRoot),
+    companyName: pickPreferred(primaryCanonical.companyName, secondaryCanonical.companyName) ?? hydratedPrimary.companyName ?? hydratedSecondary.companyName ?? "Sem razão social",
+    tradeName: pickPreferred(primaryCanonical.tradeName, secondaryCanonical.tradeName),
+    registrationStatus: pickPreferred(primaryCanonical.registrationStatus, secondaryCanonical.registrationStatus),
+    openedAt: pickPreferred(primaryCanonical.display.opened_at as string | null, secondaryCanonical.display.opened_at as string | null),
+    primaryCnaeCode: pickPreferred(hydratedPrimary.primaryCnaeCode, hydratedSecondary.primaryCnaeCode),
+    primaryCnaeDescription: pickPreferred(hydratedPrimary.primaryCnaeDescription, hydratedSecondary.primaryCnaeDescription),
+    secondaryCnaes: hydratedPrimary.secondaryCnaes ?? hydratedSecondary.secondaryCnaes ?? null,
+    legalNatureCode: pickPreferred(hydratedPrimary.legalNatureCode, hydratedSecondary.legalNatureCode),
+    legalNatureDescription: pickPreferred(hydratedPrimary.legalNatureDescription, hydratedSecondary.legalNatureDescription),
+    companySize: pickPreferred(primaryCanonical.companySizeLabel, secondaryCanonical.companySizeLabel),
+    simplesOptIn: pickPreferred(primaryCanonical.simplesOptIn, secondaryCanonical.simplesOptIn),
+    meiOptIn: pickPreferred(hydratedPrimary.meiOptIn, hydratedSecondary.meiOptIn),
+    capitalSocial: pickPreferred(primaryCanonical.capitalSocialValue, secondaryCanonical.capitalSocialValue),
+    email: pickPreferred(primaryCanonical.email, secondaryCanonical.email),
+    phone: pickPreferred(primaryCanonical.phone, secondaryCanonical.phone),
+    website: pickPreferred(hydratedPrimary.website, hydratedSecondary.website),
+    country: pickPreferred(hydratedPrimary.country, hydratedSecondary.country),
+    stateCode: pickPreferred(primaryCanonical.stateCode, secondaryCanonical.stateCode),
+    cityName: pickPreferred(primaryCanonical.cityName, secondaryCanonical.cityName),
+    cityIbge: pickPreferred(hydratedPrimary.cityIbge, hydratedSecondary.cityIbge),
+    neighborhood: pickPreferred(primaryCanonical.neighborhood, secondaryCanonical.neighborhood),
+    cep: pickPreferred(hydratedPrimary.cep, hydratedSecondary.cep),
+    addressLine: pickPreferred(primaryCanonical.addressLine, secondaryCanonical.addressLine),
+    addressNumber: pickPreferred(hydratedPrimary.addressNumber, hydratedSecondary.addressNumber),
+    complement: pickPreferred(hydratedPrimary.complement, hydratedSecondary.complement),
+    providerPayload: mergeProviderPayloads(hydratedPrimary.providerPayload, hydratedSecondary.providerPayload),
   };
 }
 

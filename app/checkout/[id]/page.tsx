@@ -6,7 +6,7 @@ import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
 import { getSearchSummary } from "@/lib/search-summary";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatCnpj, formatMoney } from "@/lib/format";
-import { canonicalizeEstablishment } from "@/lib/establishment-canonical";
+import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
 import { extractSingleObject } from "@/lib/utils";
 
 type CheckoutPageProps = {
@@ -38,7 +38,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
 
   const { data: rows } = await admin
     .from("search_results")
-    .select("position, establishments(*)")
+    .select("position, provider_payload, establishments(*)")
     .eq("search_query_id", currentOrder.search_query_id)
     .order("position", { ascending: true })
     .limit(6);
@@ -46,7 +46,9 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   const previewItems = (rows ?? [])
     .map((row) => {
       const establishment = extractSingleObject(row.establishments);
-      return establishment ? { position: row.position, canonical: canonicalizeEstablishment(establishment) } : null;
+      if (!establishment) return null;
+      const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
+      return { position: row.position, canonical: canonicalizeEstablishment(mergedEstablishment) };
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
 

@@ -9,7 +9,7 @@ import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
 import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
-import { canonicalizeEstablishment } from "@/lib/establishment-canonical";
+import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
 
 type OrderResultPageProps = {
   params: Promise<{ token: string }>;
@@ -40,7 +40,7 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
 
   const { data: rows } = await admin
     .from("search_results")
-    .select("position, establishment_id, establishments(*)")
+    .select("position, establishment_id, provider_payload, establishments(*)")
     .eq("search_query_id", currentOrder.search_query_id)
     .order("position", { ascending: true });
 
@@ -126,7 +126,8 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
                           const establishment = extractSingleObject(row.establishments);
                           if (!establishment) return null;
 
-                          const canonical = canonicalizeEstablishment(establishment);
+                          const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
+                          const canonical = canonicalizeEstablishment(mergedEstablishment);
 
                           return (
                             <Fragment key={String(row.establishment_id)}>
@@ -161,7 +162,7 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
                                   <details>
                                     <summary>Ver todos os campos consolidados</summary>
                                     <div style={{ marginTop: 16 }}>
-                                      <EstablishmentDetails establishment={establishment} />
+                                      <EstablishmentDetails establishment={mergedEstablishment} />
                                     </div>
                                   </details>
                                 </td>

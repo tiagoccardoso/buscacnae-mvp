@@ -1,5 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { hydrateNormalizedEstablishment, normalizeCompanySizeInput, canonicalizeEstablishment, normalizedToPresenterSource } from "@/lib/establishment-canonical";
+import { hydrateNormalizedEstablishment, normalizeCompanySizeInput, canonicalizeEstablishment, normalizedToPresenterSource, mergeNormalizedEstablishments } from "@/lib/establishment-canonical";
 import { getDiscoveryCacheTtlHours, getDiscoveryProvider, getMinimumCheckoutAmountCents } from "@/lib/env";
 import { DiscoverySearchInput, NormalizedEstablishment, ServiceResult } from "@/lib/types";
 import { normalizeCode, normalizeCnpj, normalizeText, sha256, toTitleCase } from "@/lib/utils";
@@ -160,6 +160,82 @@ async function fetchCitiesByState(stateCode: string): Promise<PublicCitySelectio
   }));
 }
 
+
+
+
+async function mergeRowsWithStoredEstablishments(rows: NormalizedEstablishment[]) {
+  if (rows.length === 0) return rows;
+
+  const admin = createSupabaseAdminClient();
+  const normalizedCnpjs = Array.from(new Set(rows.map((row) => normalizeCnpj(row.cnpj)).filter(Boolean)));
+
+  if (normalizedCnpjs.length === 0) return rows;
+
+  const { data: storedRows, error } = await admin
+    .from("establishments")
+    .select("cnpj, cnpj_root, company_name, trade_name, registration_status, opened_at, primary_cnae_code, primary_cnae_description, secondary_cnaes, legal_nature_code, legal_nature_description, company_size, simples_opt_in, mei_opt_in, capital_social, email, phone, website, country, state_code, city_name, city_ibge, neighborhood, cep, address_line, address_number, complement, provider_payload")
+    .in("cnpj", normalizedCnpjs);
+
+  if (error || !storedRows || storedRows.length === 0) {
+    return rows;
+  }
+
+  const storedByCnpj = new Map(
+    storedRows.map((row) => [
+      normalizeCnpj(String(row.cnpj ?? "")),
+      hydrateNormalizedEstablishment({
+        cnpj: normalizeCnpj(String(row.cnpj ?? "")),
+        cnpjRoot: typeof row.cnpj_root === "string" ? row.cnpj_root : null,
+        companyName: typeof row.company_name === "string" && row.company_name.trim() ? row.company_name : "Sem razão social",
+        tradeName: typeof row.trade_name === "string" ? row.trade_name : null,
+        registrationStatus: typeof row.registration_status === "string" ? row.registration_status : null,
+        openedAt: typeof row.opened_at === "string" ? row.opened_at : null,
+        primaryCnaeCode: typeof row.primary_cnae_code === "string" ? row.primary_cnae_code : null,
+        primaryCnaeDescription: typeof row.primary_cnae_description === "string" ? row.primary_cnae_description : null,
+        secondaryCnaes: row.secondary_cnaes ?? null,
+        legalNatureCode: typeof row.legal_nature_code === "string" ? row.legal_nature_code : null,
+        legalNatureDescription: typeof row.legal_nature_description === "string" ? row.legal_nature_description : null,
+        companySize: typeof row.company_size === "string" ? row.company_size : null,
+        simplesOptIn: typeof row.simples_opt_in === "boolean" ? row.simples_opt_in : null,
+        meiOptIn: typeof row.mei_opt_in === "boolean" ? row.mei_opt_in : null,
+        capitalSocial: typeof row.capital_social === "number" ? row.capital_social : row.capital_social as number | string | null,
+        email: typeof row.email === "string" ? row.email : null,
+        phone: typeof row.phone === "string" ? row.phone : null,
+        website: typeof row.website === "string" ? row.website : null,
+        country: typeof row.country === "string" ? row.country : null,
+        stateCode: typeof row.state_code === "string" ? row.state_code : null,
+        cityName: typeof row.city_name === "string" ? row.city_name : null,
+        cityIbge: typeof row.city_ibge === "string" ? row.city_ibge : null,
+        neighborhood: typeof row.neighborhood === "string" ? row.neighborhood : null,
+        cep: typeof row.cep === "string" ? row.cep : null,
+        addressLine: typeof row.address_line === "string" ? row.address_line : null,
+        addressNumber: typeof row.address_number === "string" ? row.address_number : null,
+        complement: typeof row.complement === "string" ? row.complement : null,
+        providerPayload: row.provider_payload ?? null
+      })
+    ])
+  );
+
+  return rows.map((row) => {
+    const normalizedCnpj = normalizeCnpj(row.cnpj);
+    const stored = storedByCnpj.get(normalizedCnpj);
+    return stored ? mergeNormalizedEstablishments(hydrateNormalizedEstablishment(row), stored) : row;
+  });
+}
+
+function dedupeNormalizedRows(rows: NormalizedEstablishment[]) {
+  const aggregated = new Map<string, NormalizedEstablishment>();
+
+  for (const row of rows) {
+    const normalizedCnpj = normalizeCnpj(row.cnpj);
+    if (!normalizedCnpj) continue;
+    const hydrated = hydrateNormalizedEstablishment({ ...row, cnpj: normalizedCnpj });
+    const existing = aggregated.get(normalizedCnpj);
+    aggregated.set(normalizedCnpj, existing ? mergeNormalizedEstablishments(existing, hydrated) : hydrated);
+  }
+
+  return Array.from(aggregated.values());
+}
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>) {
   if (items.length === 0) return [] as R[];
@@ -334,10 +410,21 @@ export async function prepareSearchOrder(
                 cnae: cnaeCode,
                 stateCode: target.stateCode,
                 cityName: target.cityName,
-                cityIbge: ""
+                cityIbge: "",
+                requireEmail: input.requireEmail,
+                requireAddress: input.requireAddress,
+                requirePhone: input.requirePhone,
+                mobileOnly: input.mobileOnly,
+                companySizes: input.companySizes,
+                simplesOnly: input.simplesOnly,
+                capitalSocialMin: input.capitalSocialMin,
+                capitalSocialMax: input.capitalSocialMax,
+                activityStartYear: input.activityStartYear
               });
 
-      const hydratedRows = providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row));
+      const hydratedRows = await mergeRowsWithStoredEstablishments(
+        dedupeNormalizedRows(providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row)))
+      );
 
       return provider === "casadosdados"
         ? applyPublicFilters(hydratedRows, input, {
@@ -351,12 +438,14 @@ export async function prepareSearchOrder(
     for (const filteredRows of searchResponses) {
       for (const row of filteredRows) {
         const normalizedCnpj = normalizeCnpj(row.cnpj);
-        if (!normalizedCnpj || aggregatedByCnpj.has(normalizedCnpj)) continue;
-        aggregatedByCnpj.set(normalizedCnpj, { ...row, cnpj: normalizedCnpj });
+        if (!normalizedCnpj) continue;
+        const hydratedRow = hydrateNormalizedEstablishment({ ...row, cnpj: normalizedCnpj });
+        const existing = aggregatedByCnpj.get(normalizedCnpj);
+        aggregatedByCnpj.set(normalizedCnpj, existing ? mergeNormalizedEstablishments(existing, hydratedRow) : hydratedRow);
       }
     }
 
-    const allRows = Array.from(aggregatedByCnpj.values());
+    const allRows = dedupeNormalizedRows(Array.from(aggregatedByCnpj.values()));
     const pricingSummary = buildLeadPricingSummary(
       allRows.map((row) => ({
         email: row.email,
@@ -587,7 +676,9 @@ export async function runDiscoverySearch(
     if (cached?.response_payload) {
       raw = cached.response_payload;
       normalizedRows = Array.isArray(cached.normalized_payload)
-        ? (cached.normalized_payload as typeof normalizedRows).map((row) => hydrateNormalizedEstablishment(row))
+        ? await mergeRowsWithStoredEstablishments(
+            dedupeNormalizedRows((cached.normalized_payload as typeof normalizedRows).map((row) => hydrateNormalizedEstablishment(row)))
+          )
         : [];
       cachedHit = true;
     } else {
@@ -599,7 +690,9 @@ export async function runDiscoverySearch(
             : await searchWithCnpjWs(normalizedInput);
 
       raw = providerResponse.raw;
-      normalizedRows = providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row));
+      normalizedRows = await mergeRowsWithStoredEstablishments(
+        dedupeNormalizedRows(providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row)))
+      );
 
       const expiresAt = new Date(now.getTime() + getDiscoveryCacheTtlHours() * 60 * 60 * 1000);
 
@@ -637,7 +730,7 @@ export async function runDiscoverySearch(
       activityStartYear: normalizedInput.activityStartYear
     });
 
-    const cleanRows = filteredRows
+    const cleanRows = dedupeNormalizedRows(filteredRows)
       .map((row) => ({
         ...row,
         cnpj: normalizeCnpj(row.cnpj)

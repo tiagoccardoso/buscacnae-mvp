@@ -19,7 +19,7 @@ import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
 import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
-import { canonicalizeEstablishment } from "@/lib/establishment-canonical";
+import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
 
 type SearchResultPageProps = {
   params: Promise<{ id: string }>;
@@ -95,7 +95,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
   const { data: rows } = await admin
     .from("search_results")
-    .select("position, establishment_id, establishments(*)")
+    .select("position, establishment_id, provider_payload, establishments(*)")
     .eq("search_query_id", id)
     .order("position", { ascending: true });
 
@@ -280,7 +280,8 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
               if (!establishment) return null;
 
               const establishmentId = String(establishment.id);
-              const canonical = canonicalizeEstablishment(establishment);
+              const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
+              const canonical = canonicalizeEstablishment(mergedEstablishment);
               const companyName = canonical.companyName ?? "-";
               const cnpj = canonical.cnpj ?? "";
               const cityName = canonical.cityName ?? "-";
