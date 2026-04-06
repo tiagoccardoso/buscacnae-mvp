@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { hydrateNormalizedEstablishment, normalizeCompanySizeInput, canonicalizeEstablishment, normalizedToPresenterSource } from "@/lib/establishment-canonical";
 import { getDiscoveryCacheTtlHours, getDiscoveryProvider, getMinimumCheckoutAmountCents } from "@/lib/env";
 import { DiscoverySearchInput, NormalizedEstablishment, ServiceResult } from "@/lib/types";
 import { normalizeCode, normalizeCnpj, normalizeText, sha256, toTitleCase } from "@/lib/utils";
@@ -38,23 +39,7 @@ type PrepareSearchOrderInput = {
 
 
 function normalizeCompanySizeLabel(value: string) {
-  return normalizeText(value)
-    .replace(/empresa/g, "")
-    .replace(/porte/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function canonicalizeCompanySize(value: string | null | undefined) {
-  const normalized = normalizeText(value ?? "");
-  if (!normalized) return null;
-  if (normalized.includes("micro") || normalized === "me") return "micro";
-  if (normalized.includes("pequeno") || normalized.includes("epp")) return "small";
-  if (normalized.includes("medio") || normalized.includes("médio")) return "medium";
-  if (normalized.includes("grande")) return "large";
-  if (normalized.includes("demais") || normalized.includes("outros")) return "other";
-  if (normalized.includes("nao informado") || normalized.includes("não informado")) return "unknown";
-  return normalizeCompanySizeLabel(value ?? "") || null;
+  return normalizeCompanySizeInput(value) ?? "";
 }
 
 function parseCapitalValue(value: unknown) {
@@ -208,7 +193,7 @@ function buildPublicFilterLabels(input: PrepareSearchOrderInput) {
   return labels;
 }
 
-function applyAdvancedFilters<
+function applyPublicFilters<
   T extends {
     email?: string | null;
     addressLine?: string | null;
@@ -221,44 +206,26 @@ function applyAdvancedFilters<
   }
 >(
   rows: T[],
-  input: Pick<
-    PrepareSearchOrderInput,
-    | "requireEmail"
-    | "requireAddress"
-    | "requirePhone"
-    | "mobileOnly"
-    | "companySizes"
-    | "simplesOnly"
-    | "capitalSocialMin"
-    | "capitalSocialMax"
-    | "activityStartYear"
-  >,
+  input: PrepareSearchOrderInput,
   options?: { skipEmail?: boolean; skipPhone?: boolean; skipMobileOnly?: boolean }
 ) {
   const normalizedSizes = input.companySizes
-    .map((item) => canonicalizeCompanySize(item) ?? normalizeCompanySizeLabel(item))
+    .map((item) => normalizeCompanySizeLabel(item))
     .filter(Boolean);
 
   return rows.filter((row) => {
-    const hasEmail = !!row.email?.trim();
-    const hasAddress = !!row.addressLine?.trim();
-    const hasPhone = !!row.phone?.trim();
-    const phone = row.phone?.trim() ?? "";
-    const digits = phone.replace(/\D/g, "");
-    const mobileLike = digits.length >= 10 && ["9", "8", "7"].includes(digits.slice(-9, -8) || digits.charAt(2));
-    const companySize = canonicalizeCompanySize(row.companySize) ?? normalizeCompanySizeLabel(row.companySize ?? "");
-    const capital = parseCapitalValue(row.capitalSocial);
+    const canonical = canonicalizeEstablishment(normalizedToPresenterSource(row as unknown as NormalizedEstablishment));
 
-    if (input.requireEmail && !options?.skipEmail && !hasEmail) return false;
-    if (input.requireAddress && !hasAddress) return false;
-    if (input.requirePhone && !options?.skipPhone && !hasPhone) return false;
-    if (input.mobileOnly && !options?.skipMobileOnly && !(hasPhone && mobileLike)) return false;
-    if (input.simplesOnly && row.simplesOptIn !== true) return false;
-    if (normalizedSizes.length > 0 && (!companySize || !normalizedSizes.includes(companySize))) return false;
-    if (input.capitalSocialMin !== null && (capital === null || capital < input.capitalSocialMin)) return false;
-    if (input.capitalSocialMax !== null && (capital === null || capital > input.capitalSocialMax)) return false;
+    if (input.requireEmail && !options?.skipEmail && !canonical.hasEmail) return false;
+    if (input.requireAddress && !canonical.hasAddress) return false;
+    if (input.requirePhone && !options?.skipPhone && !canonical.hasPhone) return false;
+    if (input.mobileOnly && !options?.skipMobileOnly && !(canonical.hasPhone && canonical.isMobilePhone)) return false;
+    if (input.simplesOnly && canonical.simplesOptIn !== true) return false;
+    if (normalizedSizes.length > 0 && (!canonical.companySizeCode || !normalizedSizes.includes(canonical.companySizeCode))) return false;
+    if (input.capitalSocialMin !== null && (canonical.capitalSocialValue === null || canonical.capitalSocialValue < input.capitalSocialMin)) return false;
+    if (input.capitalSocialMax !== null && (canonical.capitalSocialValue === null || canonical.capitalSocialValue > input.capitalSocialMax)) return false;
     if (input.activityStartYear !== null) {
-      const openedAtYear = parseOpenedAtYear(row.openedAt) ?? extractActivityStartYearFromPayload(row.providerPayload);
+      const openedAtYear = canonical.openedYear ?? extractActivityStartYearFromPayload(row.providerPayload);
       if (openedAtYear === null || openedAtYear < input.activityStartYear) return false;
     }
     return true;
@@ -348,12 +315,7 @@ export async function prepareSearchOrder(
               requireEmail: input.requireEmail,
               requireAddress: input.requireAddress,
               requirePhone: input.requirePhone,
-              mobileOnly: input.mobileOnly,
-              companySizes: input.companySizes,
-              simplesOnly: input.simplesOnly,
-              capitalSocialMin: input.capitalSocialMin,
-              capitalSocialMax: input.capitalSocialMax,
-              activityStartYear: input.activityStartYear
+              mobileOnly: input.mobileOnly
             })
           : provider === "hybrid"
             ? await searchWithHybrid({
@@ -365,37 +327,25 @@ export async function prepareSearchOrder(
                 requireEmail: input.requireEmail,
                 requireAddress: input.requireAddress,
                 requirePhone: input.requirePhone,
-                mobileOnly: input.mobileOnly,
-                companySizes: input.companySizes,
-                simplesOnly: input.simplesOnly,
-                capitalSocialMin: input.capitalSocialMin,
-                capitalSocialMax: input.capitalSocialMax,
-                activityStartYear: input.activityStartYear
+                mobileOnly: input.mobileOnly
               })
             : await searchWithCnpjWs({
                 profileId: input.profileId ?? "public",
                 cnae: cnaeCode,
                 stateCode: target.stateCode,
                 cityName: target.cityName,
-                cityIbge: "",
-                requireEmail: input.requireEmail,
-                requireAddress: input.requireAddress,
-                requirePhone: input.requirePhone,
-                mobileOnly: input.mobileOnly,
-                companySizes: input.companySizes,
-                simplesOnly: input.simplesOnly,
-                capitalSocialMin: input.capitalSocialMin,
-                capitalSocialMax: input.capitalSocialMax,
-                activityStartYear: input.activityStartYear
+                cityIbge: ""
               });
 
+      const hydratedRows = providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row));
+
       return provider === "casadosdados"
-        ? applyAdvancedFilters(providerResponse.normalized, input, {
+        ? applyPublicFilters(hydratedRows, input, {
             skipEmail: input.requireEmail,
             skipPhone: input.requirePhone,
             skipMobileOnly: input.mobileOnly
           })
-        : applyAdvancedFilters(providerResponse.normalized, input);
+        : applyPublicFilters(hydratedRows, input);
     });
 
     for (const filteredRows of searchResponses) {
@@ -576,7 +526,7 @@ function normalizeInput(input: DiscoverySearchInput) {
     requireAddress: input.requireAddress ?? false,
     requirePhone: input.requirePhone ?? false,
     mobileOnly: input.mobileOnly ?? false,
-    companySizes: Array.from(new Set((input.companySizes ?? []).map((item) => item.trim()).filter(Boolean))),
+    companySizes: input.companySizes ?? [],
     simplesOnly: input.simplesOnly ?? false,
     capitalSocialMin: input.capitalSocialMin ?? null,
     capitalSocialMax: input.capitalSocialMax ?? null,
@@ -637,7 +587,7 @@ export async function runDiscoverySearch(
     if (cached?.response_payload) {
       raw = cached.response_payload;
       normalizedRows = Array.isArray(cached.normalized_payload)
-        ? (cached.normalized_payload as typeof normalizedRows)
+        ? (cached.normalized_payload as typeof normalizedRows).map((row) => hydrateNormalizedEstablishment(row))
         : [];
       cachedHit = true;
     } else {
@@ -649,13 +599,7 @@ export async function runDiscoverySearch(
             : await searchWithCnpjWs(normalizedInput);
 
       raw = providerResponse.raw;
-      normalizedRows = applyAdvancedFilters(providerResponse.normalized, normalizedInput, provider === "casadosdados"
-        ? {
-            skipEmail: normalizedInput.requireEmail,
-            skipPhone: normalizedInput.requirePhone,
-            skipMobileOnly: normalizedInput.mobileOnly
-          }
-        : undefined);
+      normalizedRows = providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row));
 
       const expiresAt = new Date(now.getTime() + getDiscoveryCacheTtlHours() * 60 * 60 * 1000);
 
@@ -675,13 +619,23 @@ export async function runDiscoverySearch(
       );
     }
 
-    const filteredRows = applyAdvancedFilters(normalizedRows, normalizedInput, provider === "casadosdados"
-      ? {
-          skipEmail: normalizedInput.requireEmail,
-          skipPhone: normalizedInput.requirePhone,
-          skipMobileOnly: normalizedInput.mobileOnly
-        }
-      : undefined);
+    const filteredRows = applyPublicFilters(normalizedRows, {
+      profileId: normalizedInput.profileId ?? null,
+      email: "dashboard@local",
+      cnae: normalizedInput.cnae,
+      stateCode: normalizedInput.stateCode,
+      citySelection: JSON.stringify([{ cityName: normalizedInput.cityName, stateCode: normalizedInput.stateCode }]),
+      stateWide: false,
+      requireEmail: input.requireEmail ?? false,
+      requireAddress: input.requireAddress ?? false,
+      requirePhone: input.requirePhone ?? false,
+      mobileOnly: input.mobileOnly ?? false,
+      companySizes: normalizedInput.companySizes,
+      simplesOnly: normalizedInput.simplesOnly,
+      capitalSocialMin: normalizedInput.capitalSocialMin,
+      capitalSocialMax: normalizedInput.capitalSocialMax,
+      activityStartYear: normalizedInput.activityStartYear
+    });
 
     const cleanRows = filteredRows
       .map((row) => ({

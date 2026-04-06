@@ -9,6 +9,7 @@ import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
 import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
+import { canonicalizeEstablishment } from "@/lib/establishment-canonical";
 
 type OrderResultPageProps = {
   params: Promise<{ token: string }>;
@@ -125,33 +126,35 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
                           const establishment = extractSingleObject(row.establishments);
                           if (!establishment) return null;
 
+                          const canonical = canonicalizeEstablishment(establishment);
+
                           return (
                             <Fragment key={String(row.establishment_id)}>
                               <tr key={String(row.establishment_id)}>
                                 <td>{row.position}</td>
                                 <td>
                                   <div className="stack" style={{ gap: 6 }}>
-                                    <strong>{String(establishment.company_name ?? "-")}</strong>
-                                    <span className="muted">{String(establishment.trade_name ?? "")}</span>
+                                    <strong>{canonical.companyName ?? "-"}</strong>
+                                    <span className="muted">{canonical.tradeName ?? "-"}</span>
                                   </div>
                                 </td>
-                                <td>{formatCnpj(String(establishment.cnpj ?? ""))}</td>
+                                <td>{formatCnpj(canonical.cnpj ?? "")}</td>
                                 <td>
-                                  {String(establishment.city_name ?? "-")}/{String(establishment.state_code ?? "-")}
-                                </td>
-                                <td>
-                                  <div className="stack" style={{ gap: 6 }}>
-                                    <span className="muted">{String(establishment.phone ?? "-")}</span>
-                                    <span className="muted">{String(establishment.email ?? "-")}</span>
-                                  </div>
+                                  {(canonical.cityName ?? "-")}/{(canonical.stateCode ?? "-")}
                                 </td>
                                 <td>
                                   <div className="stack" style={{ gap: 6 }}>
-                                    <span className="muted">{String(establishment.address_line ?? "-")}</span>
-                                    <span className="muted">{String(establishment.neighborhood ?? "-")}</span>
+                                    <span className="muted">{canonical.phone ?? "-"}</span>
+                                    <span className="muted">{canonical.email ?? "-"}</span>
                                   </div>
                                 </td>
-                                <td>{String(establishment.registration_status ?? "-")}</td>
+                                <td>
+                                  <div className="stack" style={{ gap: 6 }}>
+                                    <span className="muted">{canonical.addressLine ?? "-"}</span>
+                                    <span className="muted">{canonical.neighborhood ?? "-"}</span>
+                                  </div>
+                                </td>
+                                <td>{canonical.registrationStatus ?? "-"}</td>
                               </tr>
                               <tr key={`${String(row.establishment_id)}-details`}>
                                 <td colSpan={7}>
