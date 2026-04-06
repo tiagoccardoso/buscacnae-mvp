@@ -11,6 +11,41 @@ import {
   toTitleCase
 } from "@/lib/utils";
 
+
+function mapCasaDosDadosCompanySizes(values: string[] | undefined) {
+  if (!values || values.length === 0) return [] as string[];
+
+  const mapped = values.map((value) => {
+    const normalized = value
+      .trim()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase();
+
+    if (normalized.includes("micro")) return "MICRO EMPRESA";
+    if (normalized.includes("pequeno")) return "EMPRESA DE PEQUENO PORTE";
+    if (normalized.includes("medio")) return "MEDIO PORTE";
+    if (normalized.includes("grande")) return "GRANDE PORTE";
+    if (normalized.includes("demais")) return "DEMAIS";
+    return value.trim().toUpperCase();
+  }).filter(Boolean);
+
+  return Array.from(new Set(mapped));
+}
+
+function buildCasaDosDadosDateRange(year: number | null | undefined) {
+  if (!year || !Number.isInteger(year)) return null;
+  return { data_minima: `${year}-01-01` };
+}
+
+function buildCasaDosDadosCapitalRange(min: number | null | undefined, max: number | null | undefined) {
+  if (min === null && max === null) return null;
+  const range: Record<string, number> = {};
+  if (typeof min === "number" && Number.isFinite(min)) range.valor_minimo = min;
+  if (typeof max === "number" && Number.isFinite(max)) range.valor_maximo = max;
+  return Object.keys(range).length > 0 ? range : null;
+}
+
 function coalesceText(...values: unknown[]) {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -216,6 +251,25 @@ export async function searchWithCasaDosDados(
 
   if (Object.keys(moreFilters).length > 0) {
     body.mais_filtros = moreFilters;
+  }
+
+  const companySizes = mapCasaDosDadosCompanySizes(input.companySizes);
+  if (companySizes.length > 0) {
+    body.porte_empresa = companySizes;
+  }
+
+  if (input.simplesOnly) {
+    body.simples = true;
+  }
+
+  const capitalRange = buildCasaDosDadosCapitalRange(input.capitalSocialMin ?? null, input.capitalSocialMax ?? null);
+  if (capitalRange) {
+    body.capital_social = capitalRange;
+  }
+
+  const openedAtRange = buildCasaDosDadosDateRange(input.activityStartYear ?? null);
+  if (openedAtRange) {
+    body.data_abertura = openedAtRange;
   }
 
   const response = await fetch("https://api.casadosdados.com.br/v5/cnpj/pesquisa", {

@@ -742,7 +742,7 @@ export function SearchFilterBuilder({
             </label>
           </div>
 
-          <div className="grid-2" style={{ marginTop: 14, alignItems: "end", gridTemplateColumns: "minmax(0, max-content) minmax(0, 1fr)", gap: 12 }}>
+          <div className="grid-2" style={{ marginTop: 14, alignItems: "start", gridTemplateColumns: "minmax(0, max-content) minmax(0, 1fr)", gap: 12 }}>
             <div className="field" style={{ marginTop: 0, width: "fit-content" }}>
               <label htmlFor="activityStartYear">Ano mínimo de início da atividade</label>
               <input
@@ -751,7 +751,7 @@ export function SearchFilterBuilder({
                 type="number"
                 inputMode="numeric"
                 className="input input-premium"
-                placeholder="2024"
+                placeholder="2025"
                 min="1900"
                 max={new Date().getFullYear()}
                 value={activityStartYear}
@@ -759,9 +759,11 @@ export function SearchFilterBuilder({
                 style={{ width: "9ch", minWidth: 0 }}
               />
             </div>
-            <span className="tiny" style={{ alignSelf: "center" }}>
-              Informe um ano mínimo. Ex.: 2024 busca empresas de 2024 em diante.
-            </span>
+            <div style={{ display: "flex", alignItems: "center", minHeight: 52, paddingTop: 34 }}>
+              <span className="tiny">
+                Informe um ano mínimo. Ex.: 2025 busca empresas de 2025 em diante.
+              </span>
+            </div>
           </div>
 
           <div className="field" style={{ marginTop: 14 }}>

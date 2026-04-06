@@ -45,6 +45,18 @@ function normalizeCompanySizeLabel(value: string) {
     .trim();
 }
 
+function canonicalizeCompanySize(value: string | null | undefined) {
+  const normalized = normalizeText(value ?? "");
+  if (!normalized) return null;
+  if (normalized.includes("micro") || normalized === "me") return "micro";
+  if (normalized.includes("pequeno") || normalized.includes("epp")) return "small";
+  if (normalized.includes("medio") || normalized.includes("médio")) return "medium";
+  if (normalized.includes("grande")) return "large";
+  if (normalized.includes("demais") || normalized.includes("outros")) return "other";
+  if (normalized.includes("nao informado") || normalized.includes("não informado")) return "unknown";
+  return normalizeCompanySizeLabel(value ?? "") || null;
+}
+
 function parseCapitalValue(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
@@ -196,7 +208,7 @@ function buildPublicFilterLabels(input: PrepareSearchOrderInput) {
   return labels;
 }
 
-function applyPublicFilters<
+function applyAdvancedFilters<
   T extends {
     email?: string | null;
     addressLine?: string | null;
@@ -209,10 +221,23 @@ function applyPublicFilters<
   }
 >(
   rows: T[],
-  input: PrepareSearchOrderInput,
+  input: Pick<
+    PrepareSearchOrderInput,
+    | "requireEmail"
+    | "requireAddress"
+    | "requirePhone"
+    | "mobileOnly"
+    | "companySizes"
+    | "simplesOnly"
+    | "capitalSocialMin"
+    | "capitalSocialMax"
+    | "activityStartYear"
+  >,
   options?: { skipEmail?: boolean; skipPhone?: boolean; skipMobileOnly?: boolean }
 ) {
-  const normalizedSizes = input.companySizes.map((item) => normalizeCompanySizeLabel(item));
+  const normalizedSizes = input.companySizes
+    .map((item) => canonicalizeCompanySize(item) ?? normalizeCompanySizeLabel(item))
+    .filter(Boolean);
 
   return rows.filter((row) => {
     const hasEmail = !!row.email?.trim();
@@ -221,7 +246,7 @@ function applyPublicFilters<
     const phone = row.phone?.trim() ?? "";
     const digits = phone.replace(/\D/g, "");
     const mobileLike = digits.length >= 10 && ["9", "8", "7"].includes(digits.slice(-9, -8) || digits.charAt(2));
-    const companySize = normalizeCompanySizeLabel(row.companySize ?? "");
+    const companySize = canonicalizeCompanySize(row.companySize) ?? normalizeCompanySizeLabel(row.companySize ?? "");
     const capital = parseCapitalValue(row.capitalSocial);
 
     if (input.requireEmail && !options?.skipEmail && !hasEmail) return false;
@@ -229,7 +254,7 @@ function applyPublicFilters<
     if (input.requirePhone && !options?.skipPhone && !hasPhone) return false;
     if (input.mobileOnly && !options?.skipMobileOnly && !(hasPhone && mobileLike)) return false;
     if (input.simplesOnly && row.simplesOptIn !== true) return false;
-    if (normalizedSizes.length > 0 && (!companySize || !normalizedSizes.some((item) => companySize.includes(item)))) return false;
+    if (normalizedSizes.length > 0 && (!companySize || !normalizedSizes.includes(companySize))) return false;
     if (input.capitalSocialMin !== null && (capital === null || capital < input.capitalSocialMin)) return false;
     if (input.capitalSocialMax !== null && (capital === null || capital > input.capitalSocialMax)) return false;
     if (input.activityStartYear !== null) {
@@ -323,7 +348,12 @@ export async function prepareSearchOrder(
               requireEmail: input.requireEmail,
               requireAddress: input.requireAddress,
               requirePhone: input.requirePhone,
-              mobileOnly: input.mobileOnly
+              mobileOnly: input.mobileOnly,
+              companySizes: input.companySizes,
+              simplesOnly: input.simplesOnly,
+              capitalSocialMin: input.capitalSocialMin,
+              capitalSocialMax: input.capitalSocialMax,
+              activityStartYear: input.activityStartYear
             })
           : provider === "hybrid"
             ? await searchWithHybrid({
@@ -335,23 +365,37 @@ export async function prepareSearchOrder(
                 requireEmail: input.requireEmail,
                 requireAddress: input.requireAddress,
                 requirePhone: input.requirePhone,
-                mobileOnly: input.mobileOnly
+                mobileOnly: input.mobileOnly,
+                companySizes: input.companySizes,
+                simplesOnly: input.simplesOnly,
+                capitalSocialMin: input.capitalSocialMin,
+                capitalSocialMax: input.capitalSocialMax,
+                activityStartYear: input.activityStartYear
               })
             : await searchWithCnpjWs({
                 profileId: input.profileId ?? "public",
                 cnae: cnaeCode,
                 stateCode: target.stateCode,
                 cityName: target.cityName,
-                cityIbge: ""
+                cityIbge: "",
+                requireEmail: input.requireEmail,
+                requireAddress: input.requireAddress,
+                requirePhone: input.requirePhone,
+                mobileOnly: input.mobileOnly,
+                companySizes: input.companySizes,
+                simplesOnly: input.simplesOnly,
+                capitalSocialMin: input.capitalSocialMin,
+                capitalSocialMax: input.capitalSocialMax,
+                activityStartYear: input.activityStartYear
               });
 
       return provider === "casadosdados"
-        ? applyPublicFilters(providerResponse.normalized, input, {
+        ? applyAdvancedFilters(providerResponse.normalized, input, {
             skipEmail: input.requireEmail,
             skipPhone: input.requirePhone,
             skipMobileOnly: input.mobileOnly
           })
-        : applyPublicFilters(providerResponse.normalized, input);
+        : applyAdvancedFilters(providerResponse.normalized, input);
     });
 
     for (const filteredRows of searchResponses) {
@@ -528,7 +572,11 @@ function normalizeInput(input: DiscoverySearchInput) {
     stateCode: input.stateCode.trim().toUpperCase(),
     cityName: toTitleCase(normalizeText(input.cityName)),
     cityIbge: normalizeCode(input.cityIbge ?? ""),
-    companySizes: input.companySizes ?? [],
+    requireEmail: input.requireEmail ?? false,
+    requireAddress: input.requireAddress ?? false,
+    requirePhone: input.requirePhone ?? false,
+    mobileOnly: input.mobileOnly ?? false,
+    companySizes: Array.from(new Set((input.companySizes ?? []).map((item) => item.trim()).filter(Boolean))),
     simplesOnly: input.simplesOnly ?? false,
     capitalSocialMin: input.capitalSocialMin ?? null,
     capitalSocialMax: input.capitalSocialMax ?? null,
@@ -544,6 +592,10 @@ function buildCacheKey(input: ReturnType<typeof normalizeInput>, provider: strin
       stateCode: input.stateCode,
       cityName: input.cityName,
       cityIbge: input.cityIbge,
+      requireEmail: input.requireEmail,
+      requireAddress: input.requireAddress,
+      requirePhone: input.requirePhone,
+      mobileOnly: input.mobileOnly,
       companySizes: input.companySizes,
       simplesOnly: input.simplesOnly,
       capitalSocialMin: input.capitalSocialMin,
@@ -597,7 +649,13 @@ export async function runDiscoverySearch(
             : await searchWithCnpjWs(normalizedInput);
 
       raw = providerResponse.raw;
-      normalizedRows = providerResponse.normalized;
+      normalizedRows = applyAdvancedFilters(providerResponse.normalized, normalizedInput, provider === "casadosdados"
+        ? {
+            skipEmail: normalizedInput.requireEmail,
+            skipPhone: normalizedInput.requirePhone,
+            skipMobileOnly: normalizedInput.mobileOnly
+          }
+        : undefined);
 
       const expiresAt = new Date(now.getTime() + getDiscoveryCacheTtlHours() * 60 * 60 * 1000);
 
@@ -617,7 +675,15 @@ export async function runDiscoverySearch(
       );
     }
 
-    const cleanRows = normalizedRows
+    const filteredRows = applyAdvancedFilters(normalizedRows, normalizedInput, provider === "casadosdados"
+      ? {
+          skipEmail: normalizedInput.requireEmail,
+          skipPhone: normalizedInput.requirePhone,
+          skipMobileOnly: normalizedInput.mobileOnly
+        }
+      : undefined);
+
+    const cleanRows = filteredRows
       .map((row) => ({
         ...row,
         cnpj: normalizeCnpj(row.cnpj)

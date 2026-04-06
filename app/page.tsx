@@ -50,7 +50,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         <div className="hero-premium-copy surface-premium card-lg stack">
           <span className="eyebrow">Leads B2B por CNAE e região</span>
           <h1 className="display-title">
-            Monte sua lista de empresas e <span className="gradient-text">pague só pelo que a busca devolver</span>.
+            <span className="gradient-text">Inteligência comercial para uma prospecção mais precisa</span>.
           </h1>
           <p className="lead-copy">
             Selecione CNAEs, estados e cidades, aplique filtros de contato e veja <strong>quantidade, composição e valor total antes do checkout</strong>.

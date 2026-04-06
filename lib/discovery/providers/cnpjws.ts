@@ -12,6 +12,50 @@ import {
 } from "@/lib/utils";
 import { resolveCityIbge } from "./ibge";
 
+
+function buildActivityStartDate(year: number | null | undefined) {
+  if (!year || !Number.isInteger(year)) return null;
+  return `${year}-01-01`;
+}
+
+function mapCnpjWsCompanySizes(values: string[] | undefined) {
+  if (!values || values.length === 0) return [] as string[];
+
+  const mapped = values.map((value) => {
+    const normalized = value
+      .trim()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase();
+
+    if (normalized.includes("micro")) return "02";
+    if (normalized.includes("pequeno")) return "03";
+    if (normalized.includes("demais")) return "05";
+    return null;
+  }).filter((value): value is "02" | "03" | "05" => value !== null);
+
+  return Array.from(new Set(mapped));
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>) {
+  if (items.length === 0) return [] as R[];
+
+  const size = Math.max(1, Math.min(limit, items.length));
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+
+  async function run() {
+    while (cursor < items.length) {
+      const currentIndex = cursor;
+      cursor += 1;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: size }, () => run()));
+  return results;
+}
+
 function formatPhone(ddd: string | null, number: string | null) {
   const normalizedDdd = (ddd ?? "").replace(/\D/g, "");
   const normalizedNumber = (number ?? "").replace(/\D/g, "");
@@ -249,7 +293,7 @@ export async function fetchCnpjWsCompanyByCnpj(cnpj: string): Promise<{
 export async function searchWithCnpjWs(input: DiscoverySearchInput): Promise<DiscoverySearchOutput> {
   let cityIbge = input.cityIbge?.trim();
 
-  if (!cityIbge) {
+  if (!cityIbge && input.cityName && input.stateCode) {
     cityIbge = await resolveCityIbge({
       cityName: input.cityName,
       stateCode: input.stateCode
@@ -258,13 +302,26 @@ export async function searchWithCnpjWs(input: DiscoverySearchInput): Promise<Dis
 
   const params = new URLSearchParams({
     atividade_id: normalizeCode(input.cnae),
-    cidade_id: normalizeCode(cityIbge),
     situacao_cadastral: "ATIVA"
   });
 
+  if (cityIbge) {
+    params.set("cidade_id", normalizeCode(cityIbge));
+  }
+
   const maxResults = getDiscoveryMaxResults();
   if (maxResults > 0) {
-    params.set("limite", String(maxResults));
+    params.set("limite", String(Math.min(maxResults, 100)));
+  }
+
+  const mappedSizes = mapCnpjWsCompanySizes(input.companySizes);
+  if (mappedSizes.length === 1) {
+    params.set("porte_id", mappedSizes[0] ?? "");
+  }
+
+  const openedAtDate = buildActivityStartDate(input.activityStartYear ?? null);
+  if (openedAtDate) {
+    params.set("data_inicio_atividade_de", openedAtDate);
   }
 
   const response = await fetch(`https://comercial.cnpj.ws/v2/pesquisa?${params.toString()}`, {
@@ -281,11 +338,38 @@ export async function searchWithCnpjWs(input: DiscoverySearchInput): Promise<Dis
   }
 
   const raw = (await response.json()) as Record<string, unknown>;
-  const rows = coalesceArray(raw.registros, raw.itens, raw.data, raw.resultados, raw.empresas, raw) ?? [];
-
-  const normalized = rows
+  const rows = coalesceArray(raw.registros, raw.itens, raw.resultados, raw.empresas) ?? [];
+  const directNormalized = rows
     .map((item) => normalizeFromCnpjWs(item as Record<string, unknown>))
     .filter(Boolean) as NormalizedEstablishment[];
+
+  const cnpjList = Array.isArray(raw.data)
+    ? raw.data
+        .map((item) => typeof item === "string" ? normalizeCnpj(item) : "")
+        .filter(Boolean)
+    : [];
+
+  let normalized = directNormalized;
+
+  if (normalized.length === 0 && cnpjList.length > 0) {
+    const detailedRows = await mapWithConcurrency(cnpjList, 3, async (cnpj) => {
+      try {
+        const detail = await fetchCnpjWsCompanyByCnpj(cnpj);
+        if (!detail.normalized) return null;
+        return {
+          ...detail.normalized,
+          providerPayload: {
+            pesquisa: raw,
+            consulta_cnpj: detail.raw
+          }
+        } as NormalizedEstablishment;
+      } catch {
+        return null;
+      }
+    });
+
+    normalized = detailedRows.filter((item): item is NormalizedEstablishment => Boolean(item));
+  }
 
   return {
     provider: "cnpjws",
