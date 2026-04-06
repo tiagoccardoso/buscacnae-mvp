@@ -198,7 +198,14 @@ async function mergeRowsWithStoredEstablishments(rows: NormalizedEstablishment[]
         companySize: typeof row.company_size === "string" ? row.company_size : null,
         simplesOptIn: typeof row.simples_opt_in === "boolean" ? row.simples_opt_in : null,
         meiOptIn: typeof row.mei_opt_in === "boolean" ? row.mei_opt_in : null,
-        capitalSocial: typeof row.capital_social === "number" ? row.capital_social : row.capital_social as number | string | null,
+        capitalSocial:
+          typeof row.capital_social === "number"
+            ? row.capital_social
+            : typeof row.capital_social === "string"
+              ? Number.isFinite(Number(row.capital_social.replace(/[^\d,-.]/g, "").replace(/\.(?=.*\.)/g, "").replace(",", ".")))
+                ? Number(row.capital_social.replace(/[^\d,-.]/g, "").replace(/\.(?=.*\.)/g, "").replace(",", "."))
+                : null
+              : null,
         email: typeof row.email === "string" ? row.email : null,
         phone: typeof row.phone === "string" ? row.phone : null,
         website: typeof row.website === "string" ? row.website : null,
