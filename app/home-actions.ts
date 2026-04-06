@@ -69,5 +69,5 @@ export async function startPublicSearchAction(formData: FormData) {
     redirect(`/?error=${encodeURIComponent(result.error)}`);
   }
 
-  redirect(`/dashboard/search/${result.data.searchId}`);
+  redirect(`/checkout/${result.data.orderId}`);
 }

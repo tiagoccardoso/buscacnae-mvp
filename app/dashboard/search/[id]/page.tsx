@@ -13,7 +13,7 @@ import {
   type SearchAccessOrderRecord,
   type SearchAiFormatOrderRecord
 } from "@/lib/billing";
-import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime, formatMoney } from "@/lib/format";
 import { getAiFormattingPriceCents } from "@/lib/env";
 import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
@@ -43,6 +43,43 @@ function readAiFormatMessage(status: string) {
   }
 
   return null;
+}
+
+function buildLeadQualityLabel(establishment: Record<string, unknown>) {
+  const hasEmail = typeof establishment.email === "string" && establishment.email.trim().length > 0;
+  const hasPhone = typeof establishment.phone === "string" && establishment.phone.trim().length > 0;
+  const hasAddress = typeof establishment.address_line === "string" && establishment.address_line.trim().length > 0;
+
+  if (hasEmail && hasPhone && hasAddress) {
+    return { label: "Lead completo", tone: "success" } as const;
+  }
+
+  if (hasEmail) {
+    return { label: "Com e-mail", tone: "default" } as const;
+  }
+
+  if (hasPhone) {
+    return { label: "Com telefone", tone: "default" } as const;
+  }
+
+  return { label: "Cadastro básico", tone: "warning" } as const;
+}
+
+function buildAvailabilityBadges(establishment: Record<string, unknown>) {
+  return [
+    {
+      label: "Telefone",
+      available: typeof establishment.phone === "string" && establishment.phone.trim().length > 0
+    },
+    {
+      label: "E-mail",
+      available: typeof establishment.email === "string" && establishment.email.trim().length > 0
+    },
+    {
+      label: "Endereço",
+      available: typeof establishment.address_line === "string" && establishment.address_line.trim().length > 0
+    }
+  ];
 }
 
 export default async function SearchResultPage({ params, searchParams }: SearchResultPageProps) {
@@ -117,13 +154,24 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   }
 
   const aiFormatUnlocked = aiFormatOrder?.status === "paid";
+  const rowItems = (rows ?? [])
+    .map((row) => {
+      const establishment = extractSingleObject(row.establishments);
+      if (!establishment) return null;
+      return { row, establishment };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  const rowsWithPhone = rowItems.filter((item) => typeof item.establishment.phone === "string" && item.establishment.phone.trim().length > 0).length;
+  const rowsWithEmail = rowItems.filter((item) => typeof item.establishment.email === "string" && item.establishment.email.trim().length > 0).length;
+  const rowsWithAddress = rowItems.filter((item) => typeof item.establishment.address_line === "string" && item.establishment.address_line.trim().length > 0).length;
 
   return (
     <div className="stack">
       {aiFormatMessage ? <div className={`notice ${aiFormatMessage.type}`}>{aiFormatMessage.text}</div> : null}
 
-      <div className="panel-grid two">
-        <div className="surface-premium card-lg stack">
+      <div className="panel-grid two dashboard-result-grid">
+        <div className="surface-premium card-lg stack dashboard-result-summary-card">
           <div className="inline-actions" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
             <div className="stack" style={{ gap: 6 }}>
               <span className="eyebrow">Resultado da busca</span>
@@ -131,8 +179,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                 {summary.headline}
               </h2>
               <span className="muted">
-                {search.data.total_results} resultados · {search.data.cached ? "cache" : "consulta nova"} · {" "}
-                {formatDateTime(search.data.created_at)}
+                {search.data.total_results} resultados · {search.data.cached ? "cache" : "consulta nova"} · {formatDateTime(search.data.created_at)}
               </span>
             </div>
             <Link href="/dashboard/search" className="button-ghost">
@@ -140,18 +187,43 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
             </Link>
           </div>
 
-          <div className="stat-grid stat-grid-premium">
-            <div className="stat-box stat-box-premium">
+          <p className="section-copy">
+            Este resumo foi redesenhado para deixar a decisão de compra mais rápida: recorte, volume, qualidade do lote e rota de desbloqueio ficam visíveis na mesma área.
+          </p>
+
+          <div className="checkout-stat-grid dashboard-checkout-stat-grid">
+            <div className="checkout-stat-card">
+              <span className="kicker">Empresas retornadas</span>
               <strong>{search.data.total_results}</strong>
-              <span className="muted">Empresas retornadas</span>
+              <span className="muted">Volume total do lote encontrado.</span>
             </div>
-            <div className="stat-box stat-box-premium">
+            <div className="checkout-stat-card">
+              <span className="kicker">Com telefone</span>
+              <strong>{rowsWithPhone}</strong>
+              <span className="muted">Registros com contato telefônico disponível.</span>
+            </div>
+            <div className="checkout-stat-card">
+              <span className="kicker">Com e-mail</span>
+              <strong>{rowsWithEmail}</strong>
+              <span className="muted">Registros com e-mail disponível.</span>
+            </div>
+            <div className="checkout-stat-card">
+              <span className="kicker">Com endereço</span>
+              <strong>{rowsWithAddress}</strong>
+              <span className="muted">Registros com endereço preenchido.</span>
+            </div>
+          </div>
+
+          <div className="result-summary-grid">
+            <div className="result-summary-card">
+              <span className="kicker">CNAEs do recorte</span>
               <strong>{summary.cnaeText}</strong>
-              <span className="muted">CNAEs do recorte</span>
+              <span className="muted">A atividade econômica usada para montar esta busca.</span>
             </div>
-            <div className="stat-box stat-box-premium">
+            <div className="result-summary-card">
+              <span className="kicker">Abrangência geográfica</span>
               <strong>{summary.locationText}</strong>
-              <span className="muted">Abrangência geográfica</span>
+              <span className="muted">A área selecionada para a pesquisa comercial.</span>
             </div>
           </div>
 
@@ -166,56 +238,68 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
           ) : null}
         </div>
 
-        <div className="surface-premium card-lg stack">
+        <div className="surface-premium card-lg stack dashboard-result-offer-card">
           <span className="eyebrow">Compra da lista</span>
 
           {order ? (
             <>
-              <div className="grid-2">
-                <div className="surface-soft card stack">
+              <div className="checkout-stat-grid">
+                <div className="checkout-stat-card">
                   <span className="kicker">Leads encontrados</span>
-                  <strong style={{ fontSize: "2rem" }}>{order.result_count}</strong>
+                  <strong>{order.result_count}</strong>
                   <span className="muted">Quantidade pronta para desbloqueio.</span>
                 </div>
-                <div className="surface-soft card stack">
-                  <span className="kicker">Total</span>
-                  <strong style={{ fontSize: "2rem" }}>{formatMoney(order.total_amount_cents / 100)}</strong>
-                  <span className="muted">Cobrança automática por tipo de lead encontrado.</span>
+                <div className="checkout-stat-card">
+                  <span className="kicker">Total do lote</span>
+                  <strong>{formatMoney(order.total_amount_cents / 100)}</strong>
+                  <span className="muted">Cobrança calculada pela composição real dos contatos.</span>
                 </div>
               </div>
 
               {pricingSummary ? <LeadPricingBreakdown summary={pricingSummary} /> : null}
 
-              <div className="notice">
-                {orderUnlocked
-                  ? "Esta lista já está liberada. Você pode abrir a versão completa ou baixar o XLSX."
-                  : order.result_count === 0
-                    ? "Nenhum CNPJ foi encontrado nesta busca. O resultado fica disponível sem cobrança."
-                    : "A lista completa pode ser comprada agora, aproveitando a pesquisa já salva no Dashboard."}
-              </div>
+              <div className="checkout-action-panel">
+                <div className="stack" style={{ gap: 6 }}>
+                  <span className="kicker">Status da lista</span>
+                  <strong>
+                    {orderUnlocked
+                      ? "Lista já liberada"
+                      : order.result_count === 0
+                        ? "Resultado liberado sem cobrança"
+                        : "Lista pronta para compra"}
+                  </strong>
+                  <span className="muted">
+                    {orderUnlocked
+                      ? "Abra a lista completa ou faça o download do XLSX agora mesmo."
+                      : order.result_count === 0
+                        ? "Nenhum CNPJ foi encontrado nesta busca, então o resultado está disponível sem pagamento."
+                        : "Você já viu o volume e a composição do lote. Agora é só concluir o checkout para liberar a lista."}
+                  </span>
+                </div>
 
-              <div className="inline-actions">
-                {orderUnlocked ? (
-                  <>
+                <div className="inline-actions">
+                  {orderUnlocked ? (
+                    <>
+                      <Link href={`/orders/${order.access_token}`} className="button">
+                        Abrir lista liberada
+                      </Link>
+                      <Link href={`/orders/${order.access_token}/download`} className="button-ghost">
+                        Baixar XLSX
+                      </Link>
+                    </>
+                  ) : order.result_count === 0 ? (
                     <Link href={`/orders/${order.access_token}`} className="button">
-                      Abrir lista liberada
+                      Ver resultado vazio
                     </Link>
-                    <Link href={`/orders/${order.access_token}/download`} className="button-ghost">
-                      Baixar XLSX
+                  ) : (
+                    <Link href={`/checkout/${order.id}`} className="button button-lg">
+                      Revisar e pagar agora
                     </Link>
-                  </>
-                ) : order.result_count === 0 ? (
-                  <Link href={`/orders/${order.access_token}`} className="button">
-                    Ver resultado vazio
-                  </Link>
-                ) : (
-                  <Link href={`/checkout/${order.id}`} className="button">
-                    Comprar lista
-                  </Link>
-                )}
+                  )}
+                </div>
               </div>
 
-              {orderUnlocked && (rows?.length ?? 0) > 0 ? (
+              {orderUnlocked && (rowItems.length ?? 0) > 0 ? (
                 <div className="surface-soft card stack" style={{ marginTop: 12 }}>
                   <span className="eyebrow">Formatação com IA</span>
                   <div className="grid-2">
@@ -233,8 +317,8 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
                   <div className="notice">
                     {aiFormatUnlocked
-                      ? "A organização por IA desta lista já foi contratada. Ao clicar em um dos downloads, o sistema gera um XLSX estruturado com quatro abas e um PDF em formato de ficha cadastral, iniciando o arquivo automaticamente ao concluir."
-                      : "O botão só aparece depois da compra efetivada da lista. Ao contratar, esta lista recebe uma cobrança avulsa de R$ 10,00 para gerar um XLSX estruturado e um PDF legível por registro."}
+                      ? "A organização por IA desta lista já foi contratada. Ao clicar em um dos downloads, o sistema gera um XLSX estruturado com quatro abas e um PDF em formato de ficha cadastral."
+                      : "Ao contratar, esta lista recebe uma cobrança avulsa para gerar um XLSX estruturado e um PDF legível por registro."}
                   </div>
 
                   <div className="inline-actions">
@@ -244,7 +328,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                       <form action="/api/stripe/ai-format-checkout" method="POST">
                         <input type="hidden" name="searchId" value={id} />
                         <button type="submit" className="button">
-                          Formatar com IA por R$ 10,00
+                          Formatar com IA por {formatMoney(getAiFormattingPriceCents() / 100)}
                         </button>
                       </form>
                     )}
@@ -267,38 +351,77 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
         />
       ) : (
         <div className="surface-premium card-lg stack">
-          <div className="stack" style={{ gap: 8 }}>
-            <span className="eyebrow">Lista retornada</span>
-            <p className="section-copy">
-              Navegue pelos estabelecimentos encontrados, abra a ficha completa, salve os melhores no pipeline comercial ou avance para a compra da lista completa.
-            </p>
+          <div className="inline-actions" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div className="stack" style={{ gap: 8 }}>
+              <span className="eyebrow">Prévia operacional da lista</span>
+              <p className="section-copy">
+                O bloco abaixo foi reorganizado para facilitar a leitura comercial: posição, qualidade do lead, contexto geográfico e ações ficam visíveis sem abrir outra tela.
+              </p>
+            </div>
+            {!orderUnlocked && order && order.result_count > 0 ? (
+              <Link href={`/checkout/${order.id}`} className="button-ghost">
+                Ver checkout desta lista
+              </Link>
+            ) : null}
           </div>
-          <div className="result-card-grid">
-            {rows.map((row) => {
-              const establishment = extractSingleObject(row.establishments);
-              if (!establishment) return null;
 
+          <div className="result-card-grid">
+            {rowItems.map(({ row, establishment }) => {
               const establishmentId = String(establishment.id);
               const companyName = String(establishment.company_name ?? "-");
-              const cnpj = String(establishment.cnpj ?? "");
+              const tradeName = String(establishment.trade_name ?? "") || "Nome fantasia não informado";
               const cityName = String(establishment.city_name ?? "-");
               const stateCode = String(establishment.state_code ?? "-");
               const status = String(establishment.registration_status ?? "-");
+              const primaryCnae = String(establishment.primary_cnae_description ?? "") || "CNAE principal não informado";
+              const companySize = String(establishment.company_size ?? "") || "Porte não informado";
+              const quality = buildLeadQualityLabel(establishment);
+              const badges = buildAvailabilityBadges(establishment);
 
               return (
-                <article key={establishmentId} className="result-card-premium">
-                  <div className="result-card-index">#{row.position}</div>
+                <article key={establishmentId} className="result-card-premium result-card-commercial">
+                  <div className="inline-actions" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <span className="result-card-index">#{row.position}</span>
+                    <span className={`pill ${quality.tone === "success" ? "success" : quality.tone === "warning" ? "warning" : ""}`.trim()}>
+                      {quality.label}
+                    </span>
+                  </div>
+
                   <div className="stack" style={{ gap: 6 }}>
                     <strong className="result-card-title">{companyName}</strong>
-                    <span className="muted">{String(establishment.trade_name ?? "") || "Nome fantasia não informado"}</span>
+                    <span className="muted">{tradeName}</span>
                   </div>
-                  <div className="result-card-meta">
-                    <span><strong>CNPJ:</strong> {formatCnpj(cnpj)}</span>
-                    <span><strong>Cidade:</strong> {cityName}/{stateCode}</span>
-                    <span><strong>Status:</strong> {status}</span>
+
+                  <div className="result-card-meta-grid">
+                    <div className="result-meta-chip">
+                      <span className="kicker">Local</span>
+                      <strong>{cityName}/{stateCode}</strong>
+                    </div>
+                    <div className="result-meta-chip">
+                      <span className="kicker">Status</span>
+                      <strong>{status}</strong>
+                    </div>
+                    <div className="result-meta-chip">
+                      <span className="kicker">Porte</span>
+                      <strong>{companySize}</strong>
+                    </div>
                   </div>
+
+                  <div className="result-card-highlight">
+                    <span className="kicker">CNAE principal</span>
+                    <strong>{primaryCnae}</strong>
+                  </div>
+
+                  <div className="availability-badge-row">
+                    {badges.map((badge) => (
+                      <span key={badge.label} className={`availability-badge ${badge.available ? "is-available" : ""}`}>
+                        {badge.label}
+                      </span>
+                    ))}
+                  </div>
+
                   <div className="inline-actions result-card-actions">
-                    <Link href={`/dashboard/companies/${encodeURIComponent(cnpj)}`} className="button-ghost">
+                    <Link href={`/dashboard/companies/${encodeURIComponent(String(establishment.cnpj ?? ""))}`} className="button-ghost">
                       Ver ficha
                     </Link>
                     <LeadToggleForm establishmentId={establishmentId} isSaved={savedSet.has(establishmentId)} />
@@ -307,6 +430,21 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
               );
             })}
           </div>
+
+          {!orderUnlocked && order && order.result_count > 0 ? (
+            <div className="checkout-action-panel result-bottom-cta">
+              <div className="stack" style={{ gap: 6 }}>
+                <span className="kicker">Pronto para liberar?</span>
+                <strong>Revise o checkout e conclua a compra desta lista.</strong>
+                <span className="muted">O valor já está calculado pela composição do lote encontrado nesta busca.</span>
+              </div>
+              <div className="inline-actions">
+                <Link href={`/checkout/${order.id}`} className="button button-lg">
+                  Ir para o checkout
+                </Link>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

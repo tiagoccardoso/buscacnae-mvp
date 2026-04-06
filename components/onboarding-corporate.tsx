@@ -7,15 +7,15 @@ const onboardingSteps = [
   },
   {
     title: "Ative filtros de qualidade",
-    copy: "Refine para empresas com telefone, e-mail, endereço ou apenas celular quando fizer sentido."
+    copy: "Refine para empresas com telefone, e-mail, endereço, porte específico ou apenas celular quando fizer sentido."
   },
   {
-    title: "Pague só pelo resultado",
-    copy: "O valor é calculado pela quantidade encontrada, sem criar atrito de assinatura logo na entrada."
+    title: "Veja o lote antes da cobrança",
+    copy: "A etapa seguinte mostra quantidade encontrada, composição por categoria e valor total para facilitar a decisão."
   },
   {
-    title: "Acompanhe o histórico quando precisar",
-    copy: "Use o dashboard para revisar listas anteriores e organizar leads sem travar a primeira pesquisa."
+    title: "Libere e opere",
+    copy: "Depois do pagamento, a lista fica disponível online e pronta para download, enquanto o dashboard segue opcional para histórico."
   }
 ];
 
@@ -23,10 +23,10 @@ export function OnboardingCorporate() {
   return (
     <section className="surface-premium card-lg stack onboarding-shell">
       <div className="stack" style={{ gap: 8 }}>
-        <span className="eyebrow">Onboarding corporativo</span>
-        <h2 className="section-title">Um fluxo pensado para times comerciais entrarem em operação rápido.</h2>
+        <span className="eyebrow">Fluxo comercial</span>
+        <h2 className="section-title">Uma jornada feita para o usuário avançar da busca até a lista com segurança.</h2>
         <p className="section-copy">
-          A experiência conduz o usuário do primeiro filtro até a liberação da lista, mantendo clareza de preço e acesso opcional ao histórico.
+          O produto reduz a fricção da primeira compra mostrando valor, volume e preço no momento certo, sem obrigar o usuário a entrar no dashboard para concluir a pesquisa pública.
         </p>
       </div>
 
@@ -42,10 +42,10 @@ export function OnboardingCorporate() {
 
       <div className="inline-actions">
         <Link href="/" className="button">
-          Fazer primeira pesquisa
+          Fazer uma busca agora
         </Link>
         <Link href="/dashboard" className="button-ghost">
-          Ver dashboard
+          Ver dashboard opcional
         </Link>
       </div>
     </section>

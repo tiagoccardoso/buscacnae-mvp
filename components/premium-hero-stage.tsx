@@ -4,24 +4,24 @@ import { useState } from "react";
 
 const orbitCards = [
   {
-    eyebrow: "Escolha clara",
-    title: "Recorte comercial mais preciso",
-    copy: "A proposta da tela é ajudar você a combinar filtros com mais segurança antes de liberar a lista."
+    eyebrow: "Pré-decisão",
+    title: "Volume e valor aparecem antes da cobrança",
+    copy: "A jornada mostra quantidade encontrada e total do lote no momento em que o usuário decide se vale comprar."
   },
   {
-    eyebrow: "Leitura rápida",
-    title: "Volume fácil de entender",
-    copy: "Os elementos visuais ajudam a perceber rapidamente o tamanho da oportunidade encontrada."
+    eyebrow: "Preço claro",
+    title: "Cobrança proporcional ao que voltou na busca",
+    copy: "O lote é calculado pela composição real dos leads encontrados, não por uma promessa genérica de base."
   },
   {
-    eyebrow: "Preço transparente",
-    title: "Pagamento por resultado",
-    copy: "Você vê a quantidade encontrada antes de pagar e libera somente o que fizer sentido para a sua operação."
+    eyebrow: "Menos atrito",
+    title: "Primeira conversão sem depender do dashboard",
+    copy: "A pesquisa pública leva direto para a revisão do lote e depois para o checkout, sem exigir uma jornada paralela."
   },
   {
-    eyebrow: "Uso imediato",
-    title: "Pesquisa pronta para prospecção",
-    copy: "A navegação prioriza o que mais importa para o usuário: filtrar bem, entender o valor e acessar a lista."
+    eyebrow: "Entrega rápida",
+    title: "Lista pronta para operação comercial",
+    copy: "Após a confirmação do pagamento, a lista fica acessível online e pronta para download em XLSX."
   }
 ];
 
@@ -51,8 +51,8 @@ export function PremiumHeroStage() {
   return (
     <div className="hero-stage-shell surface-premium">
       <div className="hero-stage-topline">
-        <span className="badge-glow">Pesquisa orientada a resultado</span>
-        <span className="hero-stage-note">Escolha filtros, avalie o volume encontrado e avance para a lista com rapidez.</span>
+        <span className="badge-glow">Jornada orientada à compra</span>
+        <span className="hero-stage-note">Filtre melhor, veja a oportunidade antes de pagar e libere a lista sem desvio de fluxo.</span>
       </div>
 
       <div className="hero-stage-canvas hero-stage-canvas-network">
@@ -100,18 +100,18 @@ export function PremiumHeroStage() {
           aria-pressed={activePane === "main"}
         >
           <span className="eyebrow">Pesquisa comercial</span>
-          <strong>Encontre empresas com um recorte mais preciso para prospecção.</strong>
+          <strong>Transforme uma busca em uma decisão de compra mais rápida.</strong>
           <span className="muted">
-            Selecione CNAE e região, veja o volume encontrado e libere a lista somente quando o resultado fizer sentido.
+            Selecione CNAE e região, veja o lote encontrado e avance para o checkout só quando o resultado fizer sentido.
           </span>
           <div className="hero-kpi-strip">
             <div>
-              <span className="kicker">Recorte</span>
-              <strong>CNAE + região</strong>
+              <span className="kicker">Modelo</span>
+              <strong>Busca → prévia → checkout</strong>
             </div>
             <div>
-              <span className="kicker">Preço</span>
-              <strong>R$ 0,05 até R$ 0,20</strong>
+              <span className="kicker">Cobrança</span>
+              <strong>Avulsa por lote</strong>
             </div>
           </div>
         </button>
@@ -123,7 +123,7 @@ export function PremiumHeroStage() {
           onFocus={() => setActivePane("chart")}
           aria-pressed={activePane === "chart"}
         >
-          <span className="kicker">Estimativa de volume</span>
+          <span className="kicker">Prévia do lote</span>
           <div className="hero-mini-bars" aria-hidden="true">
             <span className="bar-delay-1" />
             <span className="bar-delay-2" />
@@ -131,7 +131,7 @@ export function PremiumHeroStage() {
             <span className="bar-delay-4" />
             <span className="bar-delay-5" />
           </div>
-          <span className="muted">Visual pronto para entender rapidamente o tamanho da oportunidade.</span>
+          <span className="muted">Volume e composição ficam legíveis antes da etapa de pagamento.</span>
         </button>
 
         <button
