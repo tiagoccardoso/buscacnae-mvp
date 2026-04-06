@@ -17,6 +17,9 @@ function readStatusMessage(status: string) {
   if (status === "item-excluido") return "Busca removida do histórico com sucesso.";
   if (status === "selecionadas-excluidas") return "As buscas selecionadas foram removidas do histórico.";
   if (status === "tudo-excluido") return "Todo o histórico de pesquisas foi excluído.";
+  if (status === "compra-multipla-sucesso") return "Pagamento confirmado. As listas selecionadas foram liberadas em uma única compra.";
+  if (status === "compra-multipla-cancelada") return "A compra em grupo foi cancelada antes da confirmação do pagamento.";
+  if (status === "listas-ja-liberadas") return "As buscas selecionadas já estavam liberadas e não exigem nova compra.";
   return "";
 }
 
@@ -27,6 +30,11 @@ function readErrorMessage(error: string) {
   if (error === "falha-excluir-item") return "Falha ao excluir o item do histórico.";
   if (error === "falha-excluir-selecionadas") return "Falha ao excluir as buscas selecionadas.";
   if (error === "falha-excluir-tudo") return "Falha ao excluir todo o histórico.";
+  if (error === "nada-selecionado-compra") return "Selecione ao menos uma busca para comprar em grupo.";
+  if (error === "busca-nao-encontrada-compra") return "Não foi possível localizar as buscas selecionadas para compra.";
+  if (error === "falha-checkout-multiplo") return "Não foi possível criar o checkout em grupo das listas selecionadas.";
+  if (error === "retorno-checkout-invalido") return "O retorno do checkout em grupo veio incompleto.";
+  if (error === "checkout-multiplo-nao-encontrado") return "Não foi possível localizar a compra em grupo realizada.";
   return "";
 }
 
@@ -87,14 +95,17 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
             Acompanhe volume, localidade, resultado e origem da consulta em uma tabela desenhada para leitura comercial.
           </p>
           <span className="muted">
-            {searches.length} registro(s) exibidos no histórico recente. Marque uma ou mais linhas para excluir em grupo.
+            {searches.length} registro(s) exibidos no histórico recente. Marque uma ou mais linhas para excluir ou comprar várias listas de uma só vez.
           </span>
         </div>
 
         <div className="history-toolbar-actions">
-          <form id="history-bulk-delete-form" action={deleteSelectedSearchHistoryAction}>
+          <form id="history-bulk-selection-form" action={deleteSelectedSearchHistoryAction}>
             <button type="submit" className="button-danger">
               Excluir selecionadas
+            </button>
+            <button type="submit" formAction="/api/stripe/history-bulk-checkout" formMethod="post" className="button">
+              Comprar selecionadas
             </button>
           </form>
           <form action={deleteAllSearchHistoryAction}>
@@ -126,7 +137,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                     type="checkbox"
                     name="searchIds"
                     value={search.id}
-                    form="history-bulk-delete-form"
+                    form="history-bulk-selection-form"
                     aria-label={`Selecionar busca ${search.cnae_code} em ${search.city_name}/${search.state_code}`}
                     className="history-checkbox"
                   />

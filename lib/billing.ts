@@ -50,12 +50,50 @@ export type SearchAiFormatOrderRecord = {
   updated_at: string;
 };
 
+export type SearchAccessBulkOrderRecord = {
+  id: string;
+  access_token: string;
+  profile_id: string | null;
+  email: string;
+  order_ids: unknown;
+  order_count: number;
+  total_amount_cents: number;
+  currency: string;
+  status: string;
+  stripe_customer_id: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  checkout_url: string | null;
+  paid_at: string | null;
+  unlocked_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 function isSearchAccessOrderUnlocked(status: string) {
   return status === "paid" || status === "free";
 }
 
 function isSearchAiFormatOrderUnlocked(status: string) {
   return status === "paid";
+}
+
+function isSearchAccessBulkOrderUnlocked(status: string) {
+  return status === "paid" || status === "free";
+}
+
+function normalizeOrderIdsPayload(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as string[];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter(Boolean)
+    )
+  );
 }
 
 async function registerWebhookEvent(eventId: string, type: string, payload: unknown) {
@@ -470,6 +508,238 @@ export async function markSearchAccessOrderPaymentFailed(args: {
   await query;
 }
 
+
+export async function getSearchAccessOrdersByIds(orderIds: string[]): Promise<SearchAccessOrderRecord[]> {
+  const normalizedIds = Array.from(new Set(orderIds.map((item) => item.trim()).filter(Boolean)));
+
+  if (normalizedIds.length === 0) {
+    return [];
+  }
+
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin.from("search_access_orders").select("*").in("id", normalizedIds);
+  return (data as SearchAccessOrderRecord[] | null) ?? [];
+}
+
+export async function markSearchAccessOrdersPaidByIds(args: {
+  orderIds: string[];
+  sessionId?: string | null;
+  paymentIntentId?: string | null;
+}) {
+  const orderIds = Array.from(new Set(args.orderIds.map((item) => item.trim()).filter(Boolean)));
+
+  if (orderIds.length === 0) {
+    return;
+  }
+
+  const admin = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+
+  await admin
+    .from("search_access_orders")
+    .update({
+      status: "paid",
+      stripe_payment_intent_id: args.paymentIntentId ?? null,
+      paid_at: now,
+      unlocked_at: now
+    })
+    .in("id", orderIds)
+    .neq("status", "free")
+    .neq("status", "paid");
+}
+
+export async function markSearchAccessOrdersPaymentFailedByIds(args: {
+  orderIds: string[];
+  paymentIntentId?: string | null;
+}) {
+  const orderIds = Array.from(new Set(args.orderIds.map((item) => item.trim()).filter(Boolean)));
+
+  if (orderIds.length === 0) {
+    return;
+  }
+
+  const admin = createSupabaseAdminClient();
+
+  await admin
+    .from("search_access_orders")
+    .update({
+      status: "failed",
+      stripe_payment_intent_id: args.paymentIntentId ?? null
+    })
+    .in("id", orderIds)
+    .neq("status", "free")
+    .neq("status", "paid");
+}
+
+export async function getSearchAccessBulkOrderById(orderId: string): Promise<SearchAccessBulkOrderRecord | null> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin.from("search_access_bulk_orders").select("*").eq("id", orderId).maybeSingle();
+  return (data as SearchAccessBulkOrderRecord | null) ?? null;
+}
+
+export async function getSearchAccessBulkOrderByCheckoutSessionId(sessionId: string): Promise<SearchAccessBulkOrderRecord | null> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin
+    .from("search_access_bulk_orders")
+    .select("*")
+    .eq("stripe_checkout_session_id", sessionId)
+    .maybeSingle();
+  return (data as SearchAccessBulkOrderRecord | null) ?? null;
+}
+
+export async function createSearchAccessBulkOrder(args: {
+  profileId?: string | null;
+  email?: string | null;
+  orders: SearchAccessOrderRecord[];
+}) {
+  const normalizedOrders = args.orders.filter((order) => !isSearchAccessOrderUnlocked(order.status) && order.total_amount_cents > 0);
+  if (normalizedOrders.length === 0) {
+    throw new Error("Não há listas pendentes para cobrança em grupo.");
+  }
+
+  const orderIds = normalizedOrders.map((order) => order.id);
+  const normalizedEmail = typeof args.email === "string" ? args.email.trim().toLowerCase() : "";
+  let resolvedEmail = normalizedEmail;
+  let resolvedProfileId = args.profileId ?? null;
+
+  if (!resolvedProfileId) {
+    resolvedProfileId = normalizedOrders.find((order) => typeof order.profile_id === "string" && order.profile_id.trim().length > 0)?.profile_id ?? null;
+  }
+
+  if (!resolvedEmail) {
+    resolvedEmail = normalizedOrders.find((order) => typeof order.email === "string" && order.email.trim().length > 0)?.email.trim().toLowerCase() ?? "";
+  }
+
+  if (!resolvedEmail) {
+    throw new Error("Não foi possível determinar o e-mail do checkout em grupo.");
+  }
+
+  const totalAmountCents = normalizedOrders.reduce((acc, order) => acc + Math.max(0, order.total_amount_cents), 0);
+  const accessToken = crypto.randomBytes(24).toString("hex");
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("search_access_bulk_orders")
+    .insert({
+      access_token: accessToken,
+      profile_id: resolvedProfileId,
+      email: resolvedEmail,
+      order_ids: orderIds,
+      order_count: orderIds.length,
+      total_amount_cents: totalAmountCents,
+      currency: "brl",
+      status: totalAmountCents > 0 ? "pending" : "free",
+      paid_at: totalAmountCents > 0 ? null : new Date().toISOString(),
+      unlocked_at: totalAmountCents > 0 ? null : new Date().toISOString()
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw error ?? new Error("Não foi possível criar o checkout em grupo.");
+  }
+
+  return data as SearchAccessBulkOrderRecord;
+}
+
+export async function markSearchAccessBulkOrderCheckoutCreated(args: {
+  orderId: string;
+  customerId?: string | null;
+  checkoutSessionId: string;
+  checkoutUrl?: string | null;
+}) {
+  const admin = createSupabaseAdminClient();
+  await admin
+    .from("search_access_bulk_orders")
+    .update({
+      stripe_customer_id: args.customerId ?? null,
+      stripe_checkout_session_id: args.checkoutSessionId,
+      checkout_url: args.checkoutUrl ?? null,
+      status: "pending"
+    })
+    .eq("id", args.orderId);
+}
+
+export async function markSearchAccessBulkOrderPaid(args: {
+  orderId?: string | null;
+  sessionId?: string | null;
+  paymentIntentId?: string | null;
+}) {
+  const admin = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+  let query = admin
+    .from("search_access_bulk_orders")
+    .update({
+      status: "paid",
+      stripe_payment_intent_id: args.paymentIntentId ?? null,
+      stripe_checkout_session_id: args.sessionId ?? null,
+      paid_at: now,
+      unlocked_at: now
+    })
+    .neq("status", "free")
+    .neq("status", "paid");
+
+  if (args.orderId) {
+    query = query.eq("id", args.orderId);
+  } else if (args.sessionId) {
+    query = query.eq("stripe_checkout_session_id", args.sessionId);
+  } else {
+    return;
+  }
+
+  await query;
+}
+
+export async function markSearchAccessBulkOrderPaymentFailed(args: {
+  orderId?: string | null;
+  sessionId?: string | null;
+  paymentIntentId?: string | null;
+}) {
+  const admin = createSupabaseAdminClient();
+  let query = admin
+    .from("search_access_bulk_orders")
+    .update({
+      status: "failed",
+      stripe_payment_intent_id: args.paymentIntentId ?? null,
+      stripe_checkout_session_id: args.sessionId ?? null
+    })
+    .neq("status", "free")
+    .neq("status", "paid");
+
+  if (args.orderId) {
+    query = query.eq("id", args.orderId);
+  } else if (args.sessionId) {
+    query = query.eq("stripe_checkout_session_id", args.sessionId);
+  } else {
+    return;
+  }
+
+  await query;
+}
+
+async function unlockSearchAccessBulkOrderFromCheckoutSession(session: Stripe.Checkout.Session) {
+  const bulkOrderId = typeof session.metadata?.bulk_order_id === "string" ? session.metadata.bulk_order_id : null;
+  const bulkOrder = bulkOrderId
+    ? await getSearchAccessBulkOrderById(bulkOrderId)
+    : await getSearchAccessBulkOrderByCheckoutSessionId(session.id);
+
+  if (!bulkOrder || isSearchAccessBulkOrderUnlocked(bulkOrder.status)) {
+    return;
+  }
+
+  const orderIds = normalizeOrderIdsPayload(bulkOrder.order_ids);
+
+  await markSearchAccessBulkOrderPaid({
+    orderId: bulkOrder.id,
+    sessionId: session.id,
+    paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+  });
+
+  await markSearchAccessOrdersPaidByIds({
+    orderIds,
+    sessionId: session.id,
+    paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+  });
+}
 export async function getSearchAiFormatOrderById(orderId: string): Promise<SearchAiFormatOrderRecord | null> {
   const admin = createSupabaseAdminClient();
   const { data } = await admin.from("search_ai_format_orders").select("*").eq("id", orderId).maybeSingle();
@@ -772,6 +1042,25 @@ async function failOrderFromCheckoutSession(session: Stripe.Checkout.Session, or
     return;
   }
 
+  if (orderType === "search_access_bundle") {
+    const bulkOrderId = typeof session.metadata?.bulk_order_id === "string" ? session.metadata.bulk_order_id : null;
+    const bulkOrder = bulkOrderId
+      ? await getSearchAccessBulkOrderById(bulkOrderId)
+      : await getSearchAccessBulkOrderByCheckoutSessionId(session.id);
+
+    await markSearchAccessBulkOrderPaymentFailed({
+      orderId: bulkOrder?.id ?? bulkOrderId,
+      sessionId: session.id,
+      paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+    });
+
+    await markSearchAccessOrdersPaymentFailedByIds({
+      orderIds: bulkOrder ? normalizeOrderIdsPayload(bulkOrder.order_ids) : [],
+      paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
+    });
+    return;
+  }
+
   await markSearchAccessOrderPaymentFailed({
     orderId: typeof session.metadata?.order_id === "string" ? session.metadata.order_id : null,
     sessionId: session.id,
@@ -793,6 +1082,8 @@ export async function handleStripeWebhook(event: Stripe.Event) {
       if (session.mode === "payment" && session.payment_status === "paid") {
         if (orderType === "search_ai_format") {
           await unlockSearchAiFormatOrderFromCheckoutSession(session);
+        } else if (orderType === "search_access_bundle") {
+          await unlockSearchAccessBulkOrderFromCheckoutSession(session);
         } else {
           await unlockSearchAccessOrderFromCheckoutSession(session);
         }
@@ -807,6 +1098,8 @@ export async function handleStripeWebhook(event: Stripe.Event) {
       }
       if (orderType === "search_ai_format") {
         await unlockSearchAiFormatOrderFromCheckoutSession(session);
+      } else if (orderType === "search_access_bundle") {
+        await unlockSearchAccessBulkOrderFromCheckoutSession(session);
       } else {
         await unlockSearchAccessOrderFromCheckoutSession(session);
       }
