@@ -299,9 +299,6 @@ export async function ensureSearchAccessOrderForSearch(args: {
     resolvedEmail = typeof profile?.email === "string" ? profile.email.trim().toLowerCase() : "";
   }
 
-  if (!resolvedEmail) {
-    throw new Error("Não foi possível determinar o e-mail do pedido comercial desta busca.");
-  }
 
   const pricing = getSearchAccessOrderPricing(resolvedTotalResults, resolvedPricingSummary);
 

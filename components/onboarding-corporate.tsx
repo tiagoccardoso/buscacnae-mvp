@@ -2,20 +2,28 @@ import Link from "next/link";
 
 const onboardingSteps = [
   {
-    title: "Defina o recorte do mercado",
-    copy: "Escolha CNAE, estado e cidade para aproximar a pesquisa do público que realmente interessa."
+    title: "Pesquise",
+    copy: "Escolha CNAE, estado e cidade para montar o recorte da lista."
   },
   {
-    title: "Ative filtros de qualidade",
-    copy: "Refine para empresas com telefone, e-mail, endereço, porte específico ou apenas celular quando fizer sentido."
+    title: "Refine",
+    copy: "Use filtros como telefone, e-mail, endereço, porte e Simples para deixar a lista mais útil."
   },
   {
-    title: "Veja o lote antes da cobrança",
-    copy: "A etapa seguinte mostra quantidade encontrada, composição por categoria e valor total para facilitar a decisão."
+    title: "Veja o volume",
+    copy: "A próxima tela mostra quantos estabelecimentos foram encontrados na busca."
   },
   {
-    title: "Libere e opere",
-    copy: "Depois do pagamento, a lista fica disponível online e pronta para download, enquanto o dashboard segue opcional para histórico."
+    title: "Veja o valor",
+    copy: "Você confere a composição da lista e o valor total antes de pagar."
+  },
+  {
+    title: "Compre",
+    copy: "Antes do checkout, informe seu e-mail e receba o magic link para acessar o dashboard."
+  },
+  {
+    title: "Opere",
+    copy: "Depois do pagamento, a lista fica disponível online e pronta para download."
   }
 ];
 
@@ -23,10 +31,10 @@ export function OnboardingCorporate() {
   return (
     <section className="surface-premium card-lg stack onboarding-shell">
       <div className="stack" style={{ gap: 8 }}>
-        <span className="eyebrow">Fluxo comercial</span>
-        <h2 className="section-title">Uma jornada feita para o usuário avançar da busca até a lista com segurança.</h2>
+        <span className="eyebrow">Passo a passo</span>
+        <h2 className="section-title">Uma jornada direta para gerar a lista com menos fricção.</h2>
         <p className="section-copy">
-          O produto reduz a fricção da primeira compra mostrando valor, volume e preço no momento certo, sem obrigar o usuário a entrar no dashboard para concluir a pesquisa pública.
+          O fluxo foi organizado para deixar a busca mais simples: você pesquisa primeiro, vê o volume e o valor, informa o e-mail no momento certo e segue para o checkout.
         </p>
       </div>
 
@@ -45,7 +53,7 @@ export function OnboardingCorporate() {
           Fazer uma busca agora
         </Link>
         <Link href="/dashboard" className="button-ghost">
-          Ver dashboard opcional
+          Ver histórico no dashboard
         </Link>
       </div>
     </section>

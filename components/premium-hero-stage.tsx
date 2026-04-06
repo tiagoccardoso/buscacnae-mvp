@@ -4,24 +4,24 @@ import { useState } from "react";
 
 const orbitCards = [
   {
-    eyebrow: "Pré-decisão",
-    title: "Volume e valor aparecem antes da cobrança",
-    copy: "A jornada mostra quantidade encontrada e total do lote no momento em que o usuário decide se vale comprar."
+    eyebrow: "Pesquise",
+    title: "Veja a lista antes de decidir a compra",
+    copy: "O fluxo mostra quantidade encontrada e valor do lote antes da cobrança."
   },
   {
-    eyebrow: "Preço claro",
-    title: "Cobrança proporcional ao que voltou na busca",
-    copy: "O lote é calculado pela composição real dos leads encontrados, não por uma promessa genérica de base."
+    eyebrow: "Refine",
+    title: "Ajuste o recorte com filtros úteis",
+    copy: "Telefone, e-mail, endereço e porte ajudam a deixar a lista mais próxima da operação real."
   },
   {
-    eyebrow: "Menos atrito",
-    title: "Primeira conversão sem depender do dashboard",
-    copy: "A pesquisa pública leva direto para a revisão do lote e depois para o checkout, sem exigir uma jornada paralela."
+    eyebrow: "Veja o valor",
+    title: "Preço calculado pelo que voltou na busca",
+    copy: "O lote é montado pela composição real dos leads encontrados."
   },
   {
-    eyebrow: "Entrega rápida",
-    title: "Lista pronta para operação comercial",
-    copy: "Após a confirmação do pagamento, a lista fica acessível online e pronta para download em XLSX."
+    eyebrow: "Opere",
+    title: "Lista pronta para uso depois do pagamento",
+    copy: "Após a confirmação, a lista fica acessível online e pronta para download em XLSX."
   }
 ];
 
@@ -51,8 +51,8 @@ export function PremiumHeroStage() {
   return (
     <div className="hero-stage-shell surface-premium">
       <div className="hero-stage-topline">
-        <span className="badge-glow">Jornada orientada à compra</span>
-        <span className="hero-stage-note">Filtre melhor, veja a oportunidade antes de pagar e libere a lista sem desvio de fluxo.</span>
+        <span className="badge-glow">Fluxo direto</span>
+        <span className="hero-stage-note">Pesquise, refine, veja o volume, veja o valor, compre e opere sem desvio.</span>
       </div>
 
       <div className="hero-stage-canvas hero-stage-canvas-network">
@@ -99,19 +99,19 @@ export function PremiumHeroStage() {
           onFocus={() => setActivePane("main")}
           aria-pressed={activePane === "main"}
         >
-          <span className="eyebrow">Pesquisa comercial</span>
+          <span className="eyebrow">Pesquise</span>
           <strong>Transforme uma busca em uma decisão de compra mais rápida.</strong>
           <span className="muted">
             Selecione CNAE e região, veja o lote encontrado e avance para o checkout só quando o resultado fizer sentido.
           </span>
           <div className="hero-kpi-strip">
             <div>
-              <span className="kicker">Modelo</span>
+              <span className="kicker">Fluxo</span>
               <strong>Busca → prévia → checkout</strong>
             </div>
             <div>
               <span className="kicker">Cobrança</span>
-              <strong>Avulsa por lote</strong>
+              <strong>Por lote</strong>
             </div>
           </div>
         </button>
@@ -123,7 +123,7 @@ export function PremiumHeroStage() {
           onFocus={() => setActivePane("chart")}
           aria-pressed={activePane === "chart"}
         >
-          <span className="kicker">Prévia do lote</span>
+          <span className="kicker">Veja o volume</span>
           <div className="hero-mini-bars" aria-hidden="true">
             <span className="bar-delay-1" />
             <span className="bar-delay-2" />
@@ -131,7 +131,7 @@ export function PremiumHeroStage() {
             <span className="bar-delay-4" />
             <span className="bar-delay-5" />
           </div>
-          <span className="muted">Volume e composição ficam legíveis antes da etapa de pagamento.</span>
+          <span className="muted">Quantidade e composição aparecem antes do pagamento.</span>
         </button>
 
         <button
@@ -141,7 +141,7 @@ export function PremiumHeroStage() {
           onFocus={() => setActivePane("curve")}
           aria-pressed={activePane === "curve"}
         >
-          <span className="kicker">Cobertura da pesquisa</span>
+          <span className="kicker">Refine</span>
           <svg viewBox="0 0 180 70" className="hero-curve-svg" aria-hidden="true">
             <path d="M4 58 C28 54, 36 30, 58 32 S92 64, 116 42 S150 10, 176 14" className="hero-curve-path" />
           </svg>

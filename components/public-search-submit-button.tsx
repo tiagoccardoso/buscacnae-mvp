@@ -7,7 +7,7 @@ export function PublicSearchSubmitButton() {
 
   return (
     <button type="submit" className="button button-lg" disabled={pending} aria-disabled={pending}>
-      {pending ? "Buscando empresas e calculando o lote..." : "Ver quantidade e valor da lista"}
+      {pending ? "Pesquisando e calculando o valor da lista..." : "Ver volume e valor da lista"}
     </button>
   );
 }

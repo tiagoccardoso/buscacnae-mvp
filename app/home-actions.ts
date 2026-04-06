@@ -41,8 +41,7 @@ export async function startPublicSearchAction(formData: FormData) {
     data: { user }
   } = await supabase.auth.getUser();
 
-  const emailInput = String(formData.get("email") ?? "").trim().toLowerCase();
-  const email = (user?.email ?? emailInput).trim().toLowerCase();
+  const email = String(user?.email ?? "").trim().toLowerCase();
 
   const result = await prepareSearchOrder({
     profileId: user?.id ?? null,

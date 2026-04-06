@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getBaseUrl } from "@/lib/env";
 import { createOneTimeCheckoutSession } from "@/lib/stripe";
 import {
@@ -12,13 +13,15 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const formData = await request.formData();
-  const orderId = String(formData.get("orderId") ?? "");
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const emailInput = String(formData.get("email") ?? "").trim().toLowerCase();
 
   if (!orderId) {
     return NextResponse.redirect(new URL("/?error=Pedido não informado.", getBaseUrl()), 303);
   }
 
   const supabase = await createSupabaseServerClient();
+  const admin = createSupabaseAdminClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -33,12 +36,31 @@ export async function POST(request: Request) {
     return NextResponse.redirect(new URL(`/orders/${order.access_token}`, getBaseUrl()), 303);
   }
 
+  const resolvedEmail = String(user?.email ?? emailInput ?? order.email ?? "").trim().toLowerCase();
+
+  if (!resolvedEmail) {
+    return NextResponse.redirect(
+      new URL(`/checkout/${order.id}?reason=${encodeURIComponent("Informe um e-mail válido antes de seguir para o checkout.")}`, getBaseUrl()),
+      303
+    );
+  }
+
+  if (order.email !== resolvedEmail || (user?.id && order.profile_id !== user.id)) {
+    await admin
+      .from("search_access_orders")
+      .update({
+        email: resolvedEmail,
+        profile_id: user?.id ?? order.profile_id
+      })
+      .eq("id", order.id);
+  }
+
   let stripeCustomerId: string | null = order.stripe_customer_id;
 
-  if (!stripeCustomerId && user?.id && user.email) {
+  if (!stripeCustomerId && user?.id && resolvedEmail) {
     stripeCustomerId = await ensureStripeCustomerForUser({
       userId: user.id,
-      email: user.email
+      email: resolvedEmail
     });
   }
 
@@ -51,7 +73,7 @@ export async function POST(request: Request) {
 
   const session = await createOneTimeCheckoutSession({
     customerId: stripeCustomerId,
-    customerEmail: order.email,
+    customerEmail: resolvedEmail || undefined,
     amountCents: order.total_amount_cents,
     currency: order.currency,
     orderId: order.id,

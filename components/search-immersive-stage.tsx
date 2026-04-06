@@ -35,10 +35,10 @@ export function SearchImmersiveStage() {
         onFocus={() => setActivePane("core")}
         aria-pressed={activePane === "core"}
       >
-        <span className="eyebrow">Monte sua pesquisa</span>
-        <strong>Crie um lote comercial em uma única tela.</strong>
+        <span className="eyebrow">Pesquise</span>
+        <strong>Monte a lista em uma única tela.</strong>
         <span className="muted">
-          Escolha CNAEs, estados e cidades com clareza e avance para a prévia do lote sem depender de outra jornada.
+          Escolha CNAEs, estados e cidades com clareza e avance para a prévia da lista sem depender de outra jornada.
         </span>
       </button>
 
@@ -49,8 +49,8 @@ export function SearchImmersiveStage() {
         onFocus={() => setActivePane("main")}
         aria-pressed={activePane === "main"}
       >
-        <span className="kicker">Recorte do mercado</span>
-        <strong>Combine filtros sem perder a visão do lote</strong>
+        <span className="kicker">Refine</span>
+        <strong>Combine filtros sem perder a visão da lista</strong>
         <span className="muted">Adicione quantos CNAEs, UFs e cidades fizer sentido para o público que você quer alcançar.</span>
       </button>
 

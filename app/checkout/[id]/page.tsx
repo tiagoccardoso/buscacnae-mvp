@@ -5,10 +5,12 @@ import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
 import { getSearchSummary } from "@/lib/search-summary";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatCnpj, formatMoney } from "@/lib/format";
 import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
 import { extractLeadContactSignals } from "@/lib/lead-pricing";
 import { extractSingleObject } from "@/lib/utils";
+import { prepareCheckoutIdentityAction } from "./actions";
 
 type CheckoutPageProps = {
   params: Promise<{ id: string }>;
@@ -20,6 +22,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const reason = typeof resolvedSearchParams.reason === "string" ? resolvedSearchParams.reason : "";
   const checkoutState = typeof resolvedSearchParams.checkout === "string" ? resolvedSearchParams.checkout : "";
+  const identityState = typeof resolvedSearchParams.identity === "string" ? resolvedSearchParams.identity : "";
   const order = await getSearchAccessOrderById(id);
 
   if (!order) {
@@ -27,6 +30,13 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   }
 
   const currentOrder = order as NonNullable<typeof order>;
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  const resolvedEmail = String(user?.email ?? currentOrder.email ?? "").trim().toLowerCase();
+  const needsEmailBeforeCheckout = currentOrder.status !== "paid" && currentOrder.status !== "free" && currentOrder.result_count > 0 && !resolvedEmail;
+
   const admin = createSupabaseAdminClient();
   const { data: search } = await admin
     .from("search_queries")
@@ -48,7 +58,11 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     .map((row) => {
       const establishment = extractSingleObject(row.establishments);
       if (!establishment) return null;
-      const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
+      const rowPayload = extractSingleObject(row.provider_payload);
+      const mergedEstablishment = mergeEstablishmentSources(establishment, {
+        ...(rowPayload ?? {}),
+        provider_payload: row.provider_payload
+      });
       const canonical = canonicalizeEstablishment(mergedEstablishment);
       const contactSignals = extractLeadContactSignals({
         email: canonical.email,
@@ -61,8 +75,8 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
 
   const previewSummary = previewItems.reduce(
     (acc, item) => {
-      if (item.contactSignals.hasEmail) acc.withEmail += 1;
-      if (item.contactSignals.hasPhone) acc.withPhone += 1;
+      if (item.contactSignals.hasEmail || item.canonical.hasEmail) acc.withEmail += 1;
+      if (item.contactSignals.hasPhone || item.canonical.hasPhone) acc.withPhone += 1;
       if (item.canonical.hasAddress) acc.withAddress += 1;
       return acc;
     },
@@ -73,27 +87,30 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     <main className="page">
       <section className="container" style={{ maxWidth: 860 }}>
         <div className="surface card stack">
-          <span className="eyebrow">Pagamento da pesquisa</span>
+          <span className="eyebrow">Checkout da pesquisa</span>
           <h1 className="section-title" style={{ fontSize: "2.1rem", marginBottom: 0 }}>
             {summary.headline}
           </h1>
           <p className="section-copy">
-            O acesso à lista completa fica disponível assim que o pagamento for confirmado.
+            Veja o volume, confirme o valor e libere a lista completa assim que o pagamento for aprovado.
           </p>
 
           {reason ? <div className="notice danger">{reason}</div> : null}
           {checkoutState === "cancelled" ? (
             <div className="notice warning">Checkout cancelado. Você pode tentar novamente.</div>
           ) : null}
+          {identityState === "sent" ? (
+            <div className="notice success">Enviamos o magic link para o seu e-mail. Você já pode seguir para o checkout e depois acessar o dashboard.</div>
+          ) : null}
 
           <div className="grid-2">
             <div className="surface-soft card stack">
-              <span className="kicker">Leads encontrados</span>
+              <span className="kicker">Volume encontrado</span>
               <strong style={{ fontSize: "2rem" }}>{currentOrder.result_count}</strong>
               <span className="muted">Lista pronta para desbloqueio.</span>
             </div>
             <div className="surface-soft card stack">
-              <span className="kicker">Total a pagar</span>
+              <span className="kicker">Valor da lista</span>
               <strong style={{ fontSize: "2rem" }}>{formatMoney(currentOrder.total_amount_cents / 100)}</strong>
               <span className="muted">Cobrança automática conforme o nível de contato de cada lead encontrado.</span>
             </div>
@@ -111,29 +128,34 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
                 </div>
                 <div className="stack" style={{ gap: 6 }}>
                   <span className="kicker">Leitura consolidada</span>
-                  <span className="muted">A amostra abaixo já usa a mesma consolidação da ficha cadastral completa.</span>
+                  <span className="muted">A amostra abaixo usa a mesma consolidação da ficha cadastral completa.</span>
                 </div>
               </div>
               <div className="result-card-grid">
-                {previewItems.map(({ position, canonical, contactSignals }) => (
-                  <article key={`${canonical.cnpj ?? position}`} className="result-card-premium">
-                    <div className="result-card-index">#{position}</div>
-                    <div className="stack" style={{ gap: 6 }}>
-                      <strong className="result-card-title">{canonical.companyName ?? "-"}</strong>
-                      <span className="muted">{canonical.tradeName ?? "Nome fantasia não informado"}</span>
-                    </div>
-                    <div className="result-card-meta">
-                      <span><strong>CNPJ:</strong> {formatCnpj(canonical.cnpj ?? "")}</span>
-                      <span><strong>Cidade:</strong> {(canonical.cityName ?? "-")}/{(canonical.stateCode ?? "-")}</span>
-                      <span><strong>Status:</strong> {canonical.registrationStatus ?? "-"}</span>
-                    </div>
-                    <div className="inline-list">
-                      <span className={`pill ${contactSignals.hasEmail ? "success" : "warning"}`}>{contactSignals.hasEmail ? "E-mail disponível" : "Sem e-mail"}</span>
-                      <span className={`pill ${contactSignals.hasPhone ? "success" : "warning"}`}>{contactSignals.hasPhone ? "Telefone disponível" : "Sem telefone"}</span>
-                      <span className={`pill ${canonical.hasAddress ? "success" : "warning"}`}>{canonical.hasAddress ? "Endereço disponível" : "Sem endereço"}</span>
-                    </div>
-                  </article>
-                ))}
+                {previewItems.map(({ position, canonical, contactSignals }) => {
+                  const hasEmail = contactSignals.hasEmail || canonical.hasEmail;
+                  const hasPhone = contactSignals.hasPhone || canonical.hasPhone;
+
+                  return (
+                    <article key={`${canonical.cnpj ?? position}`} className="result-card-premium">
+                      <div className="result-card-index">#{position}</div>
+                      <div className="stack" style={{ gap: 6 }}>
+                        <strong className="result-card-title">{canonical.companyName ?? "-"}</strong>
+                        <span className="muted">{canonical.tradeName ?? "Nome fantasia não informado"}</span>
+                      </div>
+                      <div className="result-card-meta">
+                        <span><strong>CNPJ:</strong> {formatCnpj(canonical.cnpj ?? "")}</span>
+                        <span><strong>Cidade:</strong> {(canonical.cityName ?? "-")}/{(canonical.stateCode ?? "-")}</span>
+                        <span><strong>Status:</strong> {canonical.registrationStatus ?? "-"}</span>
+                      </div>
+                      <div className="inline-list">
+                        <span className={`pill ${hasEmail ? "success" : "warning"}`}>{hasEmail ? "E-mail disponível" : "Sem e-mail"}</span>
+                        <span className={`pill ${hasPhone ? "success" : "warning"}`}>{hasPhone ? "Telefone disponível" : "Sem telefone"}</span>
+                        <span className={`pill ${canonical.hasAddress ? "success" : "warning"}`}>{canonical.hasAddress ? "Endereço disponível" : "Sem endereço"}</span>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             </div>
           ) : null}
@@ -153,9 +175,28 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
                 Ver resultado vazio
               </Link>
             </div>
+          ) : needsEmailBeforeCheckout ? (
+            <div className="surface-soft card stack">
+              <div className="stack" style={{ gap: 6 }}>
+                <span className="kicker">Antes do checkout</span>
+                <strong>Informe seu e-mail para continuar</strong>
+                <span className="muted">Vamos enviar o magic link para você acessar o dashboard e, na sequência, liberar o checkout.</span>
+              </div>
+              <form action={prepareCheckoutIdentityAction} className="stack">
+                <input type="hidden" name="orderId" value={currentOrder.id} />
+                <div className="field">
+                  <label htmlFor="checkout-email">E-mail para acesso e pagamento</label>
+                  <input id="checkout-email" name="email" type="email" className="input input-premium" placeholder="voce@empresa.com" required />
+                </div>
+                <button className="button full" type="submit">
+                  Receber magic link e continuar
+                </button>
+              </form>
+            </div>
           ) : (
             <form action="/api/stripe/checkout" method="POST" className="stack">
               <input type="hidden" name="orderId" value={currentOrder.id} />
+              {resolvedEmail ? <input type="hidden" name="email" value={resolvedEmail} /> : null}
               <button className="button full" type="submit">
                 Ir para o checkout
               </button>

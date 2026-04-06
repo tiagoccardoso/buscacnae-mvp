@@ -323,7 +323,7 @@ export async function prepareSearchOrder(
     const provider = getDiscoveryProvider();
     const email = input.email.trim().toLowerCase();
 
-    if (input.profileId) {
+    if (input.profileId && email) {
       const { error: profileError } = await admin.from("profiles").upsert(
         {
           id: input.profileId,
@@ -346,9 +346,6 @@ export async function prepareSearchOrder(
     );
     input.companySizes = Array.from(new Set(input.companySizes.map((item) => item.trim()).filter(Boolean)));
 
-    if (!email) {
-      return { ok: false, error: "Informe um email válido para receber o acesso da pesquisa." };
-    }
     if (cnaes.length === 0) {
       return { ok: false, error: "Selecione ao menos um CNAE." };
     }
@@ -496,7 +493,7 @@ export async function prepareSearchOrder(
         cityName: input.stateWide ? "Busca estadual" : "Brasil",
         stateCode: stateCodes[0] ?? "BR"
       };
-    const cacheKey = sha256(JSON.stringify({ provider, email, queryPayload }));
+    const cacheKey = sha256(JSON.stringify({ provider, queryPayload }));
 
     const { data: insertedSearch, error: searchError } = await admin
       .from("search_queries")

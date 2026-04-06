@@ -12,27 +12,39 @@ type HomePageProps = {
 
 const journeySteps = [
   {
-    title: "Defina o recorte ideal",
-    copy: "Selecione CNAEs, estados e cidades e aplique filtros como telefone, e-mail, endereço, porte e Simples Nacional."
+    title: "Pesquise",
+    copy: "Selecione CNAEs, estados e cidades para montar o recorte inicial da sua lista."
   },
   {
-    title: "Veja a oportunidade antes de pagar",
-    copy: "A próxima tela mostra quantos leads foram encontrados, a composição por nível de contato e o valor total do lote."
+    title: "Refine",
+    copy: "Ative filtros como telefone, e-mail, endereço, porte e Simples para deixar a lista mais útil."
   },
   {
-    title: "Libere a lista e avance",
-    copy: "Depois do pagamento, a pesquisa fica disponível online e pronta para download em XLSX para operação comercial imediata."
+    title: "Veja o volume",
+    copy: "Na próxima tela você confere quantos estabelecimentos foram encontrados antes de pagar."
+  },
+  {
+    title: "Veja o valor",
+    copy: "O sistema mostra a composição da lista e o valor total do lote de forma clara."
+  },
+  {
+    title: "Compre",
+    copy: "Antes do checkout você informa seu e-mail, recebe o magic link e segue para o pagamento."
+  },
+  {
+    title: "Opere",
+    copy: "Depois da confirmação, a lista fica liberada online e pronta para download em XLSX."
   }
 ];
 
 const faqItems = [
   {
-    question: "Preciso assinar para fazer a primeira pesquisa?",
-    answer: "Não. A jornada pública permite pesquisar e comprar apenas o lote encontrado, sem travar a primeira conversão em uma assinatura."
+    question: "Preciso informar e-mail para pesquisar?",
+    answer: "Não. Você pode montar a busca, ver o volume e ver o valor da lista antes de informar seu e-mail."
   },
   {
-    question: "Como o valor é calculado?",
-    answer: "O preço varia conforme a composição dos leads encontrados na busca: básico, com telefone, com e-mail ou completo. Você vê a distribuição antes do checkout."
+    question: "Quando o e-mail é solicitado?",
+    answer: "O e-mail é pedido logo antes do checkout. Nesse momento o sistema também envia o magic link para acesso ao dashboard."
   },
   {
     question: "Quando recebo a lista?",
@@ -48,37 +60,37 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     <main className="page">
       <section className="container hero-premium-stack">
         <div className="hero-premium-copy surface-premium card-lg stack">
-          <span className="eyebrow">Leads B2B por CNAE e região</span>
+          <span className="eyebrow">Lista de empresas por CNAE e região</span>
           <h1 className="display-title">
-            <span className="gradient-text">Inteligência comercial para uma prospecção mais precisa</span>.
+            <span className="gradient-text">Pesquise, refine, veja o volume, veja o valor e compre só quando fizer sentido</span>.
           </h1>
           <p className="lead-copy">
-            Selecione CNAEs, estados e cidades, aplique filtros de contato e veja <strong>quantidade, composição e valor total antes do checkout</strong>.
-            Sem assinatura obrigatória para começar e com entrega online da lista após a confirmação do pagamento.
+            Monte sua busca, ajuste os filtros e avance para uma prévia com <strong>quantidade encontrada e valor total</strong> antes do checkout.
+            O e-mail só entra na etapa final, junto com o magic link para acessar o dashboard.
           </p>
 
           <div className="inline-list">
-            <span className="pill">Sem login obrigatório para pesquisar</span>
-            <span className="pill">Preço por lead encontrado</span>
-            <span className="pill">Checkout avulso e seguro</span>
+            <span className="pill">Sem e-mail para pesquisar</span>
+            <span className="pill">Veja volume antes de pagar</span>
+            <span className="pill">Veja valor antes de pagar</span>
             <span className="pill">Entrega online + XLSX</span>
           </div>
 
           <div className="hero-signal-grid">
             <div className="signal-card">
-              <span className="kicker">Menos risco</span>
-              <strong>Você decide com volume e valor na mesa</strong>
-              <span className="muted">A busca mostra o tamanho da oportunidade antes da cobrança, reduzindo atrito na decisão.</span>
+              <span className="kicker">Pesquise e refine</span>
+              <strong>Monte o recorte da lista em poucos passos</strong>
+              <span className="muted">Escolha CNAE, região e filtros de contato para chegar mais perto da lista que você precisa.</span>
             </div>
             <div className="signal-card">
-              <span className="kicker">Mais controle</span>
-              <strong>Preço transparente por tipo de lead</strong>
-              <span className="muted">Básico, telefone, e-mail ou completo: a composição do lote aparece de forma clara antes do pagamento.</span>
+              <span className="kicker">Veja o volume e o valor</span>
+              <strong>Decida com números na tela</strong>
+              <span className="muted">A prévia mostra quantos leads foram encontrados e quanto custa liberar o lote.</span>
             </div>
             <div className="signal-card">
-              <span className="kicker">Uso imediato</span>
-              <strong>Lista pronta para operação comercial</strong>
-              <span className="muted">Após o checkout, a lista fica liberada online e pronta para download em XLSX.</span>
+              <span className="kicker">Compre e opere</span>
+              <strong>Receba o acesso e siga para o checkout</strong>
+              <span className="muted">Antes de pagar, você informa o e-mail, recebe o magic link e continua sem sair do fluxo.</span>
             </div>
           </div>
         </div>
@@ -91,28 +103,21 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           <div className="immersive-search-form-side">
             <div className="stack immersive-search-copy" style={{ gap: 8 }}>
               <span className="eyebrow">Comece pela busca</span>
-              <h2 className="section-title immersive-search-title">Descubra em minutos se esse mercado vale uma compra agora.</h2>
+              <h2 className="section-title immersive-search-title">Pesquise agora e veja se a lista vale a compra.</h2>
               <p className="section-copy">
-                Combine múltiplos CNAEs, estados e cidades na mesma pesquisa e refine o lote com filtros comerciais que aumentam a utilidade da lista.
+                Combine múltiplos CNAEs, estados e cidades na mesma pesquisa e refine o lote com filtros que ajudam na operação comercial.
               </p>
             </div>
 
             {error ? <div className="notice danger">{error}</div> : null}
 
             <form action={startPublicSearchAction} className="stack immersive-search-form">
-              <div className="public-form-grid public-form-grid-wide">
-                <div className="field">
-                  <label htmlFor="email">E-mail para receber o acesso da pesquisa</label>
-                  <input id="email" name="email" type="email" className="input input-premium" placeholder="voce@empresa.com" required />
-                </div>
-              </div>
-
               <SearchFilterBuilder />
 
               <div className="home-form-actions home-form-actions-premium immersive-submit-row">
                 <PublicSearchSubmitButton />
                 <span className="tiny">
-                  Ao avançar, você vai para uma prévia com quantidade encontrada, composição por faixa de valor e total do lote antes do checkout.
+                  Você pesquisa primeiro. O e-mail só é pedido antes do checkout, junto com o envio do magic link de acesso.
                 </span>
               </div>
             </form>
@@ -122,14 +127,14 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             <SearchImmersiveStage />
             <div className="immersive-search-benefits">
               <div className="signal-card">
-                <span className="kicker">Filtros que importam</span>
+                <span className="kicker">Refine a lista</span>
                 <strong>Telefone, e-mail, endereço, porte e mais</strong>
-                <span className="muted">Refine a busca para priorizar listas mais úteis para prospecção, expansão geográfica e inteligência comercial.</span>
+                <span className="muted">Use os filtros para priorizar listas mais úteis para prospecção e operação comercial.</span>
               </div>
               <div className="signal-card">
-                <span className="kicker">Jornada mais curta</span>
-                <strong>Busca, decisão e pagamento no mesmo fluxo</strong>
-                <span className="muted">Sem empurrar o usuário para telas paralelas antes de mostrar o valor real da pesquisa.</span>
+                <span className="kicker">Fluxo direto</span>
+                <strong>Busca, volume, valor e checkout</strong>
+                <span className="muted">A jornada mostra o que foi encontrado antes do pagamento e só pede o e-mail no momento certo.</span>
               </div>
             </div>
           </div>
@@ -140,7 +145,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         <div className="surface-premium card-lg panel-grid two">
           <div className="stack" style={{ gap: 12 }}>
             <span className="eyebrow">Como funciona</span>
-            <h2 className="section-title">Uma jornada pensada para transformar busca em compra com menos fricção.</h2>
+            <h2 className="section-title">Pesquise, refine, veja o volume, veja o valor, compre e opere.</h2>
             <div className="journey-grid">
               {journeySteps.map((step, index) => (
                 <div key={step.title} className="journey-step-card">
@@ -154,24 +159,24 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
           <div className="stack action-stage">
             <div className="notice conversion-notice">
-              <strong>Preço transparente na prática</strong>
+              <strong>Preço claro</strong>
               <p className="muted" style={{ marginBottom: 0 }}>
-                A lógica comercial continua simples: <strong>R$ 0,05 básico</strong>, <strong>R$ 0,10 com telefone</strong>, <strong>R$ 0,15 com e-mail</strong> e <strong>R$ 0,20 completo</strong>.
+                A lógica continua simples: <strong>R$ 0,05 básico</strong>, <strong>R$ 0,10 com telefone</strong>, <strong>R$ 0,15 com e-mail</strong> e <strong>R$ 0,20 completo</strong>.
                 O lote final é calculado pela composição real do que foi encontrado na busca.
               </p>
             </div>
             <div className="notice conversion-notice">
-              <strong>Sem surpresa na etapa decisiva</strong>
+              <strong>Menos fricção</strong>
               <p className="muted" style={{ marginBottom: 0 }}>
-                Antes de pagar, o usuário vê quantidade de leads, breakdown por categoria e o total do pedido em uma página de checkout mais objetiva.
+                Você vê o volume e o valor antes de pagar. O e-mail entra só antes do checkout, quando o acesso realmente precisa ser enviado.
               </p>
             </div>
             <div className="inline-actions">
               <Link href="/pricing" className="button-ghost">
-                Ver detalhamento de preços
+                Ver preços
               </Link>
               <Link href="/onboarding" className="button-secondary">
-                Ver onboarding corporativo
+                Ver o passo a passo
               </Link>
             </div>
           </div>
@@ -179,8 +184,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
         <div className="surface-premium card-lg stack faq-shell">
           <div className="stack" style={{ gap: 8 }}>
-            <span className="eyebrow">Perguntas que destravam a compra</span>
-            <h2 className="section-title">Clareza para reduzir dúvida antes do checkout.</h2>
+            <span className="eyebrow">Dúvidas frequentes</span>
+            <h2 className="section-title">Clareza para avançar sem travar a compra.</h2>
           </div>
           <div className="grid-3 faq-grid">
             {faqItems.map((item) => (
