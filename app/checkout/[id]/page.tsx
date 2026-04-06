@@ -7,6 +7,7 @@ import { getSearchSummary } from "@/lib/search-summary";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatCnpj, formatMoney } from "@/lib/format";
 import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
+import { extractLeadContactSignals } from "@/lib/lead-pricing";
 import { extractSingleObject } from "@/lib/utils";
 
 type CheckoutPageProps = {
@@ -48,14 +49,20 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
       const establishment = extractSingleObject(row.establishments);
       if (!establishment) return null;
       const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
-      return { position: row.position, canonical: canonicalizeEstablishment(mergedEstablishment) };
+      const canonical = canonicalizeEstablishment(mergedEstablishment);
+      const contactSignals = extractLeadContactSignals({
+        email: canonical.email,
+        phone: canonical.phone,
+        provider_payload: mergedEstablishment.provider_payload
+      });
+      return { position: row.position, canonical, contactSignals };
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   const previewSummary = previewItems.reduce(
     (acc, item) => {
-      if (item.canonical.hasEmail) acc.withEmail += 1;
-      if (item.canonical.hasPhone) acc.withPhone += 1;
+      if (item.contactSignals.hasEmail) acc.withEmail += 1;
+      if (item.contactSignals.hasPhone) acc.withPhone += 1;
       if (item.canonical.hasAddress) acc.withAddress += 1;
       return acc;
     },
@@ -108,7 +115,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
                 </div>
               </div>
               <div className="result-card-grid">
-                {previewItems.map(({ position, canonical }) => (
+                {previewItems.map(({ position, canonical, contactSignals }) => (
                   <article key={`${canonical.cnpj ?? position}`} className="result-card-premium">
                     <div className="result-card-index">#{position}</div>
                     <div className="stack" style={{ gap: 6 }}>
@@ -121,8 +128,8 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
                       <span><strong>Status:</strong> {canonical.registrationStatus ?? "-"}</span>
                     </div>
                     <div className="inline-list">
-                      <span className={`pill ${canonical.hasEmail ? "success" : "warning"}`}>{canonical.hasEmail ? "E-mail disponível" : "Sem e-mail"}</span>
-                      <span className={`pill ${canonical.hasPhone ? "success" : "warning"}`}>{canonical.hasPhone ? "Telefone disponível" : "Sem telefone"}</span>
+                      <span className={`pill ${contactSignals.hasEmail ? "success" : "warning"}`}>{contactSignals.hasEmail ? "E-mail disponível" : "Sem e-mail"}</span>
+                      <span className={`pill ${contactSignals.hasPhone ? "success" : "warning"}`}>{contactSignals.hasPhone ? "Telefone disponível" : "Sem telefone"}</span>
                       <span className={`pill ${canonical.hasAddress ? "success" : "warning"}`}>{canonical.hasAddress ? "Endereço disponível" : "Sem endereço"}</span>
                     </div>
                   </article>

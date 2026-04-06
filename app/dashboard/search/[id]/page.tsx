@@ -118,6 +118,8 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   }
 
   const aiFormatUnlocked = aiFormatOrder?.status === "paid";
+  const unlockedRows = orderUnlocked ? rows ?? [] : (rows ?? []).slice(0, 1);
+  const hiddenResultsCount = Math.max(0, (rows?.length ?? 0) - unlockedRows.length);
 
   return (
     <div className="stack">
@@ -271,11 +273,18 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
           <div className="stack" style={{ gap: 8 }}>
             <span className="eyebrow">Lista retornada</span>
             <p className="section-copy">
-              Navegue pelos estabelecimentos encontrados, abra a ficha completa, salve os melhores no pipeline comercial ou avance para a compra da lista completa.
+              {orderUnlocked
+                ? "Navegue pelos estabelecimentos encontrados, abra a ficha completa, salve os melhores no pipeline comercial ou avance para exportação."
+                : "No histórico do dashboard exibimos apenas 1 estabelecimento como amostra. A lista completa fica disponível depois do pagamento."}
             </p>
+            {!orderUnlocked && hiddenResultsCount > 0 ? (
+              <div className="notice warning">
+                Você está vendo 1 estabelecimento de amostra. Os outros {hiddenResultsCount} registro(s) serão liberados após o pagamento da lista.
+              </div>
+            ) : null}
           </div>
           <div className="result-card-grid">
-            {rows.map((row) => {
+            {unlockedRows.map((row) => {
               const establishment = extractSingleObject(row.establishments);
               if (!establishment) return null;
 
