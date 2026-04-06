@@ -25,6 +25,7 @@ export type DiscoverySearchInput = {
   simplesOnly?: boolean;
   capitalSocialMin?: number | null;
   capitalSocialMax?: number | null;
+  activityStartYear?: number | null;
 };
 
 export type DiscoverySearchOutput = {

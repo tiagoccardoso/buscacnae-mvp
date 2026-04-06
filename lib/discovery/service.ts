@@ -33,6 +33,7 @@ type PrepareSearchOrderInput = {
   simplesOnly: boolean;
   capitalSocialMin: number | null;
   capitalSocialMax: number | null;
+  activityStartYear: number | null;
 };
 
 
@@ -50,6 +51,37 @@ function parseCapitalValue(value: unknown) {
     const normalized = value.replace(/\./g, "").replace(",", ".");
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function parseOpenedAtYear(value: unknown) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(\d{4})/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+function extractActivityStartYearFromPayload(payload: unknown): number | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const record = payload as Record<string, unknown>;
+  const candidates = [
+    record.data_inicio_atividade,
+    record.data_abertura,
+    record.abertura,
+    (record.consulta_cnpj as any)?.data_inicio_atividade,
+    (record.consulta_cnpj as any)?.data_abertura,
+    (record.cnpjws_consulta as any)?.data_inicio_atividade,
+    (record.cnpjws_consulta as any)?.data_abertura,
+    (record.pesquisa as any)?.data_inicio_atividade,
+    (record.pesquisa as any)?.data_abertura
+  ];
+  for (const value of candidates) {
+    const year = parseOpenedAtYear(value);
+    if (year !== null) return year;
   }
   return null;
 }
@@ -160,6 +192,7 @@ function buildPublicFilterLabels(input: PrepareSearchOrderInput) {
   if (input.companySizes.length > 0) labels.push(`Porte: ${input.companySizes.join(", ")}`);
   if (input.capitalSocialMin !== null) labels.push(`Capital mínimo: R$ ${input.capitalSocialMin.toLocaleString("pt-BR")}`);
   if (input.capitalSocialMax !== null) labels.push(`Capital máximo: R$ ${input.capitalSocialMax.toLocaleString("pt-BR")}`);
+  if (input.activityStartYear !== null) labels.push(`Ano mínimo de início da atividade: ${input.activityStartYear}`);
   return labels;
 }
 
@@ -171,6 +204,8 @@ function applyPublicFilters<
     companySize?: string | null;
     simplesOptIn?: boolean | null;
     capitalSocial?: number | string | null;
+    openedAt?: string | null;
+    providerPayload?: unknown;
   }
 >(
   rows: T[],
@@ -197,6 +232,10 @@ function applyPublicFilters<
     if (normalizedSizes.length > 0 && (!companySize || !normalizedSizes.some((item) => companySize.includes(item)))) return false;
     if (input.capitalSocialMin !== null && (capital === null || capital < input.capitalSocialMin)) return false;
     if (input.capitalSocialMax !== null && (capital === null || capital > input.capitalSocialMax)) return false;
+    if (input.activityStartYear !== null) {
+      const openedAtYear = parseOpenedAtYear(row.openedAt) ?? extractActivityStartYearFromPayload(row.providerPayload);
+      if (openedAtYear === null || openedAtYear < input.activityStartYear) return false;
+    }
     return true;
   });
 }
@@ -348,6 +387,7 @@ export async function prepareSearchOrder(
       simplesOnly: input.simplesOnly,
       capitalSocialMin: input.capitalSocialMin,
       capitalSocialMax: input.capitalSocialMax,
+      activityStartYear: input.activityStartYear,
       filterLabels: buildPublicFilterLabels(input),
       leadPricingSummary: {
         basic: pricingSummary.tiers.find((tier) => tier.key === "basic")?.count ?? 0,
@@ -491,7 +531,8 @@ function normalizeInput(input: DiscoverySearchInput) {
     companySizes: input.companySizes ?? [],
     simplesOnly: input.simplesOnly ?? false,
     capitalSocialMin: input.capitalSocialMin ?? null,
-    capitalSocialMax: input.capitalSocialMax ?? null
+    capitalSocialMax: input.capitalSocialMax ?? null,
+    activityStartYear: input.activityStartYear ?? null
   };
 }
 
@@ -506,7 +547,8 @@ function buildCacheKey(input: ReturnType<typeof normalizeInput>, provider: strin
       companySizes: input.companySizes,
       simplesOnly: input.simplesOnly,
       capitalSocialMin: input.capitalSocialMin,
-      capitalSocialMax: input.capitalSocialMax
+      capitalSocialMax: input.capitalSocialMax,
+      activityStartYear: input.activityStartYear
     })
   );
 }

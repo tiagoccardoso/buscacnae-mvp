@@ -87,7 +87,7 @@ export function normalizeCasaDosDadosEstablishment(
       item.situacao_cadastral,
       item.status
     ),
-    openedAt: coalesceText(item.data_abertura, item.abertura),
+    openedAt: coalesceText(item.data_inicio_atividade, item.data_abertura, item.abertura),
     primaryCnaeCode: normalizeCode(
       coalesceText(
         item.codigo_atividade_principal,

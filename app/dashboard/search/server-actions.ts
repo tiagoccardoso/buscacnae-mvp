@@ -28,6 +28,14 @@ function parseCapitalInput(value: FormDataEntryValue | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseYearInput(value: FormDataEntryValue | null) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  const currentYear = new Date().getFullYear();
+  return Number.isInteger(parsed) && parsed >= 1900 && parsed <= currentYear ? parsed : null;
+}
+
 export async function runSearchAction(formData: FormData) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -57,7 +65,8 @@ export async function runSearchAction(formData: FormData) {
       .filter(Boolean),
     simplesOnly: formData.get("simplesOnly") === "on",
     capitalSocialMin: parseCapitalInput(formData.get("capitalSocialMin")),
-    capitalSocialMax: parseCapitalInput(formData.get("capitalSocialMax"))
+    capitalSocialMax: parseCapitalInput(formData.get("capitalSocialMax")),
+    activityStartYear: parseYearInput(formData.get("activityStartYear"))
   });
 
   if (!result.ok) {

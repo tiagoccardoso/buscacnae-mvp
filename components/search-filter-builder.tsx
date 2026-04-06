@@ -26,6 +26,7 @@ type SearchFilterBuilderProps = {
   defaultSimplesOnly?: boolean;
   defaultCapitalSocialMin?: string;
   defaultCapitalSocialMax?: string;
+  defaultActivityStartYear?: string;
 };
 
 function normalizeText(value: string) {
@@ -338,7 +339,8 @@ export function SearchFilterBuilder({
   defaultCompanySizes = [],
   defaultSimplesOnly = false,
   defaultCapitalSocialMin = "",
-  defaultCapitalSocialMax = ""
+  defaultCapitalSocialMax = "",
+  defaultActivityStartYear = ""
 }: SearchFilterBuilderProps) {
   const [selectedCnaes, setSelectedCnaes] = useState<PickerOption[]>(() => buildDefaultCnaeOptions(defaultCnaes));
   const [selectedStates, setSelectedStates] = useState<PickerOption[]>(() => buildDefaultStateOptions(defaultStateCodes));
@@ -361,6 +363,7 @@ export function SearchFilterBuilder({
   const [simplesOnly, setSimplesOnly] = useState(defaultSimplesOnly);
   const [capitalSocialMin, setCapitalSocialMin] = useState(defaultCapitalSocialMin);
   const [capitalSocialMax, setCapitalSocialMax] = useState(defaultCapitalSocialMax);
+  const [activityStartYear, setActivityStartYear] = useState(defaultActivityStartYear);
 
   const filteredCnaes = useMemo(() => {
     const selectedValues = new Set(selectedCnaes.map((item) => item.value));
@@ -739,6 +742,28 @@ export function SearchFilterBuilder({
             </label>
           </div>
 
+          <div className="grid-2" style={{ marginTop: 14, alignItems: "end", gridTemplateColumns: "minmax(0, max-content) minmax(0, 1fr)", gap: 12 }}>
+            <div className="field" style={{ marginTop: 0, width: "fit-content" }}>
+              <label htmlFor="activityStartYear">Ano mínimo de início da atividade</label>
+              <input
+                id="activityStartYear"
+                name="activityStartYear"
+                type="number"
+                inputMode="numeric"
+                className="input input-premium"
+                placeholder="2024"
+                min="1900"
+                max={new Date().getFullYear()}
+                value={activityStartYear}
+                onChange={(event) => setActivityStartYear(event.target.value)}
+                style={{ width: "9ch", minWidth: 0 }}
+              />
+            </div>
+            <span className="tiny" style={{ alignSelf: "center" }}>
+              Informe um ano mínimo. Ex.: 2024 busca empresas de 2024 em diante.
+            </span>
+          </div>
+
           <div className="field" style={{ marginTop: 14 }}>
             <label>Porte da empresa</label>
             <div className="checkbox-grid compact">
@@ -794,7 +819,7 @@ export function SearchFilterBuilder({
           <span className="tiny">
             {stateWide
               ? "Com busca estadual ativa, as cidades são ignoradas e a consulta roda em todos os municípios dos estados escolhidos."
-              : "Use o assistente para encontrar CNAEs relacionados à atividade da empresa ou escolha manualmente pela lista."}
+              : "Use o assistente para encontrar CNAEs relacionados à atividade da empresa ou escolha manualmente pela lista. Se não informar ano mínimo, a pesquisa considera empresas de todos os anos."}
           </span>
         </div>
       </div>
