@@ -37,6 +37,27 @@ function mapCnpjWsCompanySizes(values: string[] | undefined) {
   return Array.from(new Set(mapped));
 }
 
+function buildSearchBatchLimit(input: DiscoverySearchInput) {
+  const baseLimit = getDiscoveryMaxResults();
+  const hasAdvancedFilters = Boolean(
+    input.requireEmail ||
+    input.requireAddress ||
+    input.requirePhone ||
+    input.mobileOnly ||
+    input.simplesOnly ||
+    (input.companySizes?.length ?? 0) > 0 ||
+    input.capitalSocialMin !== null ||
+    input.capitalSocialMax !== null ||
+    input.activityStartYear !== null
+  );
+
+  if (!hasAdvancedFilters) {
+    return Math.min(baseLimit, 100);
+  }
+
+  return Math.min(Math.max(baseLimit, 100), 100);
+}
+
 async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>) {
   if (items.length === 0) return [] as R[];
 
@@ -309,9 +330,9 @@ export async function searchWithCnpjWs(input: DiscoverySearchInput): Promise<Dis
     params.set("cidade_id", normalizeCode(cityIbge));
   }
 
-  const maxResults = getDiscoveryMaxResults();
+  const maxResults = buildSearchBatchLimit(input);
   if (maxResults > 0) {
-    params.set("limite", String(Math.min(maxResults, 100)));
+    params.set("limite", String(maxResults));
   }
 
   const mappedSizes = mapCnpjWsCompanySizes(input.companySizes);

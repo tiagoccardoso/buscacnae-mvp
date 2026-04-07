@@ -175,10 +175,17 @@ function parseOpenedAtYear(value: unknown) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  const match = trimmed.match(/^(\d{4})/);
-  if (!match) return null;
-  const parsed = Number(match[1]);
-  return Number.isInteger(parsed) ? parsed : null;
+  const yearPrefix = trimmed.match(/^(\d{4})/);
+  if (yearPrefix) {
+    const parsed = Number(yearPrefix[1]);
+    return Number.isInteger(parsed) ? parsed : null;
+  }
+  const brazilianDate = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brazilianDate) {
+    const parsed = Number(brazilianDate[3]);
+    return Number.isInteger(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function extractActivityStartYearFromPayload(payload: unknown): number | null {
@@ -475,10 +482,10 @@ export async function prepareSearchOrder(
               stateCode: target.stateCode,
               cityName: target.cityName,
               cityIbge: "",
-              requireEmail: false,
+              requireEmail: input.requireEmail,
               requireAddress: input.requireAddress,
-              requirePhone: false,
-              mobileOnly: false,
+              requirePhone: input.requirePhone,
+              mobileOnly: input.mobileOnly,
               companySizes: input.companySizes,
               simplesOnly: input.simplesOnly,
               capitalSocialMin: input.capitalSocialMin,
@@ -492,10 +499,10 @@ export async function prepareSearchOrder(
                 stateCode: target.stateCode,
                 cityName: target.cityName,
                 cityIbge: "",
-                requireEmail: false,
+                requireEmail: input.requireEmail,
                 requireAddress: input.requireAddress,
-                requirePhone: false,
-                mobileOnly: false,
+                requirePhone: input.requirePhone,
+                mobileOnly: input.mobileOnly,
                 companySizes: input.companySizes,
                 simplesOnly: input.simplesOnly,
                 capitalSocialMin: input.capitalSocialMin,
@@ -807,9 +814,9 @@ export async function runDiscoverySearch(
         provider === "casadosdados" || provider === "hybrid"
           ? {
               ...normalizedInput,
-              requireEmail: false,
-              requirePhone: false,
-              mobileOnly: false
+              requireEmail: normalizedInput.requireEmail,
+              requirePhone: normalizedInput.requirePhone,
+              mobileOnly: normalizedInput.mobileOnly
             }
           : normalizedInput;
 

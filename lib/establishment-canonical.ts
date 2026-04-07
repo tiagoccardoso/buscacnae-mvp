@@ -23,8 +23,9 @@ function normalizePhoneDigits(value: string | null) {
 
 function detectMobilePhone(value: string | null) {
   const digits = normalizePhoneDigits(value);
-  if (digits.length !== 11) return false;
-  return digits.charAt(2) === "9";
+  if (digits.length < 10) return false;
+  const subscriber = digits.length >= 9 ? digits.slice(-9) : digits;
+  return subscriber.charAt(0) === "9";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -80,8 +81,18 @@ function parseBooleanLike(value: unknown): boolean | null {
   }
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
-    if (["true", "1", "sim", "s", "yes", "y", "optante"].includes(normalized) || /\boptante\b/.test(normalized)) return true;
-    if (["false", "0", "nao", "não", "n", "no", "nao optante", "não optante"].includes(normalized) || /nao optante|não optante/.test(normalized)) return false;
+    if (
+      ["false", "0", "nao", "não", "n", "no", "nao optante", "não optante"].includes(normalized) ||
+      /\b(?:nao|não)\s+optante\b/.test(normalized)
+    ) {
+      return false;
+    }
+    if (
+      ["true", "1", "sim", "s", "yes", "y", "optante"].includes(normalized) ||
+      /\boptante\b/.test(normalized)
+    ) {
+      return true;
+    }
   }
   return null;
 }
@@ -207,9 +218,9 @@ export function canonicalizeEstablishment(source: Record<string, unknown>): Cano
     addressLine,
     addressNumber,
     cep,
-    hasEmail: Boolean(email),
-    hasPhone: Boolean(phone),
-    hasAddress: Boolean(addressLine || neighborhood || cep || (addressLine && addressNumber)),
+    hasEmail: Boolean(email && /@/.test(email)),
+    hasPhone: Boolean(normalizePhoneDigits(phone).length >= 10),
+    hasAddress: Boolean(addressLine || (addressNumber && neighborhood) || (addressNumber && cep)),
     isMobilePhone: detectMobilePhone(phone),
     companySizeLabel,
     companySizeCode: normalizeCompanySizeCode(companySizeLabel),
