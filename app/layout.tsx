@@ -2,6 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import { AnalyticsIntentListener } from "@/components/analytics-intent-listener";
+import { getAppName, getBaseUrl } from "@/lib/env";
+import { getBusinessShortDescription } from "@/lib/site-content";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -10,8 +13,24 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "BuscaCNAE",
-  description: "Encontre empresas por CNAE, estado e cidade, veja a quantidade de resultados e pague apenas pelo que quiser liberar."
+  metadataBase: new URL(getBaseUrl()),
+  title: {
+    default: `${getAppName()} | Listas B2B por CNAE e região`,
+    template: `%s | ${getAppName()}`
+  },
+  description: getBusinessShortDescription(),
+  openGraph: {
+    title: `${getAppName()} | Listas B2B por CNAE e região`,
+    description: getBusinessShortDescription(),
+    siteName: getAppName(),
+    locale: "pt_BR",
+    type: "website"
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${getAppName()} | Listas B2B por CNAE e região`,
+    description: getBusinessShortDescription()
+  }
 };
 
 export default function RootLayout({
@@ -22,6 +41,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body>
+        <AnalyticsIntentListener />
         <SiteHeader />
         {children}
         <SiteFooter />

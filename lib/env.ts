@@ -16,6 +16,10 @@ export function getAppName() {
   return getEnv("NEXT_PUBLIC_APP_NAME") || "BuscaCNAE";
 }
 
+export function getPublicContactEmail() {
+  return getEnv("NEXT_PUBLIC_CONTACT_EMAIL") || "contato@buscacnae.com.br";
+}
+
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";

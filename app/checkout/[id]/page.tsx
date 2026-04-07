@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSearchAccessOrderById } from "@/lib/billing";
@@ -15,6 +16,13 @@ import { prepareCheckoutIdentityAction } from "./actions";
 type CheckoutPageProps = {
   params: Promise<{ id: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false
+  }
 };
 
 export default async function CheckoutPage({ params, searchParams }: CheckoutPageProps) {
@@ -85,42 +93,53 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
 
   return (
     <main className="page">
-      <section className="container" style={{ maxWidth: 860 }}>
+      <section className="container stack" style={{ maxWidth: 980 }}>
         <div className="surface card stack">
-          <span className="eyebrow">Checkout da pesquisa</span>
+          <span className="eyebrow">Prévia de compra</span>
           <h1 className="section-title" style={{ fontSize: "2.1rem", marginBottom: 0 }}>
             {summary.headline}
           </h1>
           <p className="section-copy">
-            Veja o volume, confirme o valor e libere a lista completa assim que o pagamento for aprovado.
+            Confirme o volume encontrado, a composição do lote e o valor total antes de liberar a lista completa.
           </p>
 
           {reason ? <div className="notice danger">{reason}</div> : null}
           {checkoutState === "cancelled" ? (
-            <div className="notice warning">Checkout cancelado. Você pode tentar novamente.</div>
+            <div className="notice warning">Checkout cancelado. Você pode revisar a prévia e tentar novamente.</div>
           ) : null}
           {identityState === "sent" ? (
-            <div className="notice success">Enviamos o magic link para o seu e-mail. Você já pode seguir para o checkout e depois acessar o dashboard.</div>
+            <div className="notice success">Enviamos o acesso para o seu e-mail. Agora você já pode seguir para o checkout e acompanhar a lista depois.</div>
           ) : null}
 
           <div className="grid-2">
             <div className="surface-soft card stack">
               <span className="kicker">Volume encontrado</span>
               <strong style={{ fontSize: "2rem" }}>{currentOrder.result_count}</strong>
-              <span className="muted">Lista pronta para desbloqueio.</span>
+              <span className="muted">Quantidade pronta para liberação.</span>
             </div>
             <div className="surface-soft card stack">
-              <span className="kicker">Valor da lista</span>
+              <span className="kicker">Total do pedido</span>
               <strong style={{ fontSize: "2rem" }}>{formatMoney(currentOrder.total_amount_cents / 100)}</strong>
-              <span className="muted">Cobrança automática conforme o nível de contato de cada lead encontrado.</span>
+              <span className="muted">Cobrança conforme o tipo de lead encontrado, mostrada antes do pagamento.</span>
             </div>
           </div>
 
           {pricingSummary ? <LeadPricingBreakdown summary={pricingSummary} /> : null}
 
+          <div className="grid-2 trust-grid">
+            <div className="surface-soft card stack">
+              <span className="eyebrow">O que está incluso</span>
+              <span className="muted">Lista online liberada logo após o pagamento, download em XLSX e acesso pelo mesmo e-mail usado no checkout.</span>
+            </div>
+            <div className="surface-soft card stack">
+              <span className="eyebrow">Pagamento</span>
+              <span className="muted">Checkout seguro com Stripe. O pedido só é cobrado depois que você confirmar a compra.</span>
+            </div>
+          </div>
+
           {previewItems.length > 0 ? (
             <div className="surface-soft card stack">
-              <span className="eyebrow">Prévia operacional da lista</span>
+              <span className="eyebrow">Amostra da lista</span>
               <div className="grid-2">
                 <div className="stack" style={{ gap: 6 }}>
                   <span className="kicker">Qualificação da amostra</span>
@@ -128,7 +147,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
                 </div>
                 <div className="stack" style={{ gap: 6 }}>
                   <span className="kicker">Leitura consolidada</span>
-                  <span className="muted">A amostra abaixo usa a mesma consolidação da ficha cadastral completa.</span>
+                  <span className="muted">A amostra abaixo usa a mesma consolidação aplicada à lista completa liberada após o pagamento.</span>
                 </div>
               </div>
               <div className="result-card-grid">
@@ -180,21 +199,21 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
               <div className="stack" style={{ gap: 6 }}>
                 <span className="kicker">Antes do checkout</span>
                 <strong>Informe seu e-mail para continuar</strong>
-                <span className="muted">Vamos enviar o magic link para você acessar o dashboard e, na sequência, liberar o checkout.</span>
+                <span className="muted">Vamos enviar o acesso para você acompanhar a compra, o histórico e a lista liberada depois do pagamento.</span>
               </div>
-              <form action={prepareCheckoutIdentityAction} className="stack">
+              <form action={prepareCheckoutIdentityAction} className="stack" data-analytics-event="checkout_identity_started">
                 <input type="hidden" name="orderId" value={currentOrder.id} />
                 <div className="field">
                   <label htmlFor="checkout-email">E-mail para acesso e pagamento</label>
                   <input id="checkout-email" name="email" type="email" className="input input-premium" placeholder="voce@empresa.com" required />
                 </div>
                 <button className="button full" type="submit">
-                  Receber magic link e continuar
+                  Receber acesso e continuar
                 </button>
               </form>
             </div>
           ) : (
-            <form action="/api/stripe/checkout" method="POST" className="stack">
+            <form action="/api/stripe/checkout" method="POST" className="stack" data-analytics-event="checkout_cta_clicked" data-analytics-label="Checkout form">
               <input type="hidden" name="orderId" value={currentOrder.id} />
               {resolvedEmail ? <input type="hidden" name="email" value={resolvedEmail} /> : null}
               <button className="button full" type="submit">

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,6 +11,13 @@ import { extractSingleObject } from "@/lib/utils";
 import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
 import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false
+  }
+};
 
 type OrderResultPageProps = {
   params: Promise<{ token: string }>;
@@ -54,7 +62,7 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
         <div className="surface card stack">
           <div className="inline-actions" style={{ justifyContent: "space-between" }}>
             <div className="stack" style={{ gap: 6 }}>
-              <span className="eyebrow">Resultado da pesquisa</span>
+              <span className="eyebrow">Lista liberada</span>
               <h1 className="section-title" style={{ marginBottom: 0 }}>
                 {summary.headline}
               </h1>
@@ -76,8 +84,7 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
             <>
               {checkoutState === "success" ? (
                 <div className="notice warning">
-                  O checkout retornou com sucesso, mas o webhook ainda pode estar confirmando o pagamento.
-                  Atualize esta página em alguns segundos.
+                  O checkout retornou com sucesso, mas o webhook ainda pode estar confirmando o pagamento. Atualize esta página em alguns segundos.
                 </div>
               ) : null}
               <div className="notice warning">
@@ -97,11 +104,11 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
                   <span className="muted">Formato disponível para download: XLSX.</span>
                 </div>
                 <div className="inline-actions">
-                  <Link href={`/orders/${token}/download`} className="button">
+                  <Link href={`/orders/${token}/download`} className="button" data-analytics-event="payment_completed" data-analytics-label="Order XLSX">
                     Baixar XLSX
                   </Link>
-                  <Link href="/" className="button-ghost">
-                    Fazer nova consulta
+                  <Link href={`/dashboard/search?reuse=${currentOrder.search_query_id}`} className="button-ghost" data-analytics-event="search_reused" data-analytics-label="Order repeat search">
+                    Repetir busca
                   </Link>
                 </div>
               </div>
@@ -182,17 +189,16 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
         </div>
 
         <div className="surface card stack">
-          <span className="eyebrow">Dashboard opcional</span>
+          <span className="eyebrow">Próxima ação</span>
           <p className="section-copy">
-            Quer acompanhar histórico, volume comprado e pesquisas anteriores? Entre no dashboard e
-            faça as próximas consultas autenticado.
+            Quer guardar histórico, reabrir listas anteriores, salvar leads e repetir filtros? Use o dashboard para manter a operação organizada.
           </p>
           <div className="inline-actions">
-            <Link href="/sign-in" className="button-secondary">
-              Entrar para acompanhar histórico
+            <Link href="/dashboard" className="button-secondary" data-analytics-event="dashboard_opened" data-analytics-label="Order dashboard">
+              Abrir dashboard
             </Link>
             <Link href="/" className="button-ghost">
-              Fazer nova consulta
+              Fazer nova pesquisa
             </Link>
           </div>
         </div>

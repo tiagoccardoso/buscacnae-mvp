@@ -75,7 +75,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         {feedback}
         <EmptyState
           title="Nenhuma busca registrada"
-          description="Quando você executar consultas, elas aparecerão aqui com o total de resultados, cidade, CNAE e informação de cache em uma visão histórica mais executiva."
+          description="Quando você executar pesquisas, elas aparecerão aqui com total de resultados, recorte e atalhos para repetir a busca ou comprar a lista."
           ctaHref="/dashboard/search"
           ctaLabel="Fazer primeira busca"
         />
@@ -89,13 +89,13 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
 
       <div className="history-toolbar">
         <div className="stack" style={{ gap: 8 }}>
-          <span className="eyebrow">Histórico operacional</span>
-          <h2 className="section-title">Consultas executadas</h2>
+          <span className="eyebrow">Histórico</span>
+          <h2 className="section-title">Buscas recentes e atalhos de recompra</h2>
           <p className="section-copy">
-            Acompanhe volume, localidade, resultado e origem da consulta em uma tabela desenhada para leitura comercial.
+            Reabra resultados, repita o mesmo recorte e compre várias listas em grupo quando fizer sentido.
           </p>
           <span className="muted">
-            {searches.length} registro(s) exibidos no histórico recente. Marque uma ou mais linhas para excluir ou comprar várias listas de uma só vez.
+            {searches.length} registro(s) exibidos. Marque uma ou mais linhas para excluir ou comprar várias listas de uma só vez.
           </span>
         </div>
 
@@ -104,7 +104,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
             <button type="submit" className="button-danger">
               Excluir selecionadas
             </button>
-            <button type="submit" formAction="/api/stripe/history-bulk-checkout" formMethod="post" className="button">
+            <button type="submit" formAction="/api/stripe/history-bulk-checkout" formMethod="post" className="button" data-analytics-event="bulk_checkout_started">
               Comprar selecionadas
             </button>
           </form>
@@ -153,6 +153,9 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                   <div className="history-row-actions">
                     <Link href={`/dashboard/search/${search.id}`} className="button-ghost history-action-button">
                       Abrir
+                    </Link>
+                    <Link href={`/dashboard/search?reuse=${search.id}`} className="button-ghost history-action-button">
+                      Repetir
                     </Link>
                     <form action={deleteSearchHistoryItemAction.bind(null, search.id)}>
                       <button type="submit" className="button-danger history-action-button">

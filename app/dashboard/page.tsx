@@ -30,7 +30,7 @@ export default async function DashboardPage() {
 
   const searchTotal = searchCount ?? 0;
   const leadTotal = leadCount ?? 0;
-  const paidOrdersTotal = orderCount ?? 0;
+  const orderTotal = orderCount ?? 0;
   const latestResults = latestSearch.data?.total_results ?? 0;
   const latestCity = latestSearch.data?.city_name ?? "Sem buscas";
 
@@ -38,19 +38,19 @@ export default async function DashboardPage() {
     <div className="stack dashboard-premium-stack">
       <div className="grid-3 metric-surface-grid dashboard-connected-grid">
         <div className="surface-premium card metric metric-card metric-card-premium">
-          <span className="kicker">Modelo comercial</span>
-          <strong>Pagamento avulso</strong>
-          <span className="muted">Cada lista é cobrada automaticamente pela composição dos leads encontrados e liberada após a confirmação do checkout.</span>
+          <span className="kicker">Modelo de compra</span>
+          <strong>Uma lista por vez</strong>
+          <span className="muted">Pesquise, veja a prévia, pague e reabra a lista quando quiser pelo histórico.</span>
         </div>
         <div className="surface-premium card metric metric-card metric-card-premium">
           <span className="kicker">Buscas realizadas</span>
           <strong>{searchTotal}</strong>
-          <span className="muted">Consultas registradas com histórico, rastreabilidade e visão comercial consolidada.</span>
+          <span className="muted">Pesquisas registradas para reuso de filtros, comparação e recompra.</span>
         </div>
         <div className="surface-premium card metric metric-card metric-card-premium">
           <span className="kicker">Pedidos gerados</span>
-          <strong>{paidOrdersTotal}</strong>
-          <span className="muted">Pedidos avulsos criados a partir das buscas públicas e autenticadas.</span>
+          <strong>{orderTotal}</strong>
+          <span className="muted">Listas criadas a partir das pesquisas feitas na plataforma.</span>
         </div>
       </div>
 
@@ -64,22 +64,22 @@ export default async function DashboardPage() {
       <div className="panel-grid two">
         <div className="surface-premium card-lg stack">
           <span className="eyebrow">Próxima ação</span>
-          <h2 className="section-title">Continue operando com a mesma linguagem premium da landing page.</h2>
+          <h2 className="section-title">Rode uma nova busca ou reaproveite o que já funcionou.</h2>
           <p className="section-copy">
-            Rode uma nova busca, refine seu recorte e mantenha a transição entre pesquisa pública e governança interna com a mesma clareza visual.
+            O dashboard serve para produtividade comercial: repetir recortes, comparar buscas, salvar empresas e continuar a operação sem refazer tudo do zero.
           </p>
           <div className="inline-actions">
-            <Link href="/dashboard/search" className="button">
-              Abrir formulário de busca
+            <Link href="/dashboard/search" className="button" data-analytics-event="search_started" data-analytics-label="Dashboard nova busca">
+              Nova busca
             </Link>
-            <Link href="/dashboard/leads" className="button-ghost">
-              Ver leads salvos
+            <Link href="/dashboard/history" className="button-ghost">
+              Abrir histórico
             </Link>
           </div>
         </div>
 
         <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Última consulta</span>
+          <span className="eyebrow">Última busca</span>
           {latestSearch.data ? (
             <>
               <h2 className="section-title" style={{ marginBottom: 0 }}>
@@ -99,16 +99,21 @@ export default async function DashboardPage() {
                 </div>
                 <div className="stat-box stat-box-premium">
                   <strong>{latestSearch.data.cnae_code}</strong>
-                  <span className="muted">Subclasse CNAE usada</span>
+                  <span className="muted">CNAE principal</span>
                 </div>
               </div>
-              <Link href={`/dashboard/search/${latestSearch.data.id}`} className="button-secondary">
-                Ver resultado da busca
-              </Link>
+              <div className="inline-actions">
+                <Link href={`/dashboard/search/${latestSearch.data.id}`} className="button-secondary">
+                  Abrir resultado
+                </Link>
+                <Link href={`/dashboard/search?reuse=${latestSearch.data.id}`} className="button-ghost">
+                  Repetir busca
+                </Link>
+              </div>
             </>
           ) : (
             <>
-              <p className="section-copy">Você ainda não executou nenhuma busca neste ambiente premium.</p>
+              <p className="section-copy">Você ainda não executou nenhuma busca no dashboard.</p>
               <Link href="/dashboard/search" className="button-ghost">
                 Fazer primeira busca
               </Link>

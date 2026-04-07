@@ -30,8 +30,8 @@ export type LeadContactSignals = {
   hasPhone: boolean;
 };
 
-const LEAD_PRICING_TABLE: Array<{ key: LeadPricingTierKey; label: string; unitAmountCents: number; helperText: string }> = [
-  { key: "basic", label: "Básico (sem contato)", unitAmountCents: 5, helperText: "Lead sem telefone e sem e-mail." },
+export const LEAD_PRICING_TABLE: Array<{ key: LeadPricingTierKey; label: string; unitAmountCents: number; helperText: string }> = [
+  { key: "basic", label: "Básico", unitAmountCents: 5, helperText: "Lead sem telefone e sem e-mail." },
   { key: "phone", label: "Com telefone", unitAmountCents: 10, helperText: "Lead com telefone, mas sem e-mail." },
   { key: "email", label: "Com e-mail", unitAmountCents: 15, helperText: "Lead com e-mail, mas sem telefone." },
   { key: "complete", label: "Completo", unitAmountCents: 20, helperText: "Lead com telefone e e-mail." }

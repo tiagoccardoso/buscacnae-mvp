@@ -1,29 +1,30 @@
 import Link from "next/link";
+import { minimumCheckoutAmount, pricingTiers } from "@/lib/site-content";
 
 const onboardingSteps = [
   {
     title: "Pesquise",
-    copy: "Escolha CNAE, estado e cidade para montar o recorte da lista."
+    copy: "Escolha CNAE, estado e cidade para montar o recorte inicial da lista."
   },
   {
     title: "Refine",
-    copy: "Use filtros como telefone, e-mail, endereço, porte e Simples para deixar a lista mais útil."
+    copy: "Use filtros como telefone, e-mail, endereço, porte, Simples e ano mínimo de abertura para deixar o lote mais aderente."
   },
   {
-    title: "Veja o volume",
-    copy: "A próxima tela mostra quantos estabelecimentos foram encontrados na busca."
+    title: "Veja a prévia",
+    copy: "A tela seguinte mostra quantos estabelecimentos foram encontrados e uma amostra operacional da lista."
   },
   {
-    title: "Veja o valor",
-    copy: "Você confere a composição da lista e o valor total antes de pagar."
+    title: "Veja o preço",
+    copy: `O valor é calculado por tipo de lead encontrado, com mínimo operacional de ${minimumCheckoutAmount} quando houver resultados.`
   },
   {
-    title: "Compre",
-    copy: "Antes do checkout, informe seu e-mail e receba o magic link para acessar o dashboard."
+    title: "Pague",
+    copy: "Antes do checkout, informe seu e-mail para receber acesso e continuar a compra."
   },
   {
-    title: "Opere",
-    copy: "Depois do pagamento, a lista fica disponível online e pronta para download."
+    title: "Baixe a lista",
+    copy: "Depois do pagamento, a lista fica disponível online e pronta para download em XLSX."
   }
 ];
 
@@ -32,9 +33,9 @@ export function OnboardingCorporate() {
     <section className="surface-premium card-lg stack onboarding-shell">
       <div className="stack" style={{ gap: 8 }}>
         <span className="eyebrow">Passo a passo</span>
-        <h2 className="section-title">Uma jornada direta para gerar a lista com menos fricção.</h2>
+        <h2 className="section-title">Uma jornada direta para pesquisar, validar e comprar a lista.</h2>
         <p className="section-copy">
-          O fluxo foi organizado para deixar a busca mais simples: você pesquisa primeiro, vê o volume e o valor, informa o e-mail no momento certo e segue para o checkout.
+          O fluxo foi organizado para deixar a compra mais previsível: você pesquisa primeiro, vê a prévia, entende o preço e só então decide se vai seguir para o checkout.
         </p>
       </div>
 
@@ -48,12 +49,19 @@ export function OnboardingCorporate() {
         ))}
       </div>
 
+      <div className="surface-soft card stack">
+        <span className="eyebrow">Regra de preço</span>
+        <p className="section-copy" style={{ marginBottom: 0 }}>
+          {pricingTiers.map((tier) => `${tier.label}: ${tier.formattedUnitPrice}`).join(" · ")}. O dashboard é opcional e existe para histórico, listas salvas e recompra.
+        </p>
+      </div>
+
       <div className="inline-actions">
-        <Link href="/" className="button">
-          Fazer uma busca agora
+        <Link href="/" className="button" data-analytics-event="search_entry_clicked" data-analytics-label="Onboarding search">
+          Fazer uma pesquisa agora
         </Link>
         <Link href="/dashboard" className="button-ghost">
-          Ver histórico no dashboard
+          Ver dashboard
         </Link>
       </div>
     </section>

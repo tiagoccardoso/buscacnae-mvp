@@ -80,8 +80,8 @@ export async function POST(request: Request) {
     orderAccessToken: order.access_token,
     successUrl: successUrl.toString(),
     cancelUrl: cancelUrl.toString(),
-    productName: "Acesso à lista de leads da pesquisa",
-    productDescription: `Pedido ${order.id} · cobrança automática por categoria de lead`,
+    productName: "Lista B2B da pesquisa",
+    productDescription: `Pedido ${order.id} · valor calculado pela composição do lote`,
     metadata: {
       order_type: "search_access",
       search_query_id: order.search_query_id

@@ -82,7 +82,8 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
       profileId: user.id,
       email: user.email ?? undefined,
       provider: typeof search.data.provider === "string" ? search.data.provider : undefined,
-      totalResults: typeof search.data.total_results === "number" ? search.data.total_results : undefined
+      totalResults: typeof search.data.total_results === "number" ? search.data.total_results : undefined,
+      pricingSummary
     });
 
     order = await syncSearchAccessOrderPaymentStatus(ensuredOrder);
@@ -134,13 +135,17 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                 {summary.headline}
               </h2>
               <span className="muted">
-                {search.data.total_results} resultados · {search.data.cached ? "cache" : "consulta nova"} · {" "}
-                {formatDateTime(search.data.created_at)}
+                {search.data.total_results} resultados · {search.data.cached ? "cache" : "consulta nova"} · {formatDateTime(search.data.created_at)}
               </span>
             </div>
-            <Link href="/dashboard/search" className="button-ghost">
-              Nova busca
-            </Link>
+            <div className="inline-actions">
+              <Link href={`/dashboard/search?reuse=${id}`} className="button-ghost">
+                Repetir busca
+              </Link>
+              <Link href="/dashboard/search" className="button-ghost">
+                Nova busca
+              </Link>
+            </div>
           </div>
 
           <div className="stat-grid stat-grid-premium">
@@ -178,12 +183,12 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                 <div className="surface-soft card stack">
                   <span className="kicker">Leads encontrados</span>
                   <strong style={{ fontSize: "2rem" }}>{order.result_count}</strong>
-                  <span className="muted">Quantidade pronta para desbloqueio.</span>
+                  <span className="muted">Quantidade pronta para liberação.</span>
                 </div>
                 <div className="surface-soft card stack">
-                  <span className="kicker">Total</span>
+                  <span className="kicker">Total do pedido</span>
                   <strong style={{ fontSize: "2rem" }}>{formatMoney(order.total_amount_cents / 100)}</strong>
-                  <span className="muted">Cobrança automática por tipo de lead encontrado.</span>
+                  <span className="muted">Cobrança automática pela composição real do lote.</span>
                 </div>
               </div>
 
@@ -191,10 +196,10 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
               <div className="notice">
                 {orderUnlocked
-                  ? "Esta lista já está liberada. Você pode abrir a versão completa ou baixar o XLSX."
+                  ? "Esta lista já está liberada. Você pode abrir a versão completa, baixar o XLSX ou contratar a formatação por IA."
                   : order.result_count === 0
                     ? "Nenhum CNPJ foi encontrado nesta busca. O resultado fica disponível sem cobrança."
-                    : "A lista completa pode ser comprada agora, aproveitando a pesquisa já salva no Dashboard."}
+                    : "A lista completa pode ser comprada agora a partir desta pesquisa já salva no dashboard."}
               </div>
 
               <div className="inline-actions">
@@ -212,8 +217,8 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                     Ver resultado vazio
                   </Link>
                 ) : (
-                  <Link href={`/checkout/${order.id}`} className="button">
-                    Comprar lista
+                  <Link href={`/checkout/${order.id}`} className="button" data-analytics-event="preview_viewed" data-analytics-label="Dashboard search checkout">
+                    Ir para a prévia de compra
                   </Link>
                 )}
               </div>
@@ -223,31 +228,31 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                   <span className="eyebrow">Formatação com IA</span>
                   <div className="grid-2">
                     <div className="stack" style={{ gap: 6 }}>
-                      <span className="kicker">Cobrança individual</span>
+                      <span className="kicker">Cobrança avulsa</span>
                       <strong style={{ fontSize: "1.8rem" }}>{formatMoney(getAiFormattingPriceCents() / 100)}</strong>
-                      <span className="muted">Cada lista comprada libera a organização por IA em uma cobrança separada.</span>
+                      <span className="muted">Cada lista comprada pode receber organização por IA em uma cobrança separada.</span>
                     </div>
                     <div className="stack" style={{ gap: 6 }}>
                       <span className="kicker">Entrega</span>
-                      <strong style={{ fontSize: "1.1rem" }}>{aiFormatUnlocked ? "IA liberada" : "Aguardando liberação"}</strong>
-                      <span className="muted">Quando liberada, esta mesma lista poderá ser baixada em XLSX com 4 abas organizadas e em PDF no formato ficha por registro.</span>
+                      <strong style={{ fontSize: "1.1rem" }}>{aiFormatUnlocked ? "IA liberada" : "Aguardando contratação"}</strong>
+                      <span className="muted">Quando liberada, esta lista pode ser baixada em XLSX estruturado e PDF por registro.</span>
                     </div>
                   </div>
 
                   <div className="notice">
                     {aiFormatUnlocked
-                      ? "A organização por IA desta lista já foi contratada. Ao clicar em um dos downloads, o sistema gera um XLSX estruturado com quatro abas e um PDF em formato de ficha cadastral, iniciando o arquivo automaticamente ao concluir."
-                      : "O botão só aparece depois da compra efetivada da lista. Ao contratar, esta lista recebe uma cobrança avulsa de R$ 10,00 para gerar um XLSX estruturado e um PDF legível por registro."}
+                      ? "A organização por IA desta lista já foi contratada. Ao clicar em um dos downloads, o sistema gera o arquivo e inicia o download automaticamente ao concluir."
+                      : "A contratação só aparece depois da compra da lista. Quando ativada, gera um XLSX estruturado e um PDF mais legível por registro."}
                   </div>
 
                   <div className="inline-actions">
                     {aiFormatUnlocked ? (
                       <FormattedDownloadButtons searchId={id} />
                     ) : (
-                      <form action="/api/stripe/ai-format-checkout" method="POST">
+                      <form action="/api/stripe/ai-format-checkout" method="POST" data-analytics-event="ai_format_checkout_started">
                         <input type="hidden" name="searchId" value={id} />
                         <button type="submit" className="button">
-                          Formatar com IA por R$ 10,00
+                          Formatar com IA por {formatMoney(getAiFormattingPriceCents() / 100)}
                         </button>
                       </form>
                     )}
@@ -264,18 +269,18 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
       {!rows || rows.length === 0 ? (
         <EmptyState
           title="Nenhum estabelecimento retornado"
-          description="Tente outro recorte de CNAEs ou ajuste a região da busca. O resultado continua salvo no Dashboard para você revisar depois."
+          description="Tente outro recorte de CNAEs ou ajuste a região da busca. O resultado continua salvo no dashboard para você revisar depois."
           ctaHref="/dashboard/search"
           ctaLabel="Voltar ao formulário"
         />
       ) : (
         <div className="surface-premium card-lg stack">
           <div className="stack" style={{ gap: 8 }}>
-            <span className="eyebrow">Lista retornada</span>
+            <span className="eyebrow">Amostra da lista</span>
             <p className="section-copy">
               {orderUnlocked
-                ? "Navegue pelos estabelecimentos encontrados, abra a ficha completa, salve os melhores no pipeline comercial ou avance para exportação."
-                : "No histórico do dashboard exibimos apenas 1 estabelecimento como amostra. A lista completa fica disponível depois do pagamento."}
+                ? "Navegue pelos estabelecimentos encontrados, abra a ficha completa, salve os melhores na carteira e siga para exportação."
+                : "No dashboard exibimos apenas 1 estabelecimento como amostra antes da compra. A lista completa é liberada após o pagamento."}
             </p>
             {!orderUnlocked && hiddenResultsCount > 0 ? (
               <div className="notice warning">

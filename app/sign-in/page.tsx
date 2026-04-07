@@ -1,5 +1,13 @@
 import Link from "next/link";
 import { requestMagicLinkAction } from "./server-actions";
+import { buildPageMetadata } from "@/lib/seo";
+
+export const metadata = buildPageMetadata({
+  title: "Entrar",
+  description: "Acesse o dashboard para histórico, listas liberadas, leads salvos e recompra usando um link de acesso por e-mail.",
+  path: "/sign-in",
+  robots: { index: false, follow: false }
+});
 
 type SignInPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -14,30 +22,30 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
     <main className="page">
       <section className="container auth-grid auth-grid-premium">
         <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Acesso premium</span>
+          <span className="eyebrow">Entrar</span>
           <h1 className="display-title" style={{ fontSize: "clamp(2.4rem, 4vw, 4rem)" }}>
-            Entre no dashboard com uma experiência executiva e sem fricção.
+            Acesse o dashboard para organizar histórico, leads salvos e recompras.
           </h1>
           <p className="lead-copy">
-            O link mágico conecta autenticação, histórico, governança e detalhamento de listas em um fluxo pensado para operações comerciais.
+            O login não é obrigatório para pesquisar. Ele existe para guardar suas buscas, abrir listas liberadas depois e facilitar o próximo pedido.
           </p>
 
           <div className="hero-signal-grid compact-two">
             <div className="signal-card">
-              <span className="kicker">Auth</span>
-              <strong>Magic link</strong>
-              <span className="muted">Entrada segura sem senha para agilizar o começo da jornada.</span>
+              <span className="kicker">Sem senha</span>
+              <strong>Link de acesso por e-mail</strong>
+              <span className="muted">Receba o link mágico e entre sem criar mais uma senha para a operação.</span>
             </div>
             <div className="signal-card">
-              <span className="kicker">Onboarding</span>
-              <strong>Leitura guiada</strong>
-              <span className="muted">A experiência encaixa pesquisa pública e governança sem parecer um sistema pesado.</span>
+              <span className="kicker">Uso prático</span>
+              <strong>Histórico, listas e recompra</strong>
+              <span className="muted">O dashboard ajuda a repetir filtros, salvar leads e reabrir listas já compradas.</span>
             </div>
           </div>
 
           <div className="inline-actions">
             <Link href="/onboarding" className="button-secondary">
-              Ver onboarding corporativo
+              Ver como funciona
             </Link>
             <Link href="/" className="button-ghost">
               Voltar para a pesquisa
@@ -46,27 +54,27 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
         </div>
 
         <div className="surface-premium card-lg stack auth-form-shell">
-          <span className="eyebrow">Entrar</span>
+          <span className="eyebrow">Acesso ao dashboard</span>
           <h2 className="section-title" style={{ fontSize: "2rem", marginBottom: 0 }}>
-            Receba um link de acesso no seu email
+            Receba um link de acesso no seu e-mail
           </h2>
-          <p className="section-copy">Sem senha, sem fricção e com a mesma linguagem premium do restante da plataforma.</p>
+          <p className="section-copy">Use o mesmo e-mail da compra para manter histórico, checkout e listas liberadas no mesmo lugar.</p>
 
           {message ? <div className="notice success">{message}</div> : null}
           {error ? <div className="notice danger">{error}</div> : null}
 
-          <form action={requestMagicLinkAction} className="stack">
+          <form action={requestMagicLinkAction} className="stack" data-analytics-event="login_started" data-analytics-label="Sign in form">
             <div className="field">
-              <label htmlFor="email">Email corporativo</label>
+              <label htmlFor="email">E-mail de acesso</label>
               <input id="email" name="email" type="email" className="input input-premium" placeholder="voce@empresa.com" required />
             </div>
             <button className="button full button-lg" type="submit">
-              Enviar link mágico
+              Enviar link de acesso
             </button>
           </form>
 
           <div className="tiny">
-            No primeiro acesso, o trigger do banco cria o perfil automaticamente para integrar auth, histórico e billing em um mesmo fluxo.
+            No primeiro acesso, o perfil é criado automaticamente para integrar autenticação, histórico e pedidos no mesmo fluxo.
           </div>
         </div>
       </section>

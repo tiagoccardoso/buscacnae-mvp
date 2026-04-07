@@ -96,8 +96,8 @@ export async function POST(request: Request) {
     orderAccessToken: bundle.access_token,
     successUrl: successUrl.toString(),
     cancelUrl: cancelUrl.toString(),
-    productName: "Acesso às listas selecionadas",
-    productDescription: `${bundle.order_count} lista(s) selecionada(s) no histórico`,
+    productName: "Listas B2B selecionadas",
+    productDescription: `${bundle.order_count} lista(s) selecionada(s) para recompra no histórico`,
     metadata: {
       order_type: "search_access_bundle",
       bulk_order_id: bundle.id

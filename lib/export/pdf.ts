@@ -307,7 +307,7 @@ export function createFormattedListPdf(input: FormattedPdfInput) {
   addLineBreak(6);
 
   if (input.summary.length > 0) {
-    addWrapped("Resumo executivo", { size: 12, font: "F2" });
+    addWrapped("Resumo da lista", { size: 12, font: "F2" });
     for (const item of input.summary) {
       addField(item.label, item.value, 8);
     }

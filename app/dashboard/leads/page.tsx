@@ -88,13 +88,13 @@ function buildLeadScore(record: ReturnType<typeof buildDisplayEstablishment>) {
 }
 
 function rankingLabel(type: "promising" | "capital" | "contact") {
-  if (type === "promising") return "Mais promissores";
-  if (type === "capital") return "Maior capital";
-  return "Com contato disponível";
+  if (type === "promising") return "Melhor potencial comercial";
+  if (type === "capital") return "Maior capital social";
+  return "Mais canais de contato";
 }
 
 function rankingDescription(type: "promising" | "capital" | "contact") {
-  if (type === "promising") return "Pontuação com base em contato, capital, status e presença digital.";
+  if (type === "promising") return "Pontuação baseada em contato, capital, status e presença digital.";
   if (type === "capital") return "Empresas salvas com maior capital social declarado.";
   return "Leads com maior densidade de canais comerciais disponíveis.";
 }
@@ -159,7 +159,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     return (
       <EmptyState
         title="Nenhum lead salvo"
-        description="Salve empresas a partir do resultado da busca para montar sua lista comercial com segmentação por carteira, estado e potencial de prospecção."
+        description="Salve empresas a partir dos resultados das buscas para montar carteiras por nicho, região e potencial de prospecção."
         ctaHref="/dashboard/search"
         ctaLabel="Buscar empresas"
       />
@@ -180,16 +180,16 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
       <div className="surface-premium card-lg stack">
         <div className="lead-lists-toolbar">
           <div className="stack" style={{ gap: 8 }}>
-            <span className="eyebrow">Leads premium</span>
-            <h2 className="section-title">Estabelecimentos salvos e listas comerciais</h2>
+            <span className="eyebrow">Leads salvos</span>
+            <h2 className="section-title">Carteira comercial e listas internas</h2>
             <p className="section-copy">
-              Organize leads em listas salvas, como “Clientes contabilidade PR” ou “Indústrias SP”, e acompanhe rankings prontos para vendas.
+              Organize leads em listas como “Indústrias SP” ou “Contabilidade PR”, mantenha atalhos de prospecção e separe carteiras por campanha.
             </p>
           </div>
 
-          <form action={createSavedLeadListAction} className="lead-list-create-form">
-            <input name="name" className="input input-premium" placeholder="Ex.: Clientes contabilidade PR" />
-            <button type="submit" className="button">Criar lista salva</button>
+          <form action={createSavedLeadListAction} className="lead-list-create-form" data-analytics-event="saved_list_created">
+            <input name="name" className="input input-premium" placeholder="Ex.: Indústrias SP" />
+            <button type="submit" className="button">Criar lista</button>
           </form>
         </div>
 
@@ -221,7 +221,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
           { type: "contact" as const, items: topContact }
         ].map((group) => (
           <div key={group.type} className="surface-premium card-lg stack">
-            <span className="eyebrow">Ranking de leads</span>
+            <span className="eyebrow">Ranking</span>
             <h3 className="section-title" style={{ fontSize: "1.15rem" }}>{rankingLabel(group.type)}</h3>
             <p className="section-copy">{rankingDescription(group.type)}</p>
             <div className="stack" style={{ gap: 10 }}>
@@ -246,10 +246,10 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
 
       <div className="surface-premium card-lg stack">
         <div className="stack" style={{ gap: 8 }}>
-          <span className="eyebrow">Leads filtrados</span>
-          <h2 className="section-title">Carteira comercial</h2>
+          <span className="eyebrow">Carteira filtrada</span>
+          <h2 className="section-title">Leads prontos para organização e próxima ação</h2>
           <p className="section-copy">
-            Veja a carteira filtrada por lista salva, com ranking, contatos disponíveis e opção de mover o lead entre listas.
+            Filtre por lista salva, reclassifique leads e mantenha uma carteira operacional de prospecção dentro do dashboard.
           </p>
         </div>
 
@@ -288,16 +288,16 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
                   <td>
                     <div className="stack" style={{ gap: 8 }}>
                       <span className="muted">{lead.listName || "Sem lista"}</span>
-                      <form action={assignSavedLeadListAction} className="lead-list-assign-form">
+                      <form action={assignSavedLeadListAction} className="lead-list-assign-form" data-analytics-event="saved_lead_list_updated">
                         <input type="hidden" name="establishmentId" value={lead.establishmentId} />
-                        <select name="listId" defaultValue={lead.listId} className="input input-premium">
+                        <select name="listId" defaultValue={lead.listId} className="input input-premium" aria-label="Escolher lista salva">
                           <option value="">Sem lista</option>
                           {savedLists.map((list) => (
                             <option key={list.id} value={list.id}>{list.name}</option>
                           ))}
                         </select>
                         <input name="newListName" className="input input-premium" placeholder="Nova lista (opcional)" />
-                        <button type="submit" className="button-secondary">Salvar lista</button>
+                        <button type="submit" className="button-secondary">Salvar</button>
                       </form>
                     </div>
                   </td>

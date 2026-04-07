@@ -4,7 +4,26 @@ import { PremiumHeroStage } from "@/components/premium-hero-stage";
 import { SearchImmersiveStage } from "@/components/search-immersive-stage";
 import { OnboardingCorporate } from "@/components/onboarding-corporate";
 import { PublicSearchSubmitButton } from "@/components/public-search-submit-button";
+import { TrustBlock } from "@/components/trust-block";
+import { DeliveryPreview } from "@/components/delivery-preview";
+import { CommercialFaq } from "@/components/commercial-faq";
+import { UseCasesSection } from "@/components/use-cases-section";
 import { startPublicSearchAction } from "@/app/home-actions";
+import { buildPageMetadata } from "@/lib/seo";
+import { homeHighlights, minimumCheckoutAmount, pricingTiers } from "@/lib/site-content";
+
+export const metadata = buildPageMetadata({
+  title: "Listas B2B por CNAE e região",
+  description: "Pesquise empresas por CNAE, estado e cidade, veja volume e preço antes de pagar e libere a lista em XLSX após o checkout.",
+  path: "/",
+  keywords: [
+    "lista b2b por cnae",
+    "leads por cnae",
+    "empresas por cnae e cidade",
+    "lista de empresas por região",
+    "comprar lista b2b"
+  ]
+});
 
 type HomePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -13,42 +32,45 @@ type HomePageProps = {
 const journeySteps = [
   {
     title: "Pesquise",
-    copy: "Selecione CNAEs, estados e cidades para montar o recorte inicial da sua lista."
+    copy: "Selecione um ou mais CNAEs, estados e cidades para montar o recorte inicial da sua lista."
   },
   {
     title: "Refine",
-    copy: "Ative filtros como telefone, e-mail, endereço, porte e Simples para deixar a lista mais útil."
+    copy: "Ative filtros como telefone, e-mail, endereço, porte, Simples e ano de abertura quando fizer sentido."
   },
   {
-    title: "Veja o volume",
-    copy: "Na próxima tela você confere quantos estabelecimentos foram encontrados antes de pagar."
+    title: "Veja a prévia",
+    copy: "A próxima tela mostra quantos registros foram encontrados e uma amostra operacional do lote."
   },
   {
-    title: "Veja o valor",
-    copy: "O sistema mostra a composição da lista e o valor total do lote de forma clara."
+    title: "Confirme o preço",
+    copy: `O valor é calculado por tipo de lead encontrado, com mínimo operacional de ${minimumCheckoutAmount} quando houver resultados.`
   },
   {
-    title: "Compre",
-    copy: "Antes do checkout você informa seu e-mail, recebe o magic link e segue para o pagamento."
+    title: "Pague",
+    copy: "O e-mail entra só antes do checkout, quando o acesso precisa ser enviado e a compra vai acontecer."
   },
   {
-    title: "Opere",
-    copy: "Depois da confirmação, a lista fica liberada online e pronta para download em XLSX."
+    title: "Baixe a lista",
+    copy: "Depois da confirmação do pagamento, a lista fica liberada online e pronta para download em XLSX."
   }
 ];
 
-const faqItems = [
+const benefitCards = [
   {
-    question: "Preciso informar e-mail para pesquisar?",
-    answer: "Não. Você pode montar a busca, ver o volume e ver o valor da lista antes de informar seu e-mail."
+    kicker: "Preço por tipo de lead",
+    title: "Você sabe o que está comprando",
+    copy: pricingTiers.map((tier) => `${tier.label}: ${tier.formattedUnitPrice}`).join(" · ")
   },
   {
-    question: "Quando o e-mail é solicitado?",
-    answer: "O e-mail é pedido logo antes do checkout. Nesse momento o sistema também envia o magic link para acesso ao dashboard."
+    kicker: "Prévia real",
+    title: "Volume, composição e amostra antes de pagar",
+    copy: "A jornada mostra quantidade encontrada, composição por contato e uma amostra operacional do lote."
   },
   {
-    question: "Quando recebo a lista?",
-    answer: "Assim que o pagamento for confirmado, a lista é liberada online e o download em XLSX fica disponível na mesma jornada."
+    kicker: "Entrega útil",
+    title: "Lista pronta para uso comercial",
+    copy: "Receba a lista online e no XLSX, com dados cadastrais e sinais de contato quando disponíveis."
   }
 ];
 
@@ -60,38 +82,29 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     <main className="page">
       <section className="container hero-premium-stack">
         <div className="hero-premium-copy surface-premium card-lg stack">
-          <span className="eyebrow">Lista de empresas por CNAE e região</span>
+          <span className="eyebrow">Listas B2B por CNAE e região</span>
           <h1 className="display-title">
-            <span className="gradient-text">Pesquise, refine, veja o volume, veja o valor e compre só quando fizer sentido</span>.
+            <span className="gradient-text">Descubra, filtre e compre listas B2B por CNAE e região com preço transparente antes do pagamento.</span>
           </h1>
           <p className="lead-copy">
-            Monte sua busca, ajuste os filtros e avance para uma prévia com <strong>quantidade encontrada e valor total</strong> antes do checkout.
-            O e-mail só entra na etapa final, junto com o magic link para acessar o dashboard.
+            Monte sua pesquisa, refine com filtros comerciais e avance para uma prévia com <strong>volume encontrado, composição do lote e valor total</strong> antes do checkout.
+            O dashboard é opcional e entra para histórico, organização e recompra.
           </p>
 
           <div className="inline-list">
-            <span className="pill">Sem e-mail para pesquisar</span>
-            <span className="pill">Veja volume antes de pagar</span>
-            <span className="pill">Veja valor antes de pagar</span>
-            <span className="pill">Entrega online + XLSX</span>
+            {homeHighlights.map((item) => (
+              <span key={item} className="pill">{item}</span>
+            ))}
           </div>
 
           <div className="hero-signal-grid">
-            <div className="signal-card">
-              <span className="kicker">Pesquise e refine</span>
-              <strong>Monte o recorte da lista em poucos passos</strong>
-              <span className="muted">Escolha CNAE, região e filtros de contato para chegar mais perto da lista que você precisa.</span>
-            </div>
-            <div className="signal-card">
-              <span className="kicker">Veja o volume e o valor</span>
-              <strong>Decida com números na tela</strong>
-              <span className="muted">A prévia mostra quantos leads foram encontrados e quanto custa liberar o lote.</span>
-            </div>
-            <div className="signal-card">
-              <span className="kicker">Compre e opere</span>
-              <strong>Receba o acesso e siga para o checkout</strong>
-              <span className="muted">Antes de pagar, você informa o e-mail, recebe o magic link e continua sem sair do fluxo.</span>
-            </div>
+            {benefitCards.map((item) => (
+              <div key={item.title} className="signal-card">
+                <span className="kicker">{item.kicker}</span>
+                <strong>{item.title}</strong>
+                <span className="muted">{item.copy}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -102,22 +115,22 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         <div className="immersive-search-layout surface-premium card-lg">
           <div className="immersive-search-form-side">
             <div className="stack immersive-search-copy" style={{ gap: 8 }}>
-              <span className="eyebrow">Comece pela busca</span>
-              <h2 className="section-title immersive-search-title">Pesquise agora e veja se a lista vale a compra.</h2>
+              <span className="eyebrow">Comece pela pesquisa</span>
+              <h2 className="section-title immersive-search-title">Pesquise agora e veja se o lote vale a compra.</h2>
               <p className="section-copy">
-                Combine múltiplos CNAEs, estados e cidades na mesma pesquisa e refine o lote com filtros que ajudam na operação comercial.
+                Combine múltiplos CNAEs, estados e cidades na mesma operação e refine a lista com filtros que ajudam no outbound, na cobertura regional e na inteligência comercial.
               </p>
             </div>
 
             {error ? <div className="notice danger">{error}</div> : null}
 
-            <form action={startPublicSearchAction} className="stack immersive-search-form">
+            <form action={startPublicSearchAction} className="stack immersive-search-form" data-analytics-event="search_started" data-analytics-label="Home search form">
               <SearchFilterBuilder />
 
               <div className="home-form-actions home-form-actions-premium immersive-submit-row">
                 <PublicSearchSubmitButton />
                 <span className="tiny">
-                  Você pesquisa primeiro. O e-mail só é pedido antes do checkout, junto com o envio do magic link de acesso.
+                  Você pesquisa primeiro. O e-mail só é pedido antes do checkout, junto com o envio do acesso para acompanhar a compra depois.
                 </span>
               </div>
             </form>
@@ -128,13 +141,13 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             <div className="immersive-search-benefits">
               <div className="signal-card">
                 <span className="kicker">Refine a lista</span>
-                <strong>Telefone, e-mail, endereço, porte e mais</strong>
-                <span className="muted">Use os filtros para priorizar listas mais úteis para prospecção e operação comercial.</span>
+                <strong>Telefone, e-mail, endereço, porte, Simples e mais</strong>
+                <span className="muted">Use os filtros para aproximar o lote do perfil comercial que você realmente quer operar.</span>
               </div>
               <div className="signal-card">
                 <span className="kicker">Fluxo direto</span>
-                <strong>Busca, volume, valor e checkout</strong>
-                <span className="muted">A jornada mostra o que foi encontrado antes do pagamento e só pede o e-mail no momento certo.</span>
+                <strong>Pesquisa, prévia, checkout e download</strong>
+                <span className="muted">Sem pedir login cedo demais e sem esconder o valor do pedido até a etapa final.</span>
               </div>
             </div>
           </div>
@@ -144,8 +157,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <section className="container stack" style={{ marginTop: 28 }}>
         <div className="surface-premium card-lg panel-grid two">
           <div className="stack" style={{ gap: 12 }}>
-            <span className="eyebrow">Como funciona</span>
-            <h2 className="section-title">Pesquise, refine, veja o volume, veja o valor, compre e opere.</h2>
+            <span className="eyebrow">Como funciona na prática</span>
+            <h2 className="section-title">Pesquise, refine, veja a prévia, pague e baixe a lista.</h2>
             <div className="journey-grid">
               {journeySteps.map((step, index) => (
                 <div key={step.title} className="journey-step-card">
@@ -159,44 +172,32 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
           <div className="stack action-stage">
             <div className="notice conversion-notice">
-              <strong>Preço claro</strong>
+              <strong>Preço alinhado com o produto</strong>
               <p className="muted" style={{ marginBottom: 0 }}>
-                A lógica continua simples: <strong>R$ 0,05 básico</strong>, <strong>R$ 0,10 com telefone</strong>, <strong>R$ 0,15 com e-mail</strong> e <strong>R$ 0,20 completo</strong>.
-                O lote final é calculado pela composição real do que foi encontrado na busca.
+                A cobrança é por tipo de lead encontrado: {pricingTiers.map((tier) => `${tier.label} ${tier.formattedUnitPrice}`).join(", ")}. Quando houver resultado, o pedido respeita mínimo operacional de {minimumCheckoutAmount}.
               </p>
             </div>
             <div className="notice conversion-notice">
-              <strong>Menos fricção</strong>
+              <strong>Sem compra no escuro</strong>
               <p className="muted" style={{ marginBottom: 0 }}>
-                Você vê o volume e o valor antes de pagar. O e-mail entra só antes do checkout, quando o acesso realmente precisa ser enviado.
+                A prévia mostra volume, composição do lote e amostra da lista antes do checkout para a decisão ser mais previsível.
               </p>
             </div>
             <div className="inline-actions">
-              <Link href="/pricing" className="button-ghost">
+              <Link href="/pricing" className="button-ghost" data-analytics-event="pricing_viewed" data-analytics-label="Home pricing">
                 Ver preços
               </Link>
-              <Link href="/onboarding" className="button-secondary">
-                Ver o passo a passo
+              <Link href="/dados" className="button-secondary" data-analytics-event="data_page_opened" data-analytics-label="Home dados">
+                Entender os dados
               </Link>
             </div>
           </div>
         </div>
 
-        <div className="surface-premium card-lg stack faq-shell">
-          <div className="stack" style={{ gap: 8 }}>
-            <span className="eyebrow">Dúvidas frequentes</span>
-            <h2 className="section-title">Clareza para avançar sem travar a compra.</h2>
-          </div>
-          <div className="grid-3 faq-grid">
-            {faqItems.map((item) => (
-              <div key={item.question} className="signal-card faq-card">
-                <strong>{item.question}</strong>
-                <span className="muted">{item.answer}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
+        <DeliveryPreview />
+        <TrustBlock />
+        <UseCasesSection />
+        <CommercialFaq limit={6} />
         <OnboardingCorporate />
       </section>
     </main>

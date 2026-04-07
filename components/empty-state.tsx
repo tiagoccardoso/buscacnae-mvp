@@ -10,7 +10,7 @@ type EmptyStateProps = {
 export function EmptyState({ title, description, ctaHref, ctaLabel }: EmptyStateProps) {
   return (
     <div className="surface-premium card empty empty-premium">
-      <span className="eyebrow">Sem dados no momento</span>
+      <span className="eyebrow">Nada por aqui ainda</span>
       <strong style={{ fontSize: "1.3rem", letterSpacing: "-0.03em" }}>{title}</strong>
       <p className="muted" style={{ margin: 0, maxWidth: 620 }}>
         {description}

@@ -1,5 +1,7 @@
 import { SearchFilterBuilder } from "@/components/search-filter-builder";
 import { SearchImmersiveStage } from "@/components/search-immersive-stage";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSearchFilterDefaults } from "@/lib/search-filter-defaults";
 import { runSearchAction } from "./server-actions";
 
 type SearchPageProps = {
@@ -9,29 +11,55 @@ type SearchPageProps = {
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const params = searchParams ? await searchParams : {};
   const error = typeof params.error === "string" ? params.error : "";
+  const reuse = typeof params.reuse === "string" ? params.reuse : "";
+
+  let reuseDefaults = {};
+  let reuseMessage = "";
+
+  if (reuse) {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      const { data: reusedSearch } = await supabase
+        .from("search_queries")
+        .select("query_payload")
+        .eq("id", reuse)
+        .eq("profile_id", user.id)
+        .maybeSingle();
+
+      if (reusedSearch?.query_payload) {
+        reuseDefaults = getSearchFilterDefaults(reusedSearch.query_payload);
+        reuseMessage = "Filtros carregados a partir de uma busca anterior. Ajuste o que quiser antes de rodar novamente.";
+      }
+    }
+  }
 
   return (
     <div className="immersive-search-layout surface-premium card-lg">
       <div className="immersive-search-form-side">
         <div className="stack immersive-search-copy" style={{ gap: 8 }}>
-          <span className="eyebrow">Formulário operacional</span>
-          <h2 className="section-title immersive-search-title">Monte buscas no Dashboard com o mesmo padrão da pesquisa principal.</h2>
+          <span className="eyebrow">Nova busca</span>
+          <h2 className="section-title immersive-search-title">Monte uma nova lista ou repita um recorte já validado.</h2>
           <p className="section-copy">
-            Use o chat de IA para localizar CNAEs, clique nas sugestões para incluir no filtro e combine múltiplos estados e cidades na mesma operação.
+            Use o assistente de CNAE, reaproveite filtros antigos e envie a busca para uma nova prévia sem sair do dashboard.
           </p>
         </div>
 
+        {reuseMessage ? <div className="notice success">{reuseMessage}</div> : null}
         {error ? <div className="notice danger">{error}</div> : null}
 
-        <form action={runSearchAction} className="stack immersive-search-form">
-          <SearchFilterBuilder />
+        <form action={runSearchAction} className="stack immersive-search-form" data-analytics-event="search_started" data-analytics-label="Dashboard search form">
+          <SearchFilterBuilder {...reuseDefaults} />
 
           <div className="home-form-actions home-form-actions-premium immersive-submit-row">
             <button type="submit" className="button button-lg">
-              Buscar estabelecimentos
+              Ver volume e preço da busca
             </button>
             <span className="tiny">
-              O resultado fica salvo no Dashboard e já mostra a rota de compra da lista para avançar sem sair do fluxo operacional.
+              O resultado fica salvo no dashboard e já mostra a rota de compra da lista para avançar sem sair do fluxo.
             </span>
           </div>
         </form>
@@ -41,14 +69,14 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         <SearchImmersiveStage />
         <div className="immersive-search-benefits">
           <div className="signal-card">
-            <span className="kicker">Chat de IA</span>
-            <strong>Descubra CNAEs mais rápido</strong>
-            <span className="muted">Descreva a atividade da empresa e transforme as sugestões em filtros com um clique.</span>
+            <span className="kicker">Recompra</span>
+            <strong>Repita filtros que já deram certo</strong>
+            <span className="muted">Abra uma busca anterior, carregue o mesmo recorte e ajuste só o que mudou para a próxima rodada.</span>
           </div>
           <div className="signal-card">
-            <span className="kicker">Operação contínua</span>
-            <strong>Pesquisar, revisar e comprar no mesmo fluxo</strong>
-            <span className="muted">A busca fica registrada e o resultado já oferece a opção de comprar a lista encontrada.</span>
+            <span className="kicker">Prévia operacional</span>
+            <strong>Volume, composição e preço antes do checkout</strong>
+            <span className="muted">A mesma lógica da página pública continua aqui, com mais conveniência para quem usa o dashboard no dia a dia.</span>
           </div>
         </div>
       </div>

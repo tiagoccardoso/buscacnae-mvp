@@ -2,7 +2,7 @@ type DashboardImpactVisualsProps = {
   searchCount: number;
   leadCount: number;
   latestResults: number;
-  latestCity: string;
+  latestCity?: string | null;
 };
 
 function normalizeChartValue(value: number, maxValue: number) {
@@ -19,20 +19,20 @@ export function DashboardImpactVisuals({
   const maxValue = Math.max(searchCount, leadCount, latestResults, 1);
   const chart = [
     { label: "Buscas", value: searchCount },
-    { label: "Leads", value: leadCount },
-    { label: "Última lista", value: latestResults }
+    { label: "Leads salvos", value: leadCount },
+    { label: "Último lote", value: latestResults }
   ];
 
   return (
     <div className="dashboard-visual-grid">
       <div className="surface card-lg stack chart-shell">
         <div className="stack" style={{ gap: 6 }}>
-          <span className="eyebrow">Impacto operacional</span>
+          <span className="eyebrow">Ritmo da operação</span>
           <h2 className="section-title" style={{ marginBottom: 0 }}>
-            Volume visual da operação
+            Volume de uso do dashboard
           </h2>
           <p className="section-copy">
-            Um resumo gráfico para leitura rápida do uso da plataforma, do estoque de leads e da última pesquisa executada.
+            Um resumo rápido das buscas já feitas, dos leads salvos e do tamanho da última lista rodada.
           </p>
         </div>
 
@@ -53,9 +53,9 @@ export function DashboardImpactVisuals({
       </div>
 
       <div className="surface card-lg stack radar-shell">
-        <span className="eyebrow">Camada corporativa</span>
+        <span className="eyebrow">Leitura rápida</span>
         <h2 className="section-title" style={{ marginBottom: 0 }}>
-          Panorama executivo
+          Panorama atual
         </h2>
         <div className="radar-card">
           <div className="radar-grid" aria-hidden="true">
@@ -71,11 +71,11 @@ export function DashboardImpactVisuals({
         </div>
         <div className="metric-inline-grid">
           <div>
-            <span className="kicker">Cidade mais recente</span>
+            <span className="kicker">Última cidade</span>
             <strong>{latestCity || "—"}</strong>
           </div>
           <div>
-            <span className="kicker">Leads ativos</span>
+            <span className="kicker">Leads salvos</span>
             <strong>{leadCount}</strong>
           </div>
           <div>
