@@ -18,14 +18,6 @@ type SearchFilterBuilderProps = {
   defaultStateCodes?: string[];
   defaultCitySelections?: Array<{ cityName: string; stateCode: string }>;
   defaultStateWide?: boolean;
-  defaultRequireEmail?: boolean;
-  defaultRequireAddress?: boolean;
-  defaultRequirePhone?: boolean;
-  defaultMobileOnly?: boolean;
-  defaultCompanySizes?: string[];
-  defaultSimplesOnly?: boolean;
-  defaultCapitalSocialMin?: string;
-  defaultCapitalSocialMax?: string;
   defaultActivityStartYear?: string;
 };
 
@@ -97,14 +89,6 @@ function buildDefaultCityOptions(values: Array<{ cityName: string; stateCode: st
       }))
   );
 }
-
-const COMPANY_SIZE_OPTIONS = [
-  "Micro Empresa",
-  "Empresa de Pequeno Porte",
-  "Demais",
-  "Médio Porte",
-  "Grande Porte"
-];
 
 function splitOptionLabel(label: string) {
   const [primary, ...rest] = label.split(" · ");
@@ -332,14 +316,6 @@ export function SearchFilterBuilder({
   defaultStateCodes = [],
   defaultCitySelections = [],
   defaultStateWide = false,
-  defaultRequireEmail = false,
-  defaultRequireAddress = false,
-  defaultRequirePhone = false,
-  defaultMobileOnly = false,
-  defaultCompanySizes = [],
-  defaultSimplesOnly = false,
-  defaultCapitalSocialMin = "",
-  defaultCapitalSocialMax = "",
   defaultActivityStartYear = ""
 }: SearchFilterBuilderProps) {
   const [selectedCnaes, setSelectedCnaes] = useState<PickerOption[]>(() => buildDefaultCnaeOptions(defaultCnaes));
@@ -355,14 +331,6 @@ export function SearchFilterBuilder({
   const [statesLoading, setStatesLoading] = useState(false);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [stateWide, setStateWide] = useState(defaultStateWide);
-  const [requireEmail, setRequireEmail] = useState(defaultRequireEmail);
-  const [requireAddress, setRequireAddress] = useState(defaultRequireAddress);
-  const [requirePhone, setRequirePhone] = useState(defaultRequirePhone || defaultMobileOnly);
-  const [mobileOnly, setMobileOnly] = useState(defaultMobileOnly);
-  const [selectedCompanySizes, setSelectedCompanySizes] = useState<string[]>(() => Array.from(new Set(defaultCompanySizes.filter(Boolean))));
-  const [simplesOnly, setSimplesOnly] = useState(defaultSimplesOnly);
-  const [capitalSocialMin, setCapitalSocialMin] = useState(defaultCapitalSocialMin);
-  const [capitalSocialMax, setCapitalSocialMax] = useState(defaultCapitalSocialMax);
   const [activityStartYear, setActivityStartYear] = useState(defaultActivityStartYear);
 
   const filteredCnaes = useMemo(() => {
@@ -374,12 +342,6 @@ export function SearchFilterBuilder({
     const selectedValues = new Set(selectedStates.map((item) => item.value));
     return stateOptions.filter((item) => !selectedValues.has(item.value));
   }, [selectedStates, stateOptions]);
-
-  useEffect(() => {
-    if (mobileOnly && !requirePhone) {
-      setRequirePhone(true);
-    }
-  }, [mobileOnly, requirePhone]);
 
   useEffect(() => {
     const unresolved = selectedStates
@@ -581,7 +543,6 @@ export function SearchFilterBuilder({
 
   const cnaeValue = selectedCnaes.map((item) => item.value).join("\n");
   const stateValue = selectedStates.map((item) => item.value).join("\n");
-  const companySizesValue = selectedCompanySizes.join("\n");
   const importedCnaes = splitMultiValue(cnaeQuery).map((item) => normalizeCode(item)).filter(Boolean);
 
   return (
@@ -619,7 +580,6 @@ export function SearchFilterBuilder({
       <input type="hidden" name="cnae" value={cnaeValue} />
       <input type="hidden" name="stateCode" value={stateValue} />
       <input type="hidden" name="citySelection" value={citySelectionsValue} />
-      <input type="hidden" name="companySizes" value={companySizesValue} />
 
       <div className="search-builder-grid search-builder-grid-immersive">
         <PickerField
@@ -718,102 +678,26 @@ export function SearchFilterBuilder({
         </label>
 
         <div className="field" style={{ marginTop: 0 }}>
-          <label>Filtros avançados</label>
-          <div className="checkbox-grid compact">
-            <label className="filter-check filter-check-premium">
-              <input type="checkbox" name="requireEmail" checked={requireEmail} onChange={(event) => setRequireEmail(event.target.checked)} />
-              <span>Com e-mail</span>
-            </label>
-            <label className="filter-check filter-check-premium">
-              <input type="checkbox" name="requireAddress" checked={requireAddress} onChange={(event) => setRequireAddress(event.target.checked)} />
-              <span>Com endereço</span>
-            </label>
-            <label className="filter-check filter-check-premium">
-              <input type="checkbox" name="requirePhone" checked={requirePhone} onChange={(event) => setRequirePhone(event.target.checked)} />
-              <span>Com telefone</span>
-            </label>
-            <label className="filter-check filter-check-premium">
-              <input type="checkbox" name="mobileOnly" checked={mobileOnly} onChange={(event) => setMobileOnly(event.target.checked)} />
-              <span>Apenas celular</span>
-            </label>
-            <label className="filter-check filter-check-premium">
-              <input type="checkbox" name="simplesOnly" checked={simplesOnly} onChange={(event) => setSimplesOnly(event.target.checked)} />
-              <span>Simples Nacional</span>
-            </label>
-          </div>
-
-          <div className="grid-2" style={{ marginTop: 14, alignItems: "start", gridTemplateColumns: "minmax(0, max-content) minmax(0, 1fr)", gap: 12 }}>
-            <div className="field" style={{ marginTop: 0, width: "fit-content" }}>
-              <label htmlFor="activityStartYear">Ano mínimo de início da atividade</label>
+          <label htmlFor="activityStartYear">Ano mínimo de início da atividade</label>
+          <div className="year-filter-card">
+            <div className="year-filter-copy">
+              <strong>Filtre empresas a partir de um ano específico</strong>
+              <span>
+                Exemplo: ao informar 2020, a busca considera empresas com início de atividade em 2020 ou depois.
+              </span>
+            </div>
+            <div className="year-filter-input-wrap">
               <input
                 id="activityStartYear"
                 name="activityStartYear"
                 type="number"
                 inputMode="numeric"
-                className="input input-premium"
-                placeholder="2025"
+                className="input input-premium year-filter-input"
+                placeholder="2020"
                 min="1900"
                 max={new Date().getFullYear()}
                 value={activityStartYear}
                 onChange={(event) => setActivityStartYear(event.target.value)}
-                style={{ width: "9ch", minWidth: 0 }}
-              />
-            </div>
-            <div style={{ display: "flex", alignItems: "center", minHeight: 52, paddingTop: 34 }}>
-              <span className="tiny">
-                Informe um ano mínimo. Ex.: 2025 busca empresas de 2025 em diante.
-              </span>
-            </div>
-          </div>
-
-          <div className="field" style={{ marginTop: 14 }}>
-            <label>Porte da empresa</label>
-            <div className="checkbox-grid compact">
-              {COMPANY_SIZE_OPTIONS.map((option) => {
-                const checked = selectedCompanySizes.includes(option);
-                return (
-                  <label key={option} className="filter-check filter-check-premium">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) => {
-                        setSelectedCompanySizes((current) =>
-                          event.target.checked ? Array.from(new Set([...current, option])) : current.filter((item) => item !== option)
-                        );
-                      }}
-                    />
-                    <span>{option}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="grid-2" style={{ marginTop: 14 }}>
-            <div className="field" style={{ marginTop: 0 }}>
-              <label htmlFor="capitalSocialMin">Capital social mínimo</label>
-              <input
-                id="capitalSocialMin"
-                name="capitalSocialMin"
-                type="text"
-                inputMode="decimal"
-                className="input input-premium"
-                placeholder="Ex.: 50000"
-                value={capitalSocialMin}
-                onChange={(event) => setCapitalSocialMin(event.target.value)}
-              />
-            </div>
-            <div className="field" style={{ marginTop: 0 }}>
-              <label htmlFor="capitalSocialMax">Capital social máximo</label>
-              <input
-                id="capitalSocialMax"
-                name="capitalSocialMax"
-                type="text"
-                inputMode="decimal"
-                className="input input-premium"
-                placeholder="Ex.: 500000"
-                value={capitalSocialMax}
-                onChange={(event) => setCapitalSocialMax(event.target.value)}
               />
             </div>
           </div>
@@ -821,7 +705,7 @@ export function SearchFilterBuilder({
           <span className="tiny">
             {stateWide
               ? "Com busca estadual ativa, as cidades são ignoradas e a consulta roda em todos os municípios dos estados escolhidos."
-              : "Use o assistente para encontrar CNAEs relacionados à atividade da empresa ou escolha manualmente pela lista. Se não informar ano mínimo, a pesquisa considera empresas de todos os anos."}
+              : "Use o assistente para encontrar CNAEs relacionados à atividade da empresa ou escolha manualmente pela lista. Se não informar o ano, a pesquisa considera empresas de todos os períodos."}
           </span>
         </div>
       </div>
