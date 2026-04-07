@@ -2,7 +2,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { hydrateNormalizedEstablishment, normalizeCompanySizeInput, canonicalizeEstablishment, normalizedToPresenterSource, mergeNormalizedEstablishments } from "@/lib/establishment-canonical";
 import { getDiscoveryCacheTtlHours, getDiscoveryProvider, getMinimumCheckoutAmountCents } from "@/lib/env";
 import { DiscoverySearchInput, NormalizedEstablishment, ServiceResult } from "@/lib/types";
-import { normalizeCode, normalizeCnpj, normalizeText, parseNumber, sha256, toTitleCase } from "@/lib/utils";
+import { normalizeCode, normalizeCnpj, normalizeText, sha256, toTitleCase } from "@/lib/utils";
 import { buildLeadPricingSummary } from "@/lib/lead-pricing";
 import { searchWithCasaDosDados } from "./providers/casadosdados";
 import { searchWithCnpjWs } from "./providers/cnpjws";
@@ -17,37 +17,6 @@ type PublicCitySelection = {
 type SearchTarget = {
   cityName: string;
   stateCode: string;
-};
-
-type StoredEstablishmentRow = {
-  cnpj: string;
-  cnpj_root: string | null;
-  company_name: string;
-  trade_name: string | null;
-  registration_status: string | null;
-  opened_at: string | null;
-  primary_cnae_code: string | null;
-  primary_cnae_description: string | null;
-  secondary_cnaes: unknown;
-  legal_nature_code: string | null;
-  legal_nature_description: string | null;
-  company_size: string | null;
-  simples_opt_in: boolean | null;
-  mei_opt_in: boolean | null;
-  capital_social: number | string | null;
-  email: string | null;
-  phone: string | null;
-  website: string | null;
-  country: string | null;
-  state_code: string | null;
-  city_name: string | null;
-  city_ibge: string | null;
-  neighborhood: string | null;
-  cep: string | null;
-  address_line: string | null;
-  address_number: string | null;
-  complement: string | null;
-  provider_payload: unknown;
 };
 
 type PrepareSearchOrderInput = {
@@ -74,101 +43,13 @@ function normalizeCompanySizeLabel(value: string) {
 }
 
 function parseCapitalValue(value: unknown) {
-  return parseNumber(value);
-}
-
-function normalizeCapitalRange(min: number | null, max: number | null) {
-  if (min !== null && max !== null && min > max) {
-    return { min: max, max: min };
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const normalized = value.replace(/\./g, "").replace(",", ".");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
   }
-  return { min, max };
-}
-
-function normalizeTargetCityName(value: string) {
-  return toTitleCase(normalizeText(value));
-}
-
-function buildTargetKey(cityName: string, stateCode: string) {
-  return `${normalizeTargetCityName(cityName)}|${stateCode.trim().toUpperCase()}`;
-}
-
-function mapStoredEstablishmentRow(row: StoredEstablishmentRow): NormalizedEstablishment {
-  return hydrateNormalizedEstablishment({
-    cnpj: normalizeCnpj(String(row.cnpj ?? "")),
-    cnpjRoot: typeof row.cnpj_root === "string" ? row.cnpj_root : null,
-    companyName: typeof row.company_name === "string" && row.company_name.trim() ? row.company_name : "Sem razão social",
-    tradeName: typeof row.trade_name === "string" ? row.trade_name : null,
-    registrationStatus: typeof row.registration_status === "string" ? row.registration_status : null,
-    openedAt: typeof row.opened_at === "string" ? row.opened_at : null,
-    primaryCnaeCode: typeof row.primary_cnae_code === "string" ? row.primary_cnae_code : null,
-    primaryCnaeDescription: typeof row.primary_cnae_description === "string" ? row.primary_cnae_description : null,
-    secondaryCnaes: row.secondary_cnaes ?? null,
-    legalNatureCode: typeof row.legal_nature_code === "string" ? row.legal_nature_code : null,
-    legalNatureDescription: typeof row.legal_nature_description === "string" ? row.legal_nature_description : null,
-    companySize: typeof row.company_size === "string" ? row.company_size : null,
-    simplesOptIn: typeof row.simples_opt_in === "boolean" ? row.simples_opt_in : null,
-    meiOptIn: typeof row.mei_opt_in === "boolean" ? row.mei_opt_in : null,
-    capitalSocial: parseCapitalValue(row.capital_social),
-    email: typeof row.email === "string" ? row.email : null,
-    phone: typeof row.phone === "string" ? row.phone : null,
-    website: typeof row.website === "string" ? row.website : null,
-    country: typeof row.country === "string" ? row.country : null,
-    stateCode: typeof row.state_code === "string" ? row.state_code : null,
-    cityName: typeof row.city_name === "string" ? row.city_name : null,
-    cityIbge: typeof row.city_ibge === "string" ? row.city_ibge : null,
-    neighborhood: typeof row.neighborhood === "string" ? row.neighborhood : null,
-    cep: typeof row.cep === "string" ? row.cep : null,
-    addressLine: typeof row.address_line === "string" ? row.address_line : null,
-    addressNumber: typeof row.address_number === "string" ? row.address_number : null,
-    complement: typeof row.complement === "string" ? row.complement : null,
-    providerPayload: row.provider_payload ?? null
-  });
-}
-
-async function fetchStoredRowsForTargets(args: {
-  admin: ReturnType<typeof createSupabaseAdminClient>;
-  cnaes: string[];
-  searchTargets: SearchTarget[];
-  stateWide: boolean;
-}) {
-  const stateCodes = Array.from(new Set(args.searchTargets.map((item) => item.stateCode.trim().toUpperCase()).filter(Boolean)));
-  const normalizedCnaes = Array.from(new Set(args.cnaes.map((item) => normalizeCode(item)).filter(Boolean)));
-
-  if (stateCodes.length === 0 || normalizedCnaes.length === 0) {
-    return [] as NormalizedEstablishment[];
-  }
-
-  const { data, error } = await args.admin
-    .from("establishments")
-    .select("cnpj, cnpj_root, company_name, trade_name, registration_status, opened_at, primary_cnae_code, primary_cnae_description, secondary_cnaes, legal_nature_code, legal_nature_description, company_size, simples_opt_in, mei_opt_in, capital_social, email, phone, website, country, state_code, city_name, city_ibge, neighborhood, cep, address_line, address_number, complement, provider_payload")
-    .in("primary_cnae_code", normalizedCnaes)
-    .in("state_code", stateCodes);
-
-  if (error || !data || data.length === 0) {
-    return [] as NormalizedEstablishment[];
-  }
-
-  const cityTargetKeys = new Set(
-    args.searchTargets
-      .filter((item) => item.cityName.trim().length > 0)
-      .map((item) => buildTargetKey(item.cityName, item.stateCode))
-  );
-  const stateWideStates = new Set(
-    args.stateWide
-      ? args.searchTargets.map((item) => item.stateCode.trim().toUpperCase()).filter(Boolean)
-      : []
-  );
-
-  return (data as StoredEstablishmentRow[])
-    .map((row) => mapStoredEstablishmentRow(row))
-    .filter((row) => {
-      const normalizedState = row.stateCode?.trim().toUpperCase() ?? "";
-      if (!normalizedState) return false;
-      if (stateWideStates.has(normalizedState)) return true;
-      const cityName = row.cityName ?? "";
-      if (!cityName.trim()) return false;
-      return cityTargetKeys.has(buildTargetKey(cityName, normalizedState));
-    });
+  return null;
 }
 
 function parseOpenedAtYear(value: unknown) {
@@ -208,6 +89,81 @@ function extractActivityStartYearFromPayload(payload: unknown): number | null {
   }
   return null;
 }
+
+function hasAdvancedPublicFilters(input: Pick<PrepareSearchOrderInput, "requireEmail" | "requireAddress" | "requirePhone" | "mobileOnly" | "companySizes" | "simplesOnly" | "capitalSocialMin" | "capitalSocialMax" | "activityStartYear">) {
+  return Boolean(
+    input.requireEmail ||
+    input.requireAddress ||
+    input.requirePhone ||
+    input.mobileOnly ||
+    input.simplesOnly ||
+    (input.companySizes?.length ?? 0) > 0 ||
+    input.capitalSocialMin !== null ||
+    input.capitalSocialMax !== null ||
+    input.activityStartYear !== null
+  );
+}
+
+function normalizeStoredEstablishmentRow(row: Record<string, unknown>): NormalizedEstablishment {
+  return hydrateNormalizedEstablishment({
+    cnpj: normalizeCnpj(String(row.cnpj ?? "")),
+    cnpjRoot: typeof row.cnpj_root === "string" ? row.cnpj_root : null,
+    companyName: typeof row.company_name === "string" && row.company_name.trim() ? row.company_name : "Sem razão social",
+    tradeName: typeof row.trade_name === "string" ? row.trade_name : null,
+    registrationStatus: typeof row.registration_status === "string" ? row.registration_status : null,
+    openedAt: typeof row.opened_at === "string" ? row.opened_at : null,
+    primaryCnaeCode: typeof row.primary_cnae_code === "string" ? row.primary_cnae_code : null,
+    primaryCnaeDescription: typeof row.primary_cnae_description === "string" ? row.primary_cnae_description : null,
+    secondaryCnaes: row.secondary_cnaes ?? null,
+    legalNatureCode: typeof row.legal_nature_code === "string" ? row.legal_nature_code : null,
+    legalNatureDescription: typeof row.legal_nature_description === "string" ? row.legal_nature_description : null,
+    companySize: typeof row.company_size === "string" ? row.company_size : null,
+    simplesOptIn: typeof row.simples_opt_in === "boolean" ? row.simples_opt_in : null,
+    meiOptIn: typeof row.mei_opt_in === "boolean" ? row.mei_opt_in : null,
+    capitalSocial:
+      typeof row.capital_social === "number"
+        ? row.capital_social
+        : typeof row.capital_social === "string"
+          ? Number.isFinite(Number(row.capital_social.replace(/[^\d,-.]/g, "").replace(/\.(?=.*\.)/g, "").replace(",", ".")))
+            ? Number(row.capital_social.replace(/[^\d,-.]/g, "").replace(/\.(?=.*\.)/g, "").replace(",", "."))
+            : null
+          : null,
+    email: typeof row.email === "string" ? row.email : null,
+    phone: typeof row.phone === "string" ? row.phone : null,
+    website: typeof row.website === "string" ? row.website : null,
+    country: typeof row.country === "string" ? row.country : null,
+    stateCode: typeof row.state_code === "string" ? row.state_code : null,
+    cityName: typeof row.city_name === "string" ? row.city_name : null,
+    cityIbge: typeof row.city_ibge === "string" ? row.city_ibge : null,
+    neighborhood: typeof row.neighborhood === "string" ? row.neighborhood : null,
+    cep: typeof row.cep === "string" ? row.cep : null,
+    addressLine: typeof row.address_line === "string" ? row.address_line : null,
+    addressNumber: typeof row.address_number === "string" ? row.address_number : null,
+    complement: typeof row.complement === "string" ? row.complement : null,
+    providerPayload: row.provider_payload ?? null
+  });
+}
+
+async function fetchStoredEstablishmentsForTarget(target: SearchTarget, cnaeCode: string) {
+  const admin = createSupabaseAdminClient();
+  let query = admin
+    .from("establishments")
+    .select("cnpj, cnpj_root, company_name, trade_name, registration_status, opened_at, primary_cnae_code, primary_cnae_description, secondary_cnaes, legal_nature_code, legal_nature_description, company_size, simples_opt_in, mei_opt_in, capital_social, email, phone, website, country, state_code, city_name, city_ibge, neighborhood, cep, address_line, address_number, complement, provider_payload")
+    .eq("state_code", target.stateCode)
+    .eq("primary_cnae_code", cnaeCode)
+    .limit(1000);
+
+  if (target.cityName.trim()) {
+    query = query.ilike("city_name", target.cityName);
+  }
+
+  const { data, error } = await query;
+  if (error || !data) return [] as NormalizedEstablishment[];
+  return data
+    .map((row: Record<string, unknown>) => normalizeStoredEstablishmentRow(row))
+    .filter((row: NormalizedEstablishment) => Boolean(normalizeCnpj(row.cnpj)));
+}
+
 function formatServiceError(error: unknown, fallback: string) {
   if (error instanceof Error) {
     return error.message || fallback;
@@ -306,8 +262,8 @@ async function mergeRowsWithStoredEstablishments(rows: NormalizedEstablishment[]
     return rows;
   }
 
-  const storedByCnpj = new Map(
-    (storedRows as StoredEstablishmentRow[]).map((row) => [normalizeCnpj(String(row.cnpj ?? "")), mapStoredEstablishmentRow(row)])
+  const storedByCnpj = new Map<string, NormalizedEstablishment>(
+    storedRows.map((row: Record<string, unknown>) => [normalizeCnpj(String(row.cnpj ?? "")), normalizeStoredEstablishmentRow(row)])
   );
 
   return rows.map((row) => {
@@ -432,9 +388,6 @@ export async function prepareSearchOrder(
       )
     );
     input.companySizes = Array.from(new Set(input.companySizes.map((item) => item.trim()).filter(Boolean)));
-    const normalizedCapitalRange = normalizeCapitalRange(input.capitalSocialMin, input.capitalSocialMax);
-    input.capitalSocialMin = normalizedCapitalRange.min;
-    input.capitalSocialMax = normalizedCapitalRange.max;
 
     if (cnaes.length === 0) {
       return { ok: false, error: "Selecione ao menos um CNAE." };
@@ -474,60 +427,39 @@ export async function prepareSearchOrder(
     const searchCombos = cnaes.flatMap((cnaeCode) => searchTargets.map((target) => ({ cnaeCode, target })));
 
     const searchResponses = await mapWithConcurrency(searchCombos, provider === "cnpjws" ? 2 : 4, async ({ cnaeCode, target }) => {
+      const providerInput = {
+        profileId: input.profileId ?? "public",
+        cnae: cnaeCode,
+        stateCode: target.stateCode,
+        cityName: target.cityName,
+        cityIbge: "",
+        requireEmail: input.requireEmail,
+        requireAddress: input.requireAddress,
+        requirePhone: input.requirePhone,
+        mobileOnly: input.mobileOnly,
+        companySizes: input.companySizes,
+        simplesOnly: input.simplesOnly,
+        capitalSocialMin: input.capitalSocialMin,
+        capitalSocialMax: input.capitalSocialMax,
+        activityStartYear: input.activityStartYear
+      };
+
       const providerResponse =
         provider === "casadosdados"
-          ? await searchWithCasaDosDados({
-              profileId: input.profileId ?? "public",
-              cnae: cnaeCode,
-              stateCode: target.stateCode,
-              cityName: target.cityName,
-              cityIbge: "",
-              requireEmail: input.requireEmail,
-              requireAddress: input.requireAddress,
-              requirePhone: input.requirePhone,
-              mobileOnly: input.mobileOnly,
-              companySizes: input.companySizes,
-              simplesOnly: input.simplesOnly,
-              capitalSocialMin: input.capitalSocialMin,
-              capitalSocialMax: input.capitalSocialMax,
-              activityStartYear: input.activityStartYear
-            })
+          ? await searchWithCasaDosDados(providerInput)
           : provider === "hybrid"
-            ? await searchWithHybrid({
-                profileId: input.profileId ?? "public",
-                cnae: cnaeCode,
-                stateCode: target.stateCode,
-                cityName: target.cityName,
-                cityIbge: "",
-                requireEmail: input.requireEmail,
-                requireAddress: input.requireAddress,
-                requirePhone: input.requirePhone,
-                mobileOnly: input.mobileOnly,
-                companySizes: input.companySizes,
-                simplesOnly: input.simplesOnly,
-                capitalSocialMin: input.capitalSocialMin,
-                capitalSocialMax: input.capitalSocialMax,
-                activityStartYear: input.activityStartYear
-              })
-            : await searchWithCnpjWs({
-                profileId: input.profileId ?? "public",
-                cnae: cnaeCode,
-                stateCode: target.stateCode,
-                cityName: target.cityName,
-                cityIbge: "",
-                requireEmail: input.requireEmail,
-                requireAddress: input.requireAddress,
-                requirePhone: input.requirePhone,
-                mobileOnly: input.mobileOnly,
-                companySizes: input.companySizes,
-                simplesOnly: input.simplesOnly,
-                capitalSocialMin: input.capitalSocialMin,
-                capitalSocialMax: input.capitalSocialMax,
-                activityStartYear: input.activityStartYear
-              });
+            ? await searchWithHybrid(providerInput)
+            : await searchWithCnpjWs(providerInput);
+
+      const localRows = hasAdvancedPublicFilters(input)
+        ? await fetchStoredEstablishmentsForTarget(target, cnaeCode)
+        : [];
 
       const hydratedRows = await mergeRowsWithStoredEstablishments(
-        dedupeNormalizedRows(providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row)))
+        dedupeNormalizedRows([
+          ...providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row)),
+          ...localRows
+        ])
       );
 
       return applyPublicFilters(hydratedRows, input);
@@ -535,34 +467,6 @@ export async function prepareSearchOrder(
 
     for (const filteredRows of searchResponses) {
       for (const row of filteredRows) {
-        const normalizedCnpj = normalizeCnpj(row.cnpj);
-        if (!normalizedCnpj) continue;
-        const hydratedRow = hydrateNormalizedEstablishment({ ...row, cnpj: normalizedCnpj });
-        const existing = aggregatedByCnpj.get(normalizedCnpj);
-        aggregatedByCnpj.set(normalizedCnpj, existing ? mergeNormalizedEstablishments(existing, hydratedRow) : hydratedRow);
-      }
-    }
-
-    const shouldAugmentWithStoredData =
-      input.requireEmail ||
-      input.requireAddress ||
-      input.requirePhone ||
-      input.mobileOnly ||
-      input.simplesOnly ||
-      input.companySizes.length > 0 ||
-      input.capitalSocialMin !== null ||
-      input.capitalSocialMax !== null ||
-      input.activityStartYear !== null;
-
-    if (shouldAugmentWithStoredData) {
-      const storedMatches = await fetchStoredRowsForTargets({
-        admin,
-        cnaes,
-        searchTargets,
-        stateWide: input.stateWide
-      });
-
-      for (const row of applyPublicFilters(storedMatches, input)) {
         const normalizedCnpj = normalizeCnpj(row.cnpj);
         if (!normalizedCnpj) continue;
         const hydratedRow = hydrateNormalizedEstablishment({ ...row, cnpj: normalizedCnpj });
@@ -731,8 +635,6 @@ export async function prepareSearchOrder(
 }
 
 function normalizeInput(input: DiscoverySearchInput) {
-  const normalizedCapitalRange = normalizeCapitalRange(input.capitalSocialMin ?? null, input.capitalSocialMax ?? null);
-
   return {
     profileId: input.profileId,
     cnae: normalizeCode(input.cnae),
@@ -745,8 +647,8 @@ function normalizeInput(input: DiscoverySearchInput) {
     mobileOnly: input.mobileOnly ?? false,
     companySizes: input.companySizes ?? [],
     simplesOnly: input.simplesOnly ?? false,
-    capitalSocialMin: normalizedCapitalRange.min,
-    capitalSocialMax: normalizedCapitalRange.max,
+    capitalSocialMin: input.capitalSocialMin ?? null,
+    capitalSocialMax: input.capitalSocialMax ?? null,
     activityStartYear: input.activityStartYear ?? null
   };
 }
@@ -800,36 +702,45 @@ export async function runDiscoverySearch(
     let raw: unknown;
     let normalizedRows: NormalizedEstablishment[] = [];
     let cachedHit = false;
+    const localRows = hasAdvancedPublicFilters({
+      requireEmail: normalizedInput.requireEmail,
+      requireAddress: normalizedInput.requireAddress,
+      requirePhone: normalizedInput.requirePhone,
+      mobileOnly: normalizedInput.mobileOnly,
+      companySizes: normalizedInput.companySizes,
+      simplesOnly: normalizedInput.simplesOnly,
+      capitalSocialMin: normalizedInput.capitalSocialMin,
+      capitalSocialMax: normalizedInput.capitalSocialMax,
+      activityStartYear: normalizedInput.activityStartYear
+    })
+      ? await fetchStoredEstablishmentsForTarget({ cityName: normalizedInput.cityName, stateCode: normalizedInput.stateCode }, normalizedInput.cnae)
+      : [];
 
     if (cached?.response_payload) {
       raw = cached.response_payload;
       normalizedRows = Array.isArray(cached.normalized_payload)
         ? await mergeRowsWithStoredEstablishments(
-            dedupeNormalizedRows((cached.normalized_payload as typeof normalizedRows).map((row) => hydrateNormalizedEstablishment(row)))
+            dedupeNormalizedRows([
+              ...(cached.normalized_payload as typeof normalizedRows).map((row) => hydrateNormalizedEstablishment(row)),
+              ...localRows
+            ])
           )
-        : [];
+        : localRows;
       cachedHit = true;
     } else {
-      const providerInput =
-        provider === "casadosdados" || provider === "hybrid"
-          ? {
-              ...normalizedInput,
-              requireEmail: normalizedInput.requireEmail,
-              requirePhone: normalizedInput.requirePhone,
-              mobileOnly: normalizedInput.mobileOnly
-            }
-          : normalizedInput;
-
       const providerResponse =
         provider === "casadosdados"
-          ? await searchWithCasaDosDados(providerInput)
+          ? await searchWithCasaDosDados(normalizedInput)
           : provider === "hybrid"
-            ? await searchWithHybrid(providerInput)
-            : await searchWithCnpjWs(providerInput);
+            ? await searchWithHybrid(normalizedInput)
+            : await searchWithCnpjWs(normalizedInput);
 
       raw = providerResponse.raw;
       normalizedRows = await mergeRowsWithStoredEstablishments(
-        dedupeNormalizedRows(providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row)))
+        dedupeNormalizedRows([
+          ...providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row)),
+          ...localRows
+        ])
       );
 
       const expiresAt = new Date(now.getTime() + getDiscoveryCacheTtlHours() * 60 * 60 * 1000);
@@ -848,28 +759,6 @@ export async function runDiscoverySearch(
           onConflict: "cache_key"
         }
       );
-    }
-
-    const shouldAugmentWithStoredData =
-      normalizedInput.requireEmail ||
-      normalizedInput.requireAddress ||
-      normalizedInput.requirePhone ||
-      normalizedInput.mobileOnly ||
-      normalizedInput.simplesOnly ||
-      normalizedInput.companySizes.length > 0 ||
-      normalizedInput.capitalSocialMin !== null ||
-      normalizedInput.capitalSocialMax !== null ||
-      normalizedInput.activityStartYear !== null;
-
-    if (shouldAugmentWithStoredData) {
-      const storedMatches = await fetchStoredRowsForTargets({
-        admin,
-        cnaes: [normalizedInput.cnae],
-        searchTargets: [{ cityName: normalizedInput.cityName, stateCode: normalizedInput.stateCode }],
-        stateWide: false
-      });
-
-      normalizedRows = dedupeNormalizedRows([...normalizedRows, ...storedMatches]);
     }
 
     const filteredRows = applyPublicFilters(normalizedRows, {
