@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { prepareSearchOrder } from "@/lib/discovery/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { parseNumber } from "@/lib/utils";
 
 function buildCitySelectionFromFormData(formData: FormData) {
   const explicitSelection = String(formData.get("citySelection") ?? "").trim();
@@ -23,8 +24,7 @@ function buildCitySelectionFromFormData(formData: FormData) {
 function parseCapitalInput(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
   if (!text) return null;
-  const parsed = Number(text.replace(/\./g, "").replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseNumber(text);
 }
 
 function parseYearInput(value: FormDataEntryValue | null) {
@@ -43,6 +43,13 @@ export async function startPublicSearchAction(formData: FormData) {
 
   const email = String(user?.email ?? "").trim().toLowerCase();
 
+  const capitalSocialMin = parseCapitalInput(formData.get("capitalSocialMin"));
+  const capitalSocialMax = parseCapitalInput(formData.get("capitalSocialMax"));
+  const normalizedCapitalRange =
+    capitalSocialMin !== null && capitalSocialMax !== null && capitalSocialMin > capitalSocialMax
+      ? { min: capitalSocialMax, max: capitalSocialMin }
+      : { min: capitalSocialMin, max: capitalSocialMax };
+
   const result = await prepareSearchOrder({
     profileId: user?.id ?? null,
     email,
@@ -59,8 +66,8 @@ export async function startPublicSearchAction(formData: FormData) {
       .map((item) => item.trim())
       .filter(Boolean),
     simplesOnly: formData.get("simplesOnly") === "on",
-    capitalSocialMin: parseCapitalInput(formData.get("capitalSocialMin")),
-    capitalSocialMax: parseCapitalInput(formData.get("capitalSocialMax")),
+    capitalSocialMin: normalizedCapitalRange.min,
+    capitalSocialMax: normalizedCapitalRange.max,
     activityStartYear: parseYearInput(formData.get("activityStartYear"))
   });
 

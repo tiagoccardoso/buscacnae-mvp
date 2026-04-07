@@ -1,15 +1,30 @@
 import { buildDisplayEstablishment, type DisplayEstablishment } from "@/lib/establishment-presenter";
 import type { NormalizedEstablishment } from "@/lib/types";
 
+const INVALID_TEXT_REGEX = /^(?:-|—|null|undefined|n\/?a|na|nao informado|não informado|sem email|sem e-mail|sem telefone)$/i;
+
 function asCleanString(value: unknown): string | null {
   if (typeof value === "string") {
     const trimmed = value.trim();
-    return trimmed ? trimmed : null;
+    if (!trimmed || INVALID_TEXT_REGEX.test(trimmed)) return null;
+    return trimmed;
   }
   if (typeof value === "number" && Number.isFinite(value)) {
     return String(value);
   }
   return null;
+}
+
+function normalizePhoneDigits(value: string | null) {
+  const digits = (value ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.length > 11 && digits.startsWith("55") ? digits.slice(2) : digits;
+}
+
+function detectMobilePhone(value: string | null) {
+  const digits = normalizePhoneDigits(value);
+  if (digits.length !== 11) return false;
+  return digits.charAt(2) === "9";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -65,8 +80,8 @@ function parseBooleanLike(value: unknown): boolean | null {
   }
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
-    if (["true", "1", "sim", "s", "yes", "y", "optante"].includes(normalized)) return true;
-    if (["false", "0", "nao", "não", "n", "no", "nao optante", "não optante"].includes(normalized)) return false;
+    if (["true", "1", "sim", "s", "yes", "y", "optante"].includes(normalized) || /\boptante\b/.test(normalized)) return true;
+    if (["false", "0", "nao", "não", "n", "no", "nao optante", "não optante"].includes(normalized) || /nao optante|não optante/.test(normalized)) return false;
   }
   return null;
 }
@@ -136,6 +151,8 @@ export type CanonicalEstablishment = {
   phone: string | null;
   neighborhood: string | null;
   addressLine: string | null;
+  addressNumber: string | null;
+  cep: string | null;
   hasEmail: boolean;
   hasPhone: boolean;
   hasAddress: boolean;
@@ -171,9 +188,10 @@ export function canonicalizeEstablishment(source: Record<string, unknown>): Cano
   const email = asCleanString(display.email);
   const phone = asCleanString(display.phone);
   const addressLine = asCleanString(display.address_line);
+  const addressNumber = asCleanString(display.address_number);
+  const neighborhood = asCleanString(display.neighborhood);
+  const cep = asCleanString(display.cep);
   const companySizeLabel = asCleanString(display.company_size);
-  const digits = (phone ?? "").replace(/\D/g, "");
-  const subscriber = digits.length >= 9 ? digits.slice(-9) : digits;
 
   return {
     display,
@@ -185,12 +203,14 @@ export function canonicalizeEstablishment(source: Record<string, unknown>): Cano
     registrationStatus: asCleanString(display.registration_status),
     email,
     phone,
-    neighborhood: asCleanString(display.neighborhood),
+    neighborhood,
     addressLine,
+    addressNumber,
+    cep,
     hasEmail: Boolean(email),
     hasPhone: Boolean(phone),
-    hasAddress: Boolean(addressLine),
-    isMobilePhone: digits.length >= 10 && ["9", "8", "7"].includes(subscriber.charAt(0)),
+    hasAddress: Boolean(addressLine || neighborhood || cep || (addressLine && addressNumber)),
+    isMobilePhone: detectMobilePhone(phone),
     companySizeLabel,
     companySizeCode: normalizeCompanySizeCode(companySizeLabel),
     simplesOptIn: parseBooleanLike(display.simples_opt_in),
