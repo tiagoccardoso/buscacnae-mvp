@@ -7,8 +7,8 @@ const onboardingSteps = [
     copy: "Escolha CNAE, estado e cidade para montar o recorte inicial da lista."
   },
   {
-    title: "Refine",
-    copy: "Use filtros como telefone, e-mail, endereço, porte, Simples e ano mínimo de abertura para deixar o lote mais aderente."
+    title: "Ajuste o recorte",
+    copy: "Use CNAE, estado e cidade para definir melhor a lista que você quer pesquisar."
   },
   {
     title: "Veja a prévia",

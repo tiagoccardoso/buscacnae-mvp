@@ -480,8 +480,8 @@ function buildSummary(records: SearchAiFormattedRecord[]) {
 
   return [
     { label: "Registros formatados", value: String(records.length) },
-    { label: "Com telefone", value: String(withPhone) },
-    { label: "Com e-mail", value: String(withEmail) },
+    { label: "Com contato disponível", value: String(withPhone) },
+    { label: "Com contato complementar", value: String(withEmail) },
     { label: "Com site", value: String(withWebsite) },
     { label: "Completude alta", value: String(highCompleteness) }
   ];

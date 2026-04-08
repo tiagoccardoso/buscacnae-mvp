@@ -35,8 +35,8 @@ const journeySteps = [
     copy: "Selecione um ou mais CNAEs, estados e cidades para montar o recorte inicial da sua lista."
   },
   {
-    title: "Refine",
-    copy: "Ative filtros como telefone, e-mail, endereço, porte, Simples e ano de abertura quando fizer sentido."
+    title: "Ajuste o recorte",
+    copy: "Combine CNAE, estado e cidade para chegar a uma lista mais alinhada ao mercado que você quer pesquisar."
   },
   {
     title: "Veja a prévia",
@@ -65,7 +65,7 @@ const benefitCards = [
   {
     kicker: "Prévia real",
     title: "Volume, composição e amostra antes de pagar",
-    copy: "A jornada mostra quantidade encontrada, composição por contato e uma amostra operacional do lote."
+    copy: "A jornada mostra quantidade encontrada, composição do lote e uma amostra operacional antes do pagamento."
   },
   {
     kicker: "Entrega útil",
@@ -87,7 +87,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             <span className="gradient-text">Descubra, filtre e compre listas B2B por CNAE e região com preço transparente antes do pagamento.</span>
           </h1>
           <p className="lead-copy">
-            Monte sua pesquisa, refine com filtros comerciais e avance para uma prévia com <strong>volume encontrado, composição do lote e valor total</strong> antes do checkout.
+            Monte sua pesquisa por CNAE e região e avance para uma prévia com <strong>volume encontrado, composição do lote e valor total</strong> antes do checkout.
             O dashboard é opcional e entra para histórico, organização e recompra.
           </p>
 
@@ -118,7 +118,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               <span className="eyebrow">Comece pela pesquisa</span>
               <h2 className="section-title immersive-search-title">Pesquise agora e veja se o lote vale a compra.</h2>
               <p className="section-copy">
-                Combine múltiplos CNAEs, estados e cidades na mesma operação e refine a lista com filtros que ajudam no outbound, na cobertura regional e na inteligência comercial.
+                Combine múltiplos CNAEs, estados e cidades na mesma operação para montar um recorte claro, comparar volume e decidir com mais segurança antes da compra.
               </p>
             </div>
 
@@ -140,9 +140,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             <SearchImmersiveStage />
             <div className="immersive-search-benefits">
               <div className="signal-card">
-                <span className="kicker">Refine a lista</span>
-                <strong>Telefone, e-mail, endereço, porte, Simples e mais</strong>
-                <span className="muted">Use os filtros para aproximar o lote do perfil comercial que você realmente quer operar.</span>
+                <span className="kicker">Ajuste o recorte</span>
+                <strong>CNAE, estado e cidade na mesma busca</strong>
+                <span className="muted">Monte um recorte mais claro para prospecção sem complicar a jornada com filtros desnecessários.</span>
               </div>
               <div className="signal-card">
                 <span className="kicker">Fluxo direto</span>
@@ -158,7 +158,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         <div className="surface-premium card-lg panel-grid two">
           <div className="stack" style={{ gap: 12 }}>
             <span className="eyebrow">Como funciona na prática</span>
-            <h2 className="section-title">Pesquise, refine, veja a prévia, pague e baixe a lista.</h2>
+            <h2 className="section-title">Pesquise, ajuste o recorte, veja a prévia, pague e baixe a lista.</h2>
             <div className="journey-grid">
               {journeySteps.map((step, index) => (
                 <div key={step.title} className="journey-step-card">

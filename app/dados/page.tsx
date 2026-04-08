@@ -16,15 +16,15 @@ const sections = [
   },
   {
     title: "Composição da lista",
-    copy: "Cada registro pode incluir razão social, nome fantasia, CNPJ, cidade, UF, situação cadastral, endereço e sinais de contato quando esses dados estiverem disponíveis no retorno recebido. Nem todo lead terá telefone e e-mail."
+    copy: "Cada registro pode incluir razão social, nome fantasia, CNPJ, cidade, UF, situação cadastral, endereço e sinais de contato quando esses dados estiverem disponíveis no retorno recebido. Nem todo registro terá o mesmo nível de detalhe."
   },
   {
     title: "Atualização e cache",
     copy: "As buscas podem aproveitar cache operacional temporário para melhorar velocidade e consistência da experiência. Isso significa que uma mesma pesquisa pode usar resultados processados recentemente, sem prometer atualização em tempo real contínua para todos os campos."
   },
   {
-    title: "Filtros e enriquecimentos",
-    copy: "A plataforma permite filtrar por CNAE, estado, cidade, presença de telefone, e-mail, endereço, porte, Simples Nacional, capital social e ano mínimo de início da atividade, conforme o que estiver disponível na base consolidada."
+    title: "Recorte disponível",
+    copy: "A plataforma permite pesquisar por CNAE, estado e cidade. A composição final da lista depende do que for encontrado para cada empresa dentro desse recorte."
   },
   {
     title: "Limites realistas",
@@ -42,7 +42,7 @@ export default function DataPage() {
             De onde vêm os dados, o que entra na lista e o que esperar de forma realista.
           </h1>
           <p className="lead-copy">
-            Esta página foi criada para reduzir incerteza antes da compra. Ela explica origem, composição, atualização, filtros disponíveis e limites do material entregue.
+            Esta página foi criada para reduzir incerteza antes da compra. Ela explica origem, composição, atualização, recorte disponível e limites do material entregue.
           </p>
         </div>
 

@@ -9,9 +9,9 @@ const orbitCards = [
     copy: "O fluxo mostra quantidade encontrada e valor do lote antes da cobrança."
   },
   {
-    eyebrow: "Refine",
-    title: "Ajuste o recorte com filtros úteis",
-    copy: "Telefone, e-mail, endereço e porte ajudam a deixar a lista mais próxima da operação real."
+    eyebrow: "Ajuste o recorte",
+    title: "Defina a busca por CNAE e região",
+    copy: "Use CNAE, estado e cidade para chegar a um lote mais coerente com o mercado que você quer pesquisar."
   },
   {
     eyebrow: "Veja o valor",
@@ -52,7 +52,7 @@ export function PremiumHeroStage() {
     <div className="hero-stage-shell surface-premium">
       <div className="hero-stage-topline">
         <span className="badge-glow">Fluxo direto</span>
-        <span className="hero-stage-note">Pesquise, refine, veja o volume, veja o valor, compre e opere sem desvio.</span>
+        <span className="hero-stage-note">Pesquise, ajuste o recorte, veja o volume, veja o valor, compre e opere sem desvio.</span>
       </div>
 
       <div className="hero-stage-canvas hero-stage-canvas-network">
@@ -141,11 +141,11 @@ export function PremiumHeroStage() {
           onFocus={() => setActivePane("curve")}
           aria-pressed={activePane === "curve"}
         >
-          <span className="kicker">Refine</span>
+          <span className="kicker">Ajuste o recorte</span>
           <svg viewBox="0 0 180 70" className="hero-curve-svg" aria-hidden="true">
             <path d="M4 58 C28 54, 36 30, 58 32 S92 64, 116 42 S150 10, 176 14" className="hero-curve-path" />
           </svg>
-          <span className="muted">Combine filtros nacionais, estaduais e locais sem perder o controle do recorte.</span>
+          <span className="muted">Combine CNAE, estado e cidade sem perder o controle do recorte da busca.</span>
         </button>
       </div>
 

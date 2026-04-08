@@ -308,14 +308,12 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item
 
 function buildPublicFilterLabels(input: PrepareSearchOrderInput) {
   const labels: string[] = [];
-  if (input.requireEmail) labels.push("E-mail cadastrado");
-  if (input.requireAddress) labels.push("Endereço cadastrado");
-  if (input.requirePhone) labels.push(input.mobileOnly ? "Apenas Celular" : "Telefone (Fixo ou Celular)");
-  if (input.simplesOnly) labels.push("Simples Nacional");
-  if (input.companySizes.length > 0) labels.push(`Porte: ${input.companySizes.join(", ")}`);
-  if (input.capitalSocialMin !== null) labels.push(`Capital mínimo: R$ ${input.capitalSocialMin.toLocaleString("pt-BR")}`);
-  if (input.capitalSocialMax !== null) labels.push(`Capital máximo: R$ ${input.capitalSocialMax.toLocaleString("pt-BR")}`);
-  if (input.activityStartYear !== null) labels.push(`Ano mínimo de início da atividade: ${input.activityStartYear}`);
+  if (input.requireEmail || input.requireAddress || input.requirePhone || input.mobileOnly) {
+    labels.push("Com dados adicionais disponíveis");
+  }
+  if (input.simplesOnly || input.companySizes.length > 0 || input.capitalSocialMin !== null || input.capitalSocialMax !== null || input.activityStartYear !== null) {
+    labels.push("Com recorte complementar aplicado");
+  }
   return labels;
 }
 

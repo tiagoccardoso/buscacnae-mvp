@@ -31,10 +31,10 @@ export type LeadContactSignals = {
 };
 
 export const LEAD_PRICING_TABLE: Array<{ key: LeadPricingTierKey; label: string; unitAmountCents: number; helperText: string }> = [
-  { key: "basic", label: "Básico", unitAmountCents: 5, helperText: "Lead sem telefone e sem e-mail." },
-  { key: "phone", label: "Com telefone", unitAmountCents: 10, helperText: "Lead com telefone, mas sem e-mail." },
-  { key: "email", label: "Com e-mail", unitAmountCents: 15, helperText: "Lead com e-mail, mas sem telefone." },
-  { key: "complete", label: "Completo", unitAmountCents: 20, helperText: "Lead com telefone e e-mail." }
+  { key: "basic", label: "Base", unitAmountCents: 5, helperText: "Registro com dados cadastrais essenciais." },
+  { key: "phone", label: "Contato", unitAmountCents: 10, helperText: "Registro com informações adicionais úteis para abordagem." },
+  { key: "email", label: "Contato plus", unitAmountCents: 15, helperText: "Registro com mais sinais disponíveis para prospecção." },
+  { key: "complete", label: "Completo", unitAmountCents: 20, helperText: "Registro com maior nível de detalhamento disponível." }
 ];
 
 const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;

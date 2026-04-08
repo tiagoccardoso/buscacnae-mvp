@@ -256,7 +256,7 @@ function buildFieldGroups(fields: SectionField[]): FieldGroup[] {
 
   if (leftovers.length > 0) {
     groups.push({
-      title: "Demais informações extraídas do JSON",
+      title: "Outras informações extraídas do JSON",
       description: "Campos adicionais encontrados no JSON bruto e consolidados na ficha principal.",
       fields: leftovers
     });

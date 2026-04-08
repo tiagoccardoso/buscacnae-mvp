@@ -142,8 +142,8 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
               <span className="eyebrow">Amostra da lista</span>
               <div className="grid-2">
                 <div className="stack" style={{ gap: 6 }}>
-                  <span className="kicker">Qualificação da amostra</span>
-                  <span className="muted">{previewSummary.withEmail}/{previewItems.length} com e-mail · {previewSummary.withPhone}/{previewItems.length} com telefone · {previewSummary.withAddress}/{previewItems.length} com endereço</span>
+                  <span className="kicker">Leitura da amostra</span>
+                  <span className="muted">A amostra mostra {previewItems.length} registros iniciais. Os dados disponíveis podem variar de empresa para empresa.</span>
                 </div>
                 <div className="stack" style={{ gap: 6 }}>
                   <span className="kicker">Leitura consolidada</span>

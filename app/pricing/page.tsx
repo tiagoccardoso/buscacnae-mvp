@@ -4,8 +4,8 @@ import { buildPageMetadata } from "@/lib/seo";
 import { minimumCheckoutAmount, pricingTiers } from "@/lib/site-content";
 
 export const metadata = buildPageMetadata({
-  title: "Preços por tipo de lead",
-  description: "Entenda como o preço da lista é calculado por tipo de lead encontrado, com prévia antes do pagamento e mínimo operacional por pedido.",
+  title: "Preços por composição da lista",
+  description: "Entenda como o preço da lista é calculado pela composição do lote encontrado, com prévia antes do pagamento e mínimo operacional por pedido.",
   path: "/pricing",
   keywords: ["preço lista b2b", "pricing leads por cnae", "comprar lista de empresas", "valor por lead"]
 });
@@ -28,12 +28,12 @@ export default function PricingPage() {
       <section className="container stack">
         <div className="surface-premium card-lg pricing-stage">
           <div className="stack" style={{ gap: 14 }}>
-            <span className="eyebrow">Preço por tipo de lead</span>
+            <span className="eyebrow">Preço por composição da lista</span>
             <h1 className="section-title" style={{ fontSize: "2.6rem", marginBottom: 0 }}>
               Veja o preço antes do pagamento e pague de acordo com a composição real da lista.
             </h1>
             <p className="section-copy">
-              A pesquisa é pública. Você informa os filtros, o sistema calcula quantos leads foram encontrados em cada faixa e mostra o total do pedido antes do checkout.
+              A pesquisa é pública. Você informa os filtros, o sistema calcula a composição do lote encontrado e mostra o total do pedido antes do checkout.
             </p>
             <div className="inline-list">
               <span className="pill">Compra avulsa</span>
@@ -45,7 +45,7 @@ export default function PricingPage() {
 
           <div className="pricing-display-card stack" style={{ gap: 10 }}>
             <span className="kicker">Exemplo de composição</span>
-            <strong>40 básicos + 20 com telefone + 10 com e-mail + 5 completos</strong>
+            <strong>40 base + 20 contato + 10 contato plus + 5 completos</strong>
             <span className="muted">Total do exemplo: R$ {(exampleTotal / 100).toFixed(2).replace(".", ",")}. A composição final sempre depende do que a busca retornar.</span>
           </div>
         </div>
@@ -63,11 +63,11 @@ export default function PricingPage() {
         <div className="grid-3 responsive-feature-grid">
           <div className="surface-premium card stack">
             <span className="eyebrow">1. Pesquise</span>
-            <p className="section-copy">Monte o recorte por CNAE, estado, cidade e filtros avançados sem precisar criar conta primeiro.</p>
+            <p className="section-copy">Monte o recorte por CNAE, estado, cidade e filtros de CNAE e localização sem precisar criar conta primeiro.</p>
           </div>
           <div className="surface-premium card stack">
             <span className="eyebrow">2. Veja a composição</span>
-            <p className="section-copy">A prévia mostra quantos leads vieram em cada faixa e qual é o valor total do pedido.</p>
+            <p className="section-copy">A prévia mostra quantos registros vieram em cada faixa e qual é o valor total do pedido.</p>
           </div>
           <div className="surface-premium card stack">
             <span className="eyebrow">3. Libere a lista</span>
@@ -78,7 +78,7 @@ export default function PricingPage() {
         <div className="surface-premium card-lg panel-grid two">
           <div className="stack">
             <span className="eyebrow">Regra comercial</span>
-            <h2 className="section-title">O preço é calculado por lead encontrado, não por plano.</h2>
+            <h2 className="section-title">O preço é calculado pela composição do lote, não por plano.</h2>
             <p className="section-copy">
               Quando houver resultados, o checkout aplica o valor da composição real do lote e respeita mínimo operacional de {minimumCheckoutAmount}. Se a busca não encontrar registros, não há cobrança.
             </p>

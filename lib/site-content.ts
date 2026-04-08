@@ -88,8 +88,8 @@ export const commercialFaqItems = [
     answer: "O produto consolida dados de provedores integrados e da base interna do sistema. A página de dados explica origem, composição, atualização e limites do material entregue."
   },
   {
-    question: "A lista sempre terá telefone e e-mail?",
-    answer: "Não. Isso depende do que foi encontrado para cada empresa. Por isso a cobrança é separada por tipo de lead e a prévia mostra a composição real do lote."
+    question: "A lista sempre terá os mesmos dados em todos os registros?",
+    answer: "Não. Isso depende do que foi encontrado para cada empresa. Por isso a cobrança considera a composição real do lote e a prévia mostra o que voltou na busca antes do pagamento."
   },
   {
     question: "Posso recomprar ou repetir uma busca?",
@@ -116,7 +116,7 @@ export const useCasePages = [
     bullets: [
       "Separar regiões por estado ou cidade",
       "Buscar indústrias, varejo ou serviços por CNAE",
-      "Priorizar listas com telefone e e-mail",
+      "Priorizar listas por segmento e região",
       "Repetir buscas no dashboard para novas rodadas"
     ],
     benefits: [
@@ -136,7 +136,7 @@ export const useCasePages = [
     bullets: [
       "Listas por estado inteiro ou cidades-chave",
       "Segmentação por nicho de varejo ou revenda",
-      "Filtros por telefone, endereço e porte",
+      "Recorte por CNAE, estado e cidade",
       "Histórico pronto para repetir campanhas"
     ],
     benefits: [
@@ -170,12 +170,12 @@ export const useCasePages = [
     slug: "contabilidade-bpo",
     menuLabel: "Contabilidade e BPO",
     heroEyebrow: "Casos de uso",
-    title: "Leads para contabilidade e BPO por segmento, porte e região",
-    description: "Monte listas por CNAE, porte, Simples Nacional e localidade para prospecção consultiva com mais aderência ao perfil do cliente.",
+    title: "Leads para contabilidade e BPO por segmento e região",
+    description: "Monte listas por CNAE e localidade para prospecção consultiva com mais aderência ao perfil do cliente.",
     intentTitle: "Use quando sua operação precisa de listas com filtros mais comerciais e menos genéricos.",
     bullets: [
-      "Filtrar por porte da empresa",
-      "Usar Simples Nacional como recorte",
+      "Separar carteiras por segmento e região",
+      "Comparar volume antes da compra",
       "Buscar segmentos específicos por CNAE",
       "Salvar carteiras por nicho no dashboard"
     ],
@@ -231,7 +231,7 @@ export const footerNavigation = {
 
 export const aboutHighlights = [
   "Busca pública para encontrar empresas por CNAE e região",
-  "Filtro por estado, cidade e sinais de contato",
+  "Recorte por estado e cidade",
   "Prévia com volume e preço antes do checkout",
   "Liberação da lista após pagamento",
   "Dashboard opcional para histórico, leads salvos e recompra"

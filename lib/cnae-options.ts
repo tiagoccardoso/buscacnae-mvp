@@ -19,6 +19,28 @@ let memoryCache:
   | null = null;
 let inflightPromise: Promise<CnaeOption[]> | null = null;
 
+
+function sentenceCaseSegment(segment: string) {
+  const trimmed = segment.trim();
+  if (!trimmed) return "";
+
+  const lower = trimmed.toLocaleLowerCase("pt-BR");
+  return lower.replace(/(^|[\s([{-]+)([a-zà-ÿ])/u, (_, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase("pt-BR")}`);
+}
+
+function formatCnaeDescription(value: string) {
+  const cleaned = value.trim().replace(/\s+/g, " ");
+  if (!cleaned) return "";
+
+  const shouldNormalize = cleaned === cleaned.toUpperCase();
+  if (!shouldNormalize) return cleaned;
+
+  return cleaned
+    .split(/([:;]\s+)/)
+    .map((segment, index) => (index % 2 === 0 ? sentenceCaseSegment(segment) : segment))
+    .join("");
+}
+
 const FALLBACK_CNAE_OPTIONS: CnaeOption[] = [
   ["6201501", "Desenvolvimento de programas de computador sob encomenda"],
   ["6202300", "Desenvolvimento e licenciamento de programas de computador customizáveis"],
@@ -50,7 +72,7 @@ const FALLBACK_CNAE_OPTIONS: CnaeOption[] = [
   ["8550302", "Atividades de apoio à educação"],
   ["1813001", "Impressão de material para uso publicitário"],
   ["1822999", "Serviços de acabamentos gráficos"],
-].map(([value, description]) => ({ value, label: `${formatCnaeCode(value)} · ${description}` }));
+].map(([value, description]) => ({ value, label: `${formatCnaeCode(value)} · ${formatCnaeDescription(description)}` }));
 
 function mergeWithFallback(items: CnaeOption[]) {
   const unique = new Map<string, CnaeOption>();
@@ -113,7 +135,7 @@ function mapExternalRow(row: ExternalCnaeRow): CnaeOption | null {
 
   return {
     value: code,
-    label: description ? `${formatCnaeCode(code)} · ${description}` : formatCnaeCode(code)
+    label: description ? `${formatCnaeCode(code)} · ${formatCnaeDescription(description)}` : formatCnaeCode(code)
   };
 }
 
