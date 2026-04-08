@@ -69,7 +69,8 @@ export async function prepareCheckoutIdentityAction(formData: FormData) {
   }
 
   const confirmUrl = new URL("/auth/confirm", await getRequestOrigin());
-  confirmUrl.searchParams.set("next", "/dashboard");
+  confirmUrl.searchParams.set("next", "/dashboard/history?status=busca-vinculada");
+  confirmUrl.searchParams.set("order_id", order.id);
 
   const { error } = await supabase.auth.signInWithOtp({
     email,

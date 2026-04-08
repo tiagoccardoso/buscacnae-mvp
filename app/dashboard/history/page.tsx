@@ -20,6 +20,7 @@ function readStatusMessage(status: string) {
   if (status === "compra-multipla-sucesso") return "Pagamento confirmado. As listas selecionadas foram liberadas em uma única compra.";
   if (status === "compra-multipla-cancelada") return "A compra em grupo foi cancelada antes da confirmação do pagamento.";
   if (status === "listas-ja-liberadas") return "As buscas selecionadas já estavam liberadas e não exigem nova compra.";
+  if (status === "busca-vinculada") return "Busca salva no histórico com sucesso. Você já pode reabrir o resultado ou seguir para a compra.";
   return "";
 }
 

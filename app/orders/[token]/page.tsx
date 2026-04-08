@@ -107,7 +107,7 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
                   <Link href={`/orders/${token}/download`} className="button" data-analytics-event="payment_completed" data-analytics-label="Order XLSX">
                     Baixar XLSX
                   </Link>
-                  <Link href={`/dashboard/search?reuse=${currentOrder.search_query_id}`} className="button-ghost" data-analytics-event="search_reused" data-analytics-label="Order repeat search">
+                  <Link href={`/?reuse=${currentOrder.search_query_id}`} className="button-ghost" data-analytics-event="search_reused" data-analytics-label="Order repeat search">
                     Repetir busca
                   </Link>
                 </div>

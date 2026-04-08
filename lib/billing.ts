@@ -194,6 +194,71 @@ export async function getSearchAccessOrderByCheckoutSessionId(sessionId: string)
   return (data as SearchAccessOrderRecord | null) ?? null;
 }
 
+export async function claimSearchAccessOrderForUser(args: {
+  orderId: string;
+  userId: string;
+  email: string;
+}) {
+  const admin = createSupabaseAdminClient();
+  const normalizedEmail = args.email.trim().toLowerCase();
+  const order = await getSearchAccessOrderById(args.orderId);
+
+  if (!order) {
+    return { claimed: false, reason: "order_not_found" as const };
+  }
+
+  const orderEmail = order.email.trim().toLowerCase();
+  if (!normalizedEmail || orderEmail !== normalizedEmail) {
+    return { claimed: false, reason: "email_mismatch" as const };
+  }
+
+  const { data: search } = await admin
+    .from("search_queries")
+    .select("id, profile_id")
+    .eq("id", order.search_query_id)
+    .maybeSingle();
+
+  if (order.profile_id && order.profile_id !== args.userId) {
+    return { claimed: false, reason: "order_already_claimed" as const };
+  }
+
+  if (search?.profile_id && search.profile_id !== args.userId) {
+    return { claimed: false, reason: "search_already_claimed" as const };
+  }
+
+  await admin.from("profiles").upsert(
+    {
+      id: args.userId,
+      email: normalizedEmail
+    },
+    { onConflict: "id" }
+  );
+
+  await admin
+    .from("search_access_orders")
+    .update({
+      profile_id: args.userId,
+      email: normalizedEmail
+    })
+    .eq("id", order.id);
+
+  await admin
+    .from("search_queries")
+    .update({
+      profile_id: args.userId
+    })
+    .eq("id", order.search_query_id);
+
+  await admin
+    .from("search_results")
+    .update({
+      profile_id: args.userId
+    })
+    .eq("search_query_id", order.search_query_id);
+
+  return { claimed: true as const, searchQueryId: order.search_query_id, orderId: order.id };
+}
+
 function getSearchAccessOrderPricing(resultCount: number, pricingSummary?: LeadPricingSummary | null) {
   const minimumCheckoutAmountCents = getMinimumCheckoutAmountCents();
   const computedSummary = pricingSummary ?? null;

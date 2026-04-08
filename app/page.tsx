@@ -11,6 +11,8 @@ import { UseCasesSection } from "@/components/use-cases-section";
 import { startPublicSearchAction } from "@/app/home-actions";
 import { buildPageMetadata } from "@/lib/seo";
 import { homeHighlights, minimumCheckoutAmount, pricingTiers } from "@/lib/site-content";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getSearchFilterDefaults } from "@/lib/search-filter-defaults";
 
 export const metadata = buildPageMetadata({
   title: "Listas B2B por CNAE e região",
@@ -77,6 +79,24 @@ const benefitCards = [
 export default async function HomePage({ searchParams }: HomePageProps) {
   const params = searchParams ? await searchParams : {};
   const error = typeof params.error === "string" ? params.error : "";
+  const reuse = typeof params.reuse === "string" ? params.reuse : "";
+
+  let reuseDefaults = getSearchFilterDefaults(null);
+  let reuseMessage = "";
+
+  if (reuse) {
+    const admin = createSupabaseAdminClient();
+    const { data: reusedSearch } = await admin
+      .from("search_queries")
+      .select("query_payload")
+      .eq("id", reuse)
+      .maybeSingle();
+
+    if (reusedSearch?.query_payload) {
+      reuseDefaults = getSearchFilterDefaults(reusedSearch.query_payload);
+      reuseMessage = "Filtros carregados a partir de uma busca anterior. Ajuste o que quiser antes de calcular novamente.";
+    }
+  }
 
   return (
     <main className="page">
@@ -122,10 +142,11 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               </p>
             </div>
 
+            {reuseMessage ? <div className="notice success">{reuseMessage}</div> : null}
             {error ? <div className="notice danger">{error}</div> : null}
 
             <form action={startPublicSearchAction} className="stack immersive-search-form" data-analytics-event="search_started" data-analytics-label="Home search form">
-              <SearchFilterBuilder />
+              <SearchFilterBuilder {...reuseDefaults} />
 
               <div className="home-form-actions home-form-actions-premium immersive-submit-row">
                 <PublicSearchSubmitButton />
