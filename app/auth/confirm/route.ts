@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { claimSearchAccessOrderForUser } from "@/lib/billing";
+import { claimSearchAccessOrderForUser, claimSearchAccessOrdersForUserByEmail } from "@/lib/billing";
 
 function sanitizeNextPath(value: string | null) {
   if (!value) return "/dashboard";
@@ -38,21 +38,26 @@ export async function GET(request: Request) {
     );
   }
 
-  if (orderId) {
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
 
-    if (user?.id && user.email) {
-      try {
+  if (user?.id && user.email) {
+    try {
+      await claimSearchAccessOrdersForUserByEmail({
+        userId: user.id,
+        email: user.email
+      });
+
+      if (orderId) {
         await claimSearchAccessOrderForUser({
           orderId,
           userId: user.id,
           email: user.email
         });
-      } catch (claimError) {
-        console.error("Falha ao vincular busca pública ao histórico após confirmar o magic link.", claimError);
       }
+    } catch (claimError) {
+      console.error("Falha ao vincular buscas públicas ao histórico após confirmar o magic link.", claimError);
     }
   }
 
