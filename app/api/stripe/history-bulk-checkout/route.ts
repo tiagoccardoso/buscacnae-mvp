@@ -86,7 +86,10 @@ export async function POST(request: Request) {
 
     const successUrl = new URL(`/api/stripe/history-bulk-success`, getBaseUrl());
     successUrl.searchParams.set("bundle", bundle.id);
-    successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+    successUrl.searchParams.set("session_id", "__CHECKOUT_SESSION_ID__");
+    const successUrlString = successUrl
+      .toString()
+      .replace("__CHECKOUT_SESSION_ID__", "{CHECKOUT_SESSION_ID}");
 
     const cancelUrl = new URL(`/dashboard/history`, getBaseUrl());
     cancelUrl.searchParams.set("status", "compra-multipla-cancelada");
@@ -98,7 +101,7 @@ export async function POST(request: Request) {
       currency: bundle.currency,
       orderId: bundle.id,
       orderAccessToken: bundle.access_token,
-      successUrl: successUrl.toString(),
+      successUrl: successUrlString,
       cancelUrl: cancelUrl.toString(),
       productName: "Listas B2B selecionadas",
       productDescription: `${bundle.order_count} lista(s) selecionada(s) para recompra no histórico`,
