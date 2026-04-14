@@ -4,6 +4,7 @@ import { getStripeClient } from "@/lib/stripe";
 import {
   finalizeSearchAccessBulkOrderPayment,
   getSearchAccessBulkOrderById,
+  getSearchAccessBulkOrderByCheckoutSessionId
 } from "@/lib/billing";
 
 export const runtime = "nodejs";
@@ -11,39 +12,42 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
-    const bundleId = url.searchParams.get("bundle") ?? "";
-    const sessionIdFromQuery = url.searchParams.get("session_id") ?? "";
+    const sessionIdFromQuery = (url.searchParams.get("session_id") ?? "").trim();
 
-    if (!bundleId || !sessionIdFromQuery) {
-      return NextResponse.redirect(new URL("/dashboard/history?error=retorno-checkout-invalido", getBaseUrl()), 303);
-    }
-
-    const bundle = await getSearchAccessBulkOrderById(bundleId);
-    if (!bundle) {
-      return NextResponse.redirect(new URL("/dashboard/history?error=checkout-multiplo-nao-encontrado", getBaseUrl()), 303);
-    }
-
-    const resolvedSessionId =
-      sessionIdFromQuery === "{CHECKOUT_SESSION_ID}" ? bundle.stripe_checkout_session_id ?? "" : sessionIdFromQuery;
-
-    if (!resolvedSessionId) {
+    if (!sessionIdFromQuery || sessionIdFromQuery.includes("CHECKOUT_SESSION_ID")) {
       return NextResponse.redirect(new URL("/dashboard/history?error=retorno-checkout-invalido", getBaseUrl()), 303);
     }
 
     const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.retrieve(resolvedSessionId);
+    const session = await stripe.checkout.sessions.retrieve(sessionIdFromQuery);
 
     if (session.payment_status !== "paid") {
-      return NextResponse.redirect(new URL("/dashboard/history?status=compra-multipla-cancelada", getBaseUrl()), 303);
+      if (session.status === "expired") {
+        return NextResponse.redirect(new URL("/dashboard/history?status=compra-multipla-cancelada", getBaseUrl()), 303);
+      }
+
+      return NextResponse.redirect(new URL("/dashboard/history?status=compra-multipla-processando", getBaseUrl()), 303);
     }
 
-    const metadataBulkOrderId = typeof session.metadata?.bulk_order_id === "string" ? session.metadata.bulk_order_id : null;
-    if (metadataBulkOrderId && metadataBulkOrderId !== bundle.id) {
+    if (session.mode !== "payment") {
       return NextResponse.redirect(new URL("/dashboard/history?error=retorno-checkout-invalido", getBaseUrl()), 303);
     }
 
+    const metadataOrderType = typeof session.metadata?.order_type === "string" ? session.metadata.order_type : null;
+    if (metadataOrderType && metadataOrderType !== "search_access_bundle") {
+      return NextResponse.redirect(new URL("/dashboard/history?error=retorno-checkout-invalido", getBaseUrl()), 303);
+    }
+
+    const metadataBulkOrderId = typeof session.metadata?.bulk_order_id === "string" ? session.metadata.bulk_order_id : null;
+    const resolvedBundle = metadataBulkOrderId
+      ? await getSearchAccessBulkOrderById(metadataBulkOrderId)
+      : await getSearchAccessBulkOrderByCheckoutSessionId(session.id);
+    if (!resolvedBundle) {
+      return NextResponse.redirect(new URL("/dashboard/history?error=checkout-multiplo-nao-encontrado", getBaseUrl()), 303);
+    }
+
     await finalizeSearchAccessBulkOrderPayment({
-      bulkOrderId: bundle.id,
+      bulkOrderId: resolvedBundle.id,
       sessionId: session.id,
       paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
     });

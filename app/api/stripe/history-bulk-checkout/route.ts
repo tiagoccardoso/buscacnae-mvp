@@ -85,7 +85,6 @@ export async function POST(request: Request) {
     }
 
     const successUrl = new URL(`/api/stripe/history-bulk-success`, getBaseUrl());
-    successUrl.searchParams.set("bundle", bundle.id);
     successUrl.searchParams.set("session_id", "__CHECKOUT_SESSION_ID__");
     const successUrlString = successUrl
       .toString()
