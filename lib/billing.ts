@@ -83,6 +83,27 @@ function isSearchAccessBulkOrderUnlocked(status: string) {
 }
 
 function normalizeOrderIdsPayload(value: unknown) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [] as string[];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      return normalizeOrderIdsPayload(parsed);
+    } catch {
+      return Array.from(
+        new Set(
+          trimmed
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean)
+        )
+      );
+    }
+  }
+
   if (!Array.isArray(value)) {
     return [] as string[];
   }
