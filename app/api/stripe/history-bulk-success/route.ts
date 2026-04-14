@@ -3,8 +3,7 @@ import { getBaseUrl } from "@/lib/env";
 import { getStripeClient } from "@/lib/stripe";
 import {
   finalizeSearchAccessBulkOrderPayment,
-  getSearchAccessBulkOrderById,
-  getSearchAccessBulkOrderByCheckoutSessionId
+  getSearchAccessBulkOrderById
 } from "@/lib/billing";
 
 export const runtime = "nodejs";
@@ -12,14 +11,39 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
+    const bundleId = (url.searchParams.get("bundle") ?? "").trim();
     const sessionIdFromQuery = (url.searchParams.get("session_id") ?? "").trim();
 
-    if (!sessionIdFromQuery || sessionIdFromQuery.includes("CHECKOUT_SESSION_ID")) {
+    if (!bundleId) {
+      return NextResponse.redirect(new URL("/dashboard/history?error=retorno-checkout-invalido", getBaseUrl()), 303);
+    }
+
+    const bundle = await getSearchAccessBulkOrderById(bundleId);
+    if (!bundle) {
+      return NextResponse.redirect(new URL("/dashboard/history?error=checkout-multiplo-nao-encontrado", getBaseUrl()), 303);
+    }
+
+    const bundleSessionId =
+      typeof bundle.stripe_checkout_session_id === "string" ? bundle.stripe_checkout_session_id.trim() : "";
+    const resolvedSessionId =
+      bundleSessionId && !bundleSessionId.includes("CHECKOUT_SESSION_ID")
+        ? bundleSessionId
+        : sessionIdFromQuery && !sessionIdFromQuery.includes("CHECKOUT_SESSION_ID")
+          ? sessionIdFromQuery
+          : "";
+
+    if (!resolvedSessionId) {
       return NextResponse.redirect(new URL("/dashboard/history?error=retorno-checkout-invalido", getBaseUrl()), 303);
     }
 
     const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.retrieve(sessionIdFromQuery);
+    let session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(resolvedSessionId);
+    } catch (error) {
+      console.error("[history-bulk-success] failed to retrieve checkout session", error);
+      return NextResponse.redirect(new URL("/dashboard/history?error=retorno-checkout-invalido", getBaseUrl()), 303);
+    }
 
     if (session.payment_status !== "paid") {
       if (session.status === "expired") {
@@ -38,16 +62,14 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL("/dashboard/history?error=retorno-checkout-invalido", getBaseUrl()), 303);
     }
 
-    const metadataBulkOrderId = typeof session.metadata?.bulk_order_id === "string" ? session.metadata.bulk_order_id : null;
-    const resolvedBundle = metadataBulkOrderId
-      ? await getSearchAccessBulkOrderById(metadataBulkOrderId)
-      : await getSearchAccessBulkOrderByCheckoutSessionId(session.id);
-    if (!resolvedBundle) {
+    const metadataBulkOrderId =
+      typeof session.metadata?.bulk_order_id === "string" ? session.metadata.bulk_order_id : null;
+    if (metadataBulkOrderId && metadataBulkOrderId !== bundle.id) {
       return NextResponse.redirect(new URL("/dashboard/history?error=checkout-multiplo-nao-encontrado", getBaseUrl()), 303);
     }
 
     await finalizeSearchAccessBulkOrderPayment({
-      bulkOrderId: resolvedBundle.id,
+      bulkOrderId: bundle.id,
       sessionId: session.id,
       paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
     });
