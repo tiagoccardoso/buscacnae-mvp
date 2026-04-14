@@ -83,6 +83,27 @@ function isSearchAccessBulkOrderUnlocked(status: string) {
 }
 
 function normalizeOrderIdsPayload(value: unknown) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [] as string[];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      return normalizeOrderIdsPayload(parsed);
+    } catch {
+      return Array.from(
+        new Set(
+          trimmed
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean)
+        )
+      );
+    }
+  }
+
   if (!Array.isArray(value)) {
     return [] as string[];
   }
@@ -638,7 +659,7 @@ export async function markSearchAccessOrdersPaidByIds(args: {
   const admin = createSupabaseAdminClient();
   const now = new Date().toISOString();
 
-  await admin
+  const { error } = await admin
     .from("search_access_orders")
     .update({
       status: "paid",
@@ -650,6 +671,10 @@ export async function markSearchAccessOrdersPaidByIds(args: {
     .in("id", orderIds)
     .neq("status", "free")
     .neq("status", "paid");
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function markSearchAccessOrdersPaymentFailedByIds(args: {
@@ -790,7 +815,11 @@ export async function markSearchAccessBulkOrderPaid(args: {
     return;
   }
 
-  await query;
+  const { error } = await query;
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function markSearchAccessBulkOrderPaymentFailed(args: {
@@ -820,26 +849,71 @@ export async function markSearchAccessBulkOrderPaymentFailed(args: {
   await query;
 }
 
-async function unlockSearchAccessBulkOrderFromCheckoutSession(session: Stripe.Checkout.Session) {
-  const bulkOrderId = typeof session.metadata?.bulk_order_id === "string" ? session.metadata.bulk_order_id : null;
-  const bulkOrder = bulkOrderId
-    ? await getSearchAccessBulkOrderById(bulkOrderId)
-    : await getSearchAccessBulkOrderByCheckoutSessionId(session.id);
+export async function finalizeSearchAccessBulkOrderPayment(args: {
+  bulkOrderId?: string | null;
+  sessionId: string;
+  paymentIntentId?: string | null;
+}) {
+  const bulkOrder = args.bulkOrderId
+    ? await getSearchAccessBulkOrderById(args.bulkOrderId)
+    : await getSearchAccessBulkOrderByCheckoutSessionId(args.sessionId);
 
-  if (!bulkOrder || isSearchAccessBulkOrderUnlocked(bulkOrder.status)) {
-    return;
+  if (!bulkOrder) {
+    throw new Error("Pedido em lote não encontrado para confirmar o pagamento.");
   }
 
   const orderIds = normalizeOrderIdsPayload(bulkOrder.order_ids);
+  if (orderIds.length === 0) {
+    throw new Error(`Pedido em lote ${bulkOrder.id} não possui pedidos individuais vinculados.`);
+  }
 
-  await markSearchAccessBulkOrderPaid({
-    orderId: bulkOrder.id,
-    sessionId: session.id,
-    paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
-  });
+  const ordersBefore = await getSearchAccessOrdersByIds(orderIds);
+  if (ordersBefore.length !== orderIds.length) {
+    throw new Error(
+      `Inconsistência no pedido em lote ${bulkOrder.id}: esperados ${orderIds.length} pedidos, encontrados ${ordersBefore.length}.`
+    );
+  }
 
   await markSearchAccessOrdersPaidByIds({
     orderIds,
+    sessionId: args.sessionId,
+    paymentIntentId: args.paymentIntentId ?? null
+  });
+
+  const ordersAfter = await getSearchAccessOrdersByIds(orderIds);
+  const pendingOrders = ordersAfter.filter(
+    (order) => !isSearchAccessOrderUnlocked(order.status) || !order.paid_at || !order.unlocked_at
+  );
+
+  if (pendingOrders.length > 0) {
+    throw new Error(
+      `Pedido em lote ${bulkOrder.id} ficou inconsistente: ${pendingOrders.length} pedido(s) individual(is) seguem bloqueados.`
+    );
+  }
+
+  if (!isSearchAccessBulkOrderUnlocked(bulkOrder.status)) {
+    await markSearchAccessBulkOrderPaid({
+      orderId: bulkOrder.id,
+      sessionId: args.sessionId,
+      paymentIntentId: args.paymentIntentId ?? null
+    });
+  }
+
+  const updatedBulkOrder = await getSearchAccessBulkOrderById(bulkOrder.id);
+  if (!updatedBulkOrder || !isSearchAccessBulkOrderUnlocked(updatedBulkOrder.status)) {
+    throw new Error(`Falha ao consolidar pagamento do pedido em lote ${bulkOrder.id}.`);
+  }
+
+  return {
+    bulkOrder: updatedBulkOrder,
+    orders: ordersAfter
+  };
+}
+
+async function unlockSearchAccessBulkOrderFromCheckoutSession(session: Stripe.Checkout.Session) {
+  const bulkOrderId = typeof session.metadata?.bulk_order_id === "string" ? session.metadata.bulk_order_id : null;
+  await finalizeSearchAccessBulkOrderPayment({
+    bulkOrderId,
     sessionId: session.id,
     paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null
   });
