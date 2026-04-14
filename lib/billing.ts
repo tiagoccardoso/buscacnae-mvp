@@ -259,6 +259,47 @@ export async function claimSearchAccessOrderForUser(args: {
   return { claimed: true as const, searchQueryId: order.search_query_id, orderId: order.id };
 }
 
+export async function claimSearchAccessOrdersForUserByEmail(args: {
+  userId: string;
+  email: string;
+  limit?: number;
+}) {
+  const admin = createSupabaseAdminClient();
+  const normalizedEmail = args.email.trim().toLowerCase();
+
+  if (!normalizedEmail || !args.userId) {
+    return { claimedCount: 0 };
+  }
+
+  const { data: unclaimedOrders } = await admin
+    .from("search_access_orders")
+    .select("id")
+    .is("profile_id", null)
+    .eq("email", normalizedEmail)
+    .order("created_at", { ascending: false })
+    .limit(args.limit ?? 200);
+
+  if (!unclaimedOrders || unclaimedOrders.length === 0) {
+    return { claimedCount: 0 };
+  }
+
+  let claimedCount = 0;
+
+  for (const order of unclaimedOrders) {
+    const result = await claimSearchAccessOrderForUser({
+      orderId: order.id,
+      userId: args.userId,
+      email: normalizedEmail
+    });
+
+    if (result.claimed) {
+      claimedCount += 1;
+    }
+  }
+
+  return { claimedCount };
+}
+
 function getSearchAccessOrderPricing(resultCount: number, pricingSummary?: LeadPricingSummary | null) {
   const minimumCheckoutAmountCents = getMinimumCheckoutAmountCents();
   const computedSummary = pricingSummary ?? null;
