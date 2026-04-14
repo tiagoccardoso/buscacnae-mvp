@@ -526,6 +526,17 @@ export async function syncSearchAccessOrderPaymentStatus(order: SearchAccessOrde
   }
 
   if (!order.stripe_checkout_session_id) {
+    const bulkOrder = await findPaidBulkOrderContainingOrder(order);
+    if (bulkOrder) {
+      await markSearchAccessOrderPaid({
+        orderId: order.id,
+        sessionId: bulkOrder.stripe_checkout_session_id,
+        paymentIntentId: bulkOrder.stripe_payment_intent_id
+      });
+
+      return (await getSearchAccessOrderById(order.id)) ?? order;
+    }
+
     return order;
   }
 
@@ -553,6 +564,27 @@ export async function syncSearchAccessOrderPaymentStatus(order: SearchAccessOrde
   }
 
   return order;
+}
+
+async function findPaidBulkOrderContainingOrder(order: SearchAccessOrderRecord) {
+  const admin = createSupabaseAdminClient();
+  let query = admin
+    .from("search_access_bulk_orders")
+    .select("*")
+    .eq("status", "paid")
+    .order("updated_at", { ascending: false })
+    .limit(50);
+
+  if (order.profile_id) {
+    query = query.eq("profile_id", order.profile_id);
+  } else {
+    query = query.eq("email", order.email);
+  }
+
+  const { data } = await query;
+  const candidates = (data as SearchAccessBulkOrderRecord[] | null) ?? [];
+
+  return candidates.find((candidate) => normalizeOrderIdsPayload(candidate.order_ids).includes(order.id)) ?? null;
 }
 
 export async function markSearchAccessOrderCheckoutCreated(args: {
