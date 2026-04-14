@@ -809,7 +809,7 @@ export async function markSearchAccessBulkOrderCheckoutCreated(args: {
   checkoutUrl?: string | null;
 }) {
   const admin = createSupabaseAdminClient();
-  await admin
+  const { data, error } = await admin
     .from("search_access_bulk_orders")
     .update({
       stripe_customer_id: args.customerId ?? null,
@@ -817,7 +817,21 @@ export async function markSearchAccessBulkOrderCheckoutCreated(args: {
       checkout_url: args.checkoutUrl ?? null,
       status: "pending"
     })
-    .eq("id", args.orderId);
+    .eq("id", args.orderId)
+    .select("id, stripe_checkout_session_id")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error("Pedido em grupo não encontrado ao registrar sessão de checkout.");
+  }
+
+  if (data.stripe_checkout_session_id !== args.checkoutSessionId) {
+    throw new Error("Falha ao persistir a sessão do checkout em grupo.");
+  }
 }
 
 export async function markSearchAccessBulkOrderPaid(args: {
