@@ -642,6 +642,7 @@ export async function markSearchAccessOrdersPaidByIds(args: {
     .from("search_access_orders")
     .update({
       status: "paid",
+      stripe_checkout_session_id: args.sessionId ?? null,
       stripe_payment_intent_id: args.paymentIntentId ?? null,
       paid_at: now,
       unlocked_at: now
