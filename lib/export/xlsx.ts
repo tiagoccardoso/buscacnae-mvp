@@ -70,6 +70,27 @@ function escapeXml(value: string) {
     .replace(/'/g, "&apos;");
 }
 
+function normalizeHyperlinkTarget(value: string | undefined) {
+  if (typeof value !== "string") return undefined;
+
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return undefined;
+    }
+    if (!parsed.hostname) {
+      return undefined;
+    }
+
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 function columnName(index: number) {
   let current = index;
   let result = "";
@@ -90,7 +111,7 @@ function normalizeSheets(input: WorkbookInput) {
 
     return {
       value: typeof cell.value === "string" ? cell.value : "",
-      hyperlink: typeof cell.hyperlink === "string" && cell.hyperlink.trim() ? cell.hyperlink.trim() : undefined
+      hyperlink: normalizeHyperlinkTarget(cell.hyperlink)
     };
   };
 
@@ -203,7 +224,7 @@ function buildSheetXml(sheet: WorkbookSheet, matrix: number[][]) {
           const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
           const rawCell = sheet.rows[rowIndex]?.[columnIndex];
           const rawValue = readCellValue(rawCell);
-          const hyperlink = readCellHyperlink(rawCell);
+          const hyperlink = normalizeHyperlinkTarget(readCellHyperlink(rawCell));
           if (hyperlink) {
             hyperlinks.push({
               ref,
@@ -257,8 +278,8 @@ function buildSheetXml(sheet: WorkbookSheet, matrix: number[][]) {
   <sheetFormatPr defaultRowHeight="18"/>
   ${colsXml}
   <sheetData>${sheetRowsXml}</sheetData>
-  ${hyperlinksXml}
   ${autoFilterXml}
+  ${hyperlinksXml}
 </worksheet>`;
 
   return { xml, relationshipsXml };
