@@ -34,7 +34,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return new NextResponse("Faça login para baixar a lista formatada.", { status: 401 });
+    return new NextResponse("Faça login para baixar sua lista pronta para prospecção.", { status: 401 });
   }
 
   const { data: search } = await supabase
@@ -63,12 +63,12 @@ export async function GET(_request: Request, { params }: RouteProps) {
 
   const aiOrder = await getSearchAiFormatOrderBySearchQueryId(id);
   if (!aiOrder) {
-    return new NextResponse("A formatação por IA ainda não foi contratada para esta lista.", { status: 403 });
+    return new NextResponse("O upgrade da lista pronta para prospecção com IA ainda não foi ativado para esta lista.", { status: 403 });
   }
 
   const syncedAiOrder = await syncSearchAiFormatOrderPaymentStatus(aiOrder);
   if (syncedAiOrder.status !== "paid") {
-    return new NextResponse("A cobrança da formatação por IA ainda não foi confirmada.", { status: 403 });
+    return new NextResponse("O pagamento do upgrade com IA ainda não foi confirmado para liberar os downloads.", { status: 403 });
   }
 
   const [payload, { data: rows }] = await Promise.all([

@@ -95,8 +95,8 @@ export async function POST(request: Request) {
     orderAccessToken: syncedAiOrder.access_token,
     successUrl: successUrl.toString(),
     cancelUrl: cancelUrl.toString(),
-    productName: "Formatação da lista com IA",
-    productDescription: `Busca ${searchId}`,
+    productName: "Lista pronta para prospecção com IA",
+    productDescription: "XLSX organizado, aba Contatos WhatsApp e PDF legível",
     metadata: {
       order_type: "search_ai_format",
       search_query_id: searchId
