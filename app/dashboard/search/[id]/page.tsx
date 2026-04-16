@@ -28,19 +28,28 @@ type SearchResultPageProps = {
 
 function readAiFormatMessage(status: string) {
   if (status === "success") {
-    return { type: "success", text: "Pagamento da formatação por IA confirmado. Os downloads em XLSX e PDF já estão liberados para esta lista." };
+    return {
+      type: "success",
+      text: "Pagamento confirmado. Sua lista já pode ser baixada em XLSX organizado, com aba Contatos WhatsApp, e em PDF legível por registro."
+    };
   }
 
   if (status === "cancelled") {
-    return { type: "warning", text: "A cobrança da formatação por IA foi cancelada. Você pode tentar novamente quando quiser." };
+    return {
+      type: "warning",
+      text: "A ativação do upgrade com IA foi cancelada. Quando quiser, você pode concluir a compra e liberar o XLSX com contatos para WhatsApp Web e o PDF da lista."
+    };
   }
 
   if (status === "blocked") {
-    return { type: "warning", text: "A formatação por IA só fica disponível depois que a compra da lista for efetivada." };
+    return {
+      type: "warning",
+      text: "Esse upgrade fica disponível depois da compra da lista. Após liberar a base, você pode ativar a versão pronta para prospecção com IA."
+    };
   }
 
   if (status === "error") {
-    return { type: "danger", text: "Não foi possível iniciar o checkout da formatação por IA." };
+    return { type: "danger", text: "Não foi possível iniciar a compra do upgrade com IA. Tente novamente em instantes." };
   }
 
   return null;
@@ -196,7 +205,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
               <div className="notice">
                 {orderUnlocked
-                  ? "Esta lista já está liberada. Você pode abrir a versão completa, baixar o XLSX ou contratar a formatação por IA."
+                  ? "Esta lista já está liberada. Você pode abrir a versão completa, baixar o XLSX ou ativar a lista pronta para prospecção com IA."
                   : order.result_count === 0
                     ? "Nenhum CNPJ foi encontrado nesta busca. O resultado fica disponível sem cobrança."
                     : "A lista completa pode ser comprada agora a partir desta pesquisa já salva no dashboard."}
@@ -225,24 +234,28 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
               {orderUnlocked && (rows?.length ?? 0) > 0 ? (
                 <div className="surface-soft card stack" style={{ marginTop: 12 }}>
-                  <span className="eyebrow">Formatação com IA</span>
+                  <span className="eyebrow">Lista pronta para prospecção com IA</span>
                   <div className="grid-2">
                     <div className="stack" style={{ gap: 6 }}>
-                      <span className="kicker">Cobrança avulsa</span>
+                      <span className="kicker">Upgrade da lista</span>
                       <strong style={{ fontSize: "1.8rem" }}>{formatMoney(getAiFormattingPriceCents() / 100)}</strong>
-                      <span className="muted">Cada lista comprada pode receber organização por IA em uma cobrança separada.</span>
+                      <span className="muted">
+                        Transforme sua lista em uma base pronta para prospecção com XLSX organizado, aba Contatos WhatsApp e PDF legível.
+                      </span>
                     </div>
                     <div className="stack" style={{ gap: 6 }}>
-                      <span className="kicker">Entrega</span>
-                      <strong style={{ fontSize: "1.1rem" }}>{aiFormatUnlocked ? "IA liberada" : "Aguardando contratação"}</strong>
-                      <span className="muted">Quando liberada, esta lista pode ser baixada em XLSX estruturado e PDF por registro.</span>
+                      <span className="kicker">Entrega comercial</span>
+                      <strong style={{ fontSize: "1.1rem" }}>{aiFormatUnlocked ? "Upgrade liberado" : "Aguardando ativação"}</strong>
+                      <span className="muted">
+                        Receba XLSX organizado, aba "Contatos WhatsApp" com link direto para WhatsApp Web e PDF legível por registro.
+                      </span>
                     </div>
                   </div>
 
                   <div className="notice">
                     {aiFormatUnlocked
-                      ? "A organização por IA desta lista já foi contratada. Ao clicar em um dos downloads, o sistema gera o arquivo e inicia o download automaticamente ao concluir."
-                      : "A contratação só aparece depois da compra da lista. Quando ativada, gera um XLSX estruturado e um PDF mais legível por registro."}
+                      ? "Upgrade com IA ativo. Baixe agora o XLSX organizado com a aba Contatos WhatsApp e o PDF legível por registro."
+                      : "Economize tempo na preparação da prospecção. A IA organiza os dados da lista, melhora a visualização das informações e cria uma aba de contatos com link direto para WhatsApp Web."}
                   </div>
 
                   <div className="inline-actions">
@@ -252,7 +265,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                       <form action="/api/stripe/ai-format-checkout" method="POST" data-analytics-event="ai_format_checkout_started">
                         <input type="hidden" name="searchId" value={id} />
                         <button type="submit" className="button">
-                          Formatar com IA por {formatMoney(getAiFormattingPriceCents() / 100)}
+                          Quero minha lista pronta para prospecção por {formatMoney(getAiFormattingPriceCents() / 100)}
                         </button>
                       </form>
                     )}
