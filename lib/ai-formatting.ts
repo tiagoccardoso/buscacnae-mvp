@@ -168,19 +168,59 @@ function extractPhoneDigits(value: string) {
   return value.replace(/\D/g, "");
 }
 
-function buildWhatsappWebLink(value: string) {
+function sanitizeContactPhone(value: string) {
   const digits = extractPhoneDigits(value);
   if (!digits) return "";
 
-  if (digits.length >= 12) {
-    return `https://wa.me/${digits}`;
+  if (digits.startsWith("55")) {
+    const localLength = digits.length - 2;
+    if (localLength === 10 || localLength === 11) {
+      return digits;
+    }
+    return "";
   }
 
-  if (digits.length === 10 || digits.length === 11) {
-    return `https://wa.me/55${digits}`;
-  }
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  if (digits.length >= 12 && digits.length <= 15) return digits;
 
   return "";
+}
+
+function parseStrictWhatsappWebLink(value: string) {
+  const trimmed = value.trim();
+  const match = /^https:\/\/wa\.me\/(\d+)$/.exec(trimmed);
+  if (!match) return "";
+  return sanitizeContactPhone(match[1] ?? "");
+}
+
+function buildWhatsappWebLinkFromPhone(phone: string) {
+  const sanitizedPhone = sanitizeContactPhone(phone);
+  return sanitizedPhone ? `https://wa.me/${sanitizedPhone}` : "";
+}
+
+function resolveWhatsappContact(phone: string, existingLink?: string) {
+  const sanitizedPhone = sanitizeContactPhone(phone);
+  if (sanitizedPhone) {
+    return {
+      phone: sanitizedPhone,
+      whatsappWeb: `https://wa.me/${sanitizedPhone}`
+    };
+  }
+
+  if (typeof existingLink === "string" && existingLink.trim()) {
+    const phoneFromLink = parseStrictWhatsappWebLink(existingLink);
+    if (phoneFromLink) {
+      return {
+        phone: phoneFromLink,
+        whatsappWeb: `https://wa.me/${phoneFromLink}`
+      };
+    }
+  }
+
+  return {
+    phone: "",
+    whatsappWeb: ""
+  };
 }
 
 function normalizeTextValue(value: unknown) {
@@ -310,7 +350,7 @@ function createFallbackRecords(sourceRecords: FormattingSourceRecord[]): SearchA
     contactChannel: detectContactChannel(record),
     dataCompleteness: estimateCompleteness(record),
     commercialNote: buildFallbackNote(record),
-    whatsappWeb: buildWhatsappWebLink(record.phone)
+    whatsappWeb: buildWhatsappWebLinkFromPhone(record.phone)
   }));
 }
 
@@ -482,9 +522,7 @@ function mergeAiRecord(
   const website = typeof partial?.website === "string" && partial.website.trim()
     ? partial.website.trim()
     : sourceRecord.website;
-  const whatsappWeb = typeof partial?.whatsappWeb === "string" && partial.whatsappWeb.trim()
-    ? partial.whatsappWeb.trim()
-    : buildWhatsappWebLink(phone);
+  const whatsappWeb = resolveWhatsappContact(phone, partial?.whatsappWeb).whatsappWeb;
 
   return {
     ...sourceRecord,
@@ -534,31 +572,22 @@ function buildSummary(records: SearchAiFormattedRecord[]) {
   ];
 }
 
-function sanitizeContactPhone(value: string) {
-  const digits = extractPhoneDigits(value);
-  if (!digits) return "";
-
-  if (digits.length >= 12) return digits;
-  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
-  return "";
-}
-
 function buildContactSheetFromRecords(records: SearchAiFormattedRecord[]): SearchAiContactSheetRow[] {
   const used = new Set<string>();
   const contacts: SearchAiContactSheetRow[] = [];
 
   for (const record of records) {
-    const sanitizedPhone = sanitizeContactPhone(record.phone);
-    if (!sanitizedPhone) continue;
+    const normalized = resolveWhatsappContact(record.phone, record.whatsappWeb);
+    if (!normalized.phone) continue;
 
-    const dedupeKey = `${record.position}:${sanitizedPhone}`;
+    const dedupeKey = `${record.position}:${normalized.phone}`;
     if (used.has(dedupeKey)) continue;
     used.add(dedupeKey);
 
     contacts.push({
       name: blankWhenMissing(record.tradeName) || blankWhenMissing(record.companyName) || `Registro ${record.position}`,
-      phone: sanitizedPhone,
-      whatsappWeb: record.whatsappWeb?.trim() || `https://wa.me/${sanitizedPhone}`
+      phone: normalized.phone,
+      whatsappWeb: normalized.whatsappWeb
     });
   }
 
@@ -567,12 +596,10 @@ function buildContactSheetFromRecords(records: SearchAiFormattedRecord[]): Searc
 
 function normalizeStoredPayload(payload: SearchAiFormattedPayload): SearchAiFormattedPayload {
   const records = payload.records.map((record) => {
-    const whatsappWeb = typeof record.whatsappWeb === "string" && record.whatsappWeb.trim()
-      ? record.whatsappWeb.trim()
-      : buildWhatsappWebLink(record.phone);
+    const normalized = resolveWhatsappContact(record.phone, record.whatsappWeb);
     return {
       ...record,
-      whatsappWeb
+      whatsappWeb: normalized.whatsappWeb
     };
   });
 
@@ -586,15 +613,11 @@ function normalizeStoredPayload(payload: SearchAiFormattedPayload): SearchAiForm
   const providedContactSheet = Array.isArray(payload.contactSheet)
     ? payload.contactSheet.map((item) => ({
         name: blankWhenMissing(item.name),
-        phone: sanitizeContactPhone(item.phone),
-        whatsappWeb: item.whatsappWeb?.trim() || ""
+        ...resolveWhatsappContact(item.phone, item.whatsappWeb)
       }))
     : [];
 
-  const contactSheet = providedContactSheet.filter((item) => item.phone).map((item) => ({
-    ...item,
-    whatsappWeb: item.whatsappWeb || `https://wa.me/${item.phone}`
-  }));
+  const contactSheet = providedContactSheet.filter((item) => item.phone);
 
   return {
     ...payload,
@@ -1032,14 +1055,9 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
         ? contactSheet
             .map((item) => ({
               name: blankWhenMissing(item.name),
-              phone: sanitizeContactPhone(item.phone),
-              whatsappWeb: item.whatsappWeb?.trim() || ""
+              ...resolveWhatsappContact(item.phone, item.whatsappWeb)
             }))
             .filter((item) => item.phone)
-            .map((item) => ({
-              ...item,
-              whatsappWeb: item.whatsappWeb || `https://wa.me/${item.phone}`
-            }))
         : buildContactSheetFromRecords(formattedRecords)
   };
 
@@ -1130,14 +1148,12 @@ function resolveContactSheetRows(payload: SearchAiFormattedPayload) {
 
   return sourceRows
     .map((item) => {
-      const phone = sanitizeContactPhone(item.phone);
-      if (!phone) return null;
-
-      const whatsappWeb = item.whatsappWeb?.trim() || `https://wa.me/${phone}`;
+      const normalized = resolveWhatsappContact(item.phone, item.whatsappWeb);
+      if (!normalized.phone) return null;
       return {
         name: blankWhenMissing(item.name) || "-",
-        phone,
-        whatsappWeb
+        phone: normalized.phone,
+        whatsappWeb: normalized.whatsappWeb
       };
     })
     .filter((item): item is { name: string; phone: string; whatsappWeb: string } => Boolean(item));
@@ -1264,13 +1280,18 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
   ];
 
   for (const contact of resolveContactSheetRows(payload)) {
+    const normalized = resolveWhatsappContact(contact.phone, contact.whatsappWeb);
+    const linkCell: WorkbookCell = normalized.whatsappWeb
+      ? {
+          value: normalized.whatsappWeb,
+          hyperlink: normalized.whatsappWeb
+        }
+      : { value: "" };
+
     contactsRows.push([
       contact.name,
       contact.phone,
-      {
-        value: contact.whatsappWeb,
-        hyperlink: contact.whatsappWeb
-      }
+      linkCell
     ]);
   }
 
