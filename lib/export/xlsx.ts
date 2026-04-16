@@ -1,8 +1,13 @@
 import { deflateRawSync } from "node:zlib";
 
+export type WorkbookCell = {
+  value: string;
+  hyperlink?: string;
+};
+
 type WorkbookSheet = {
   name: string;
-  rows: string[][];
+  rows: Array<Array<string | WorkbookCell>>;
   columnWidths?: number[];
   wrapColumns?: number[];
   autoFilter?: boolean;
@@ -78,10 +83,24 @@ function columnName(index: number) {
 }
 
 function normalizeSheets(input: WorkbookInput) {
+  const normalizeCell = (cell: string | WorkbookCell): WorkbookCell => {
+    if (typeof cell === "string") {
+      return { value: cell };
+    }
+
+    return {
+      value: typeof cell.value === "string" ? cell.value : "",
+      hyperlink: typeof cell.hyperlink === "string" && cell.hyperlink.trim() ? cell.hyperlink.trim() : undefined
+    };
+  };
+
+  const normalizeRows = (rows: Array<Array<string | WorkbookCell>>) =>
+    (rows.length > 0 ? rows : [[""]]).map((row) => row.map((cell) => normalizeCell(cell)));
+
   if ("sheets" in input) {
     return input.sheets.map((sheet) => ({
       ...sheet,
-      rows: sheet.rows.length > 0 ? sheet.rows : [[""]],
+      rows: normalizeRows(sheet.rows),
       wrapColumns: sheet.wrapColumns ?? [],
       autoFilter: sheet.autoFilter !== false,
       freezeHeader: sheet.freezeHeader !== false
@@ -91,13 +110,36 @@ function normalizeSheets(input: WorkbookInput) {
   return [
     {
       name: input.sheetName,
-      rows: input.rows.length > 0 ? input.rows : [[""]],
+      rows: normalizeRows(input.rows),
       columnWidths: input.columnWidths,
       wrapColumns: input.wrapColumns ?? [],
       autoFilter: input.autoFilter !== false,
       freezeHeader: input.freezeHeader !== false
     }
   ];
+}
+
+function readCellValue(cell: string | WorkbookCell | undefined) {
+  if (!cell) return "";
+  return typeof cell === "string" ? cell : cell.value;
+}
+
+function readCellHyperlink(cell: string | WorkbookCell | undefined) {
+  if (!cell || typeof cell === "string") return undefined;
+  if (typeof cell.hyperlink !== "string") return undefined;
+
+  const trimmed = cell.hyperlink.trim();
+  if (!trimmed) return undefined;
+
+  try {
+    const parsed = new URL(trimmed);
+    if ((parsed.protocol !== "https:" && parsed.protocol !== "http:") || !parsed.hostname) {
+      return undefined;
+    }
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
 }
 
 function buildSharedStrings(sheets: WorkbookSheet[]) {
@@ -115,7 +157,7 @@ function buildSharedStrings(sheets: WorkbookSheet[]) {
     return index;
   }
 
-  const matrices = sheets.map((sheet) => sheet.rows.map((row) => row.map((cell) => ensure(cell))));
+  const matrices = sheets.map((sheet) => sheet.rows.map((row) => row.map((cell) => ensure(readCellValue(cell)))));
 
   const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sheets.reduce(
@@ -136,7 +178,7 @@ function buildColumnWidths(sheet: WorkbookSheet) {
 
   return Array.from({ length: maxColumns }, (_, columnIndex) => {
     const computedWidth = sheet.rows.reduce((max, row) => {
-      const candidate = row[columnIndex] ?? "";
+      const candidate = readCellValue(row[columnIndex]);
       const widestLine = candidate
         .split(/\r?\n/)
         .reduce((lineMax, line) => Math.max(lineMax, line.length), 0);
@@ -165,12 +207,23 @@ function buildSheetXml(sheet: WorkbookSheet, matrix: number[][]) {
         .join("")}</cols>`
     : "";
 
+  const hyperlinks: Array<{ ref: string; target: string; id: string }> = [];
+
   const sheetRowsXml = matrix
     .map((row, rowIndex) => {
       const cellsXml = row
         .map((sharedStringIndex, columnIndex) => {
           const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
-          const rawValue = sheet.rows[rowIndex]?.[columnIndex] ?? "";
+          const rawCell = sheet.rows[rowIndex]?.[columnIndex];
+          const rawValue = readCellValue(rawCell);
+          const hyperlink = readCellHyperlink(rawCell);
+          if (hyperlink) {
+            hyperlinks.push({
+              ref,
+              target: hyperlink,
+              id: `rId${hyperlinks.length + 1}`
+            });
+          }
           const shouldWrap = wrapColumns.has(columnIndex) || rawValue.includes("\n") || rawValue.length > 90;
           const styleIndex = rowIndex === 0 ? (shouldWrap ? 3 : 1) : shouldWrap ? 2 : 0;
           return `<c r="${ref}" t="s" s="${styleIndex}"><v>${sharedStringIndex}</v></c>`;
@@ -194,15 +247,34 @@ function buildSheetXml(sheet: WorkbookSheet, matrix: number[][]) {
     ? `<autoFilter ref="A1:${lastColumn}1"/>`
     : "";
 
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  const hyperlinksXml = hyperlinks.length > 0
+    ? `<hyperlinks>${hyperlinks
+        .map((link) => `<hyperlink ref="${link.ref}" r:id="${link.id}"/>`)
+        .join("")}</hyperlinks>`
+    : "";
+
+  const relationshipsXml = hyperlinks.length > 0
+    ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${hyperlinks
+      .map(
+        (link) =>
+          `<Relationship Id="${link.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${escapeXml(link.target)}" TargetMode="External"/>`
+      )
+      .join("")}</Relationships>`
+    : undefined;
+
+  const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"${hyperlinks.length > 0 ? ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"' : ""}>
   <dimension ref="A1:${lastColumn}${lastRow}"/>
   ${sheetViewsXml}
   <sheetFormatPr defaultRowHeight="18"/>
   ${colsXml}
   <sheetData>${sheetRowsXml}</sheetData>
   ${autoFilterXml}
+  ${hyperlinksXml}
 </worksheet>`;
+
+  return { xml, relationshipsXml };
 }
 
 function buildStylesXml() {
@@ -335,10 +407,15 @@ export function createXlsxWorkbook(input: WorkbookInput) {
   const { xml: sharedStringsXml, matrices } = buildSharedStrings(sheets);
   const stylesXml = buildStylesXml();
 
-  const worksheetEntries = sheets.map((sheet, index) => ({
-    name: `xl/worksheets/sheet${index + 1}.xml`,
-    data: buildSheetXml(sheet, matrices[index] ?? [[0]])
-  }));
+  const worksheetEntries = sheets.map((sheet, index) => {
+    const sheetXml = buildSheetXml(sheet, matrices[index] ?? [[0]]);
+    return {
+      name: `xl/worksheets/sheet${index + 1}.xml`,
+      data: sheetXml.xml,
+      relName: `xl/worksheets/_rels/sheet${index + 1}.xml.rels`,
+      relData: sheetXml.relationshipsXml
+    };
+  });
 
   const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -440,6 +517,15 @@ export function createXlsxWorkbook(input: WorkbookInput) {
       name: "xl/sharedStrings.xml",
       data: sharedStringsXml
     },
+    ...worksheetEntries.map((entry) => ({
+      name: entry.name,
+      data: entry.data
+    })),
     ...worksheetEntries
+      .filter((entry) => typeof entry.relData === "string" && entry.relData.trim())
+      .map((entry) => ({
+        name: entry.relName,
+        data: entry.relData as string
+      }))
   ]);
 }

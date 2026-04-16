@@ -6,6 +6,7 @@ import { buildEstablishmentDetailSections } from "@/lib/establishment-detail-sec
 import { buildDisplayEstablishment, getEstablishmentPayload } from "@/lib/establishment-presenter";
 import { extractSingleObject, safeJsonStringify } from "@/lib/utils";
 import { saveSearchAiFormatPayload, type SearchAiFormatOrderRecord } from "@/lib/billing";
+import type { WorkbookCell } from "@/lib/export/xlsx";
 
 type FormattingSourceRecord = {
   position: number;
@@ -69,6 +70,13 @@ export type SearchAiFormattedRecord = {
   contactChannel: string;
   dataCompleteness: string;
   commercialNote: string;
+  whatsappWeb: string;
+};
+
+export type SearchAiContactSheetRow = {
+  name: string;
+  phone: string;
+  whatsappWeb: string;
 };
 
 export type SearchAiFormattedPayload = {
@@ -84,14 +92,16 @@ export type SearchAiFormattedPayload = {
     xlsx: string;
     pdf: string;
     pdfSafety: string;
+    contactsSheet: string;
   };
   summary: Array<{ label: string; value: string }>;
   records: SearchAiFormattedRecord[];
+  contactSheet: SearchAiContactSheetRow[];
 };
 
 export type AiFormattedWorkbookSheet = {
   name: string;
-  rows: string[][];
+  rows: Array<Array<string | WorkbookCell>>;
   columnWidths?: number[];
   wrapColumns?: number[];
 };
@@ -152,6 +162,52 @@ function normalizeWebsite(value: string) {
   if (!trimmed) return "-";
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return `https://${trimmed}`;
+}
+
+function extractPhoneDigits(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function sanitizeContactPhone(value: string) {
+  const digits = extractPhoneDigits(value);
+  if (!digits) return "";
+
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  if (digits.length >= 12 && digits.length <= 15) return digits;
+  return "";
+}
+
+function parseAcceptedWhatsappLink(value: string) {
+  const match = value.trim().match(/^https:\/\/wa\.me\/(\d+)$/);
+  if (!match) return "";
+  return sanitizeContactPhone(match[1] ?? "");
+}
+
+function normalizeWhatsappContact(phoneValue: string, existingLinkValue?: string) {
+  const phone = sanitizeContactPhone(phoneValue);
+  if (phone) {
+    return {
+      phone,
+      whatsappWeb: `https://wa.me/${phone}`
+    };
+  }
+
+  const parsedFromLink = typeof existingLinkValue === "string" ? parseAcceptedWhatsappLink(existingLinkValue) : "";
+  if (!parsedFromLink) {
+    return {
+      phone: "",
+      whatsappWeb: ""
+    };
+  }
+
+  return {
+    phone: parsedFromLink,
+    whatsappWeb: `https://wa.me/${parsedFromLink}`
+  };
+}
+
+function buildWhatsappWebLink(value: string) {
+  return normalizeWhatsappContact(value).whatsappWeb;
 }
 
 function normalizeTextValue(value: unknown) {
@@ -280,7 +336,8 @@ function createFallbackRecords(sourceRecords: FormattingSourceRecord[]): SearchA
     ...record,
     contactChannel: detectContactChannel(record),
     dataCompleteness: estimateCompleteness(record),
-    commercialNote: buildFallbackNote(record)
+    commercialNote: buildFallbackNote(record),
+    whatsappWeb: buildWhatsappWebLink(record.phone)
   }));
 }
 
@@ -340,7 +397,7 @@ async function formatChunkWithOpenAi(records: FormattingAiInputRecord[]) {
     body: JSON.stringify({
       model: getOpenAiModel(),
       instructions:
-        "Receba a planilha xlsx diretamente do sistema, organize os dados com todas as informações disponíveis e gere a melhor base possível para exportação em XLSX e PDF. Preserve integralmente os dados recebidos, nunca invente valores e nunca descarte informações úteis. Considere tanto a prévia tabular do XLSX quanto todos os campos disponíveis por registro. Para o PDF, escolha uma estratégia textual que privilegie legibilidade, blocos curtos, rótulos claros, texto limpo em português do Brasil e caracteres seguros para evitar desconfiguração visual, símbolos estranhos, markdown, emojis e ornamentos desnecessários. Responda apenas JSON válido no formato {\"strategy\":{\"xlsx\": string, \"pdf\": string, \"pdfSafety\": string}, \"items\":[{\"position\": number, \"companyName\": string, \"tradeName\": string, \"registrationStatus\": string, \"openedAt\": string, \"primaryActivity\": string, \"secondaryCnaes\": string, \"legalNature\": string, \"companySize\": string, \"taxProfile\": string, \"capitalSocial\": string, \"location\": string, \"address\": string, \"phone\": string, \"email\": string, \"website\": string, \"contactChannel\": string, \"dataCompleteness\": string, \"commercialNote\": string}]}. Em strategy.xlsx, descreva em uma frase como organizar o XLSX. Em strategy.pdf, descreva em uma frase como distribuir as informações no PDF. Em strategy.pdfSafety, descreva em uma frase como evitar textos quebrados e caracteres estranhos no PDF. Use somente os dados fornecidos. Normalize nomes, telefones, e-mails, sites, localização e endereço em português do Brasil. Em contactChannel, indique o melhor canal baseado nos contatos disponíveis. Em dataCompleteness, classifique como Alta, Média ou Baixa considerando principalmente telefone, e-mail, site e endereço. Em commercialNote, faça uma observação objetiva com no máximo 22 palavras usando apenas dados reais do item.",
+        "Receba os dados da planilha do sistema e organize a melhor base possível para exportação em XLSX e PDF, sem inventar valores e sem descartar informações úteis. Preserve integralmente os dados recebidos. Considere a prévia tabular do XLSX e todos os campos disponíveis por registro.\n\nPara o PDF, priorize legibilidade, texto limpo em português do Brasil, blocos curtos, rótulos claros e caracteres seguros. Evite markdown, emojis, ornamentos e símbolos que possam desconfigurar o arquivo.\n\nAlém da planilha principal, gere os dados de uma nova aba do XLSX chamada \"Contatos WhatsApp\", com as colunas \"Nome\", \"Telefone\" e \"Link WhatsApp Web\". O link deve ser gerado no formato https://wa.me/<telefone>, usando apenas dígitos. Remova caracteres extras do telefone. Quando o número for brasileiro e estiver sem DDI, utilize 55. Nunca invente telefone. Se não houver telefone válido, deixe o link vazio.\n\nResponda apenas JSON válido no formato:\n{\n  \"strategy\": {\n    \"xlsx\": \"string\",\n    \"pdf\": \"string\",\n    \"pdfSafety\": \"string\",\n    \"contactsSheet\": \"string\"\n  },\n  \"items\": [\n    {\n      \"position\": number,\n      \"companyName\": \"string\",\n      \"tradeName\": \"string\",\n      \"registrationStatus\": \"string\",\n      \"openedAt\": \"string\",\n      \"primaryActivity\": \"string\",\n      \"secondaryCnaes\": \"string\",\n      \"legalNature\": \"string\",\n      \"companySize\": \"string\",\n      \"taxProfile\": \"string\",\n      \"capitalSocial\": \"string\",\n      \"location\": \"string\",\n      \"address\": \"string\",\n      \"phone\": \"string\",\n      \"email\": \"string\",\n      \"website\": \"string\",\n      \"contactChannel\": \"string\",\n      \"dataCompleteness\": \"string\",\n      \"commercialNote\": \"string\",\n      \"whatsappWeb\": \"string\"\n    }\n  ],\n  \"contactSheet\": [\n    {\n      \"name\": \"string\",\n      \"phone\": \"string\",\n      \"whatsappWeb\": \"string\"\n    }\n  ]\n}",
       input: safeJsonStringify(buildAiPromptInput(records), 2),
       max_output_tokens: 5000,
       temperature: 0.15
@@ -364,8 +421,10 @@ async function formatChunkWithOpenAi(records: FormattingAiInputRecord[]) {
       xlsx?: string;
       pdf?: string;
       pdfSafety?: string;
+      contactsSheet?: string;
     };
     items?: Array<Partial<SearchAiFormattedRecord> & { position?: number }>;
+    contactSheet?: Array<Partial<SearchAiContactSheetRow>>;
   };
 
   if (!Array.isArray(parsed.items)) {
@@ -376,17 +435,28 @@ async function formatChunkWithOpenAi(records: FormattingAiInputRecord[]) {
     strategy:
       parsed.strategy &&
       typeof parsed.strategy === "object" &&
-      (parsed.strategy.xlsx || parsed.strategy.pdf || parsed.strategy.pdfSafety)
+      (parsed.strategy.xlsx || parsed.strategy.pdf || parsed.strategy.pdfSafety || parsed.strategy.contactsSheet)
         ? {
             xlsx: typeof parsed.strategy.xlsx === "string" && parsed.strategy.xlsx.trim() ? parsed.strategy.xlsx.trim() : "",
             pdf: typeof parsed.strategy.pdf === "string" && parsed.strategy.pdf.trim() ? parsed.strategy.pdf.trim() : "",
             pdfSafety:
               typeof parsed.strategy.pdfSafety === "string" && parsed.strategy.pdfSafety.trim()
                 ? parsed.strategy.pdfSafety.trim()
+                : "",
+            contactsSheet:
+              typeof parsed.strategy.contactsSheet === "string" && parsed.strategy.contactsSheet.trim()
+                ? parsed.strategy.contactsSheet.trim()
                 : ""
           }
         : null,
-    items: parsed.items
+    items: parsed.items,
+    contactSheet: Array.isArray(parsed.contactSheet)
+      ? parsed.contactSheet.map((item) => ({
+          name: typeof item?.name === "string" ? item.name.trim() : "",
+          phone: typeof item?.phone === "string" ? item.phone.trim() : "",
+          whatsappWeb: typeof item?.whatsappWeb === "string" ? item.whatsappWeb.trim() : ""
+        }))
+      : []
   };
 }
 
@@ -439,6 +509,9 @@ function mergeAiRecord(
   const website = typeof partial?.website === "string" && partial.website.trim()
     ? partial.website.trim()
     : sourceRecord.website;
+  const whatsappWeb = typeof partial?.whatsappWeb === "string" && partial.whatsappWeb.trim()
+    ? partial.whatsappWeb.trim()
+    : buildWhatsappWebLink(phone);
 
   return {
     ...sourceRecord,
@@ -457,6 +530,7 @@ function mergeAiRecord(
     phone,
     email,
     website,
+    whatsappWeb,
     contactChannel:
       typeof partial?.contactChannel === "string" && partial.contactChannel.trim()
         ? partial.contactChannel.trim()
@@ -485,6 +559,65 @@ function buildSummary(records: SearchAiFormattedRecord[]) {
     { label: "Com site", value: String(withWebsite) },
     { label: "Completude alta", value: String(highCompleteness) }
   ];
+}
+
+function buildContactSheetFromRecords(records: SearchAiFormattedRecord[]): SearchAiContactSheetRow[] {
+  const used = new Set<string>();
+  const contacts: SearchAiContactSheetRow[] = [];
+
+  for (const record of records) {
+    const normalized = normalizeWhatsappContact(record.phone, record.whatsappWeb);
+    if (!normalized.phone) continue;
+
+    const dedupeKey = `${record.position}:${normalized.phone}`;
+    if (used.has(dedupeKey)) continue;
+    used.add(dedupeKey);
+
+    contacts.push({
+      name: blankWhenMissing(record.tradeName) || blankWhenMissing(record.companyName) || `Registro ${record.position}`,
+      phone: normalized.phone,
+      whatsappWeb: normalized.whatsappWeb
+    });
+  }
+
+  return contacts;
+}
+
+function normalizeStoredPayload(payload: SearchAiFormattedPayload): SearchAiFormattedPayload {
+  const records = payload.records.map((record) => {
+    const normalized = normalizeWhatsappContact(record.phone, record.whatsappWeb);
+    return {
+      ...record,
+      whatsappWeb: normalized.whatsappWeb
+    };
+  });
+
+  const strategy = payload.strategy
+    ? {
+        ...payload.strategy,
+        contactsSheet: typeof payload.strategy.contactsSheet === "string" ? payload.strategy.contactsSheet : ""
+      }
+    : undefined;
+
+  const providedContactSheet = Array.isArray(payload.contactSheet)
+    ? payload.contactSheet
+        .map((item) => {
+          const normalized = normalizeWhatsappContact(item.phone, item.whatsappWeb);
+          return {
+            name: blankWhenMissing(item.name),
+            phone: normalized.phone,
+            whatsappWeb: normalized.whatsappWeb
+          };
+        })
+        .filter((item) => item.phone)
+    : [];
+
+  return {
+    ...payload,
+    strategy,
+    records,
+    contactSheet: providedContactSheet.length > 0 ? providedContactSheet : buildContactSheetFromRecords(records)
+  };
 }
 
 function isStoredPayload(value: unknown): value is SearchAiFormattedPayload {
@@ -804,7 +937,20 @@ function buildFormattingAiInputRecord(
 
 export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrderRecord) {
   if (isStoredPayload(order.formatted_payload)) {
-    return order.formatted_payload;
+    const storedPayload = order.formatted_payload;
+    const normalizedPayload = normalizeStoredPayload(storedPayload);
+    const shouldPersist =
+      !Array.isArray(storedPayload.contactSheet) ||
+      normalizedPayload.records.some((record, index) => record.whatsappWeb !== storedPayload.records[index]?.whatsappWeb);
+
+    if (shouldPersist) {
+      await saveSearchAiFormatPayload({
+        orderId: order.id,
+        payload: normalizedPayload
+      });
+    }
+
+    return normalizedPayload;
   }
 
   const admin = createSupabaseAdminClient();
@@ -830,6 +976,7 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
   let formattedRecords = fallbackRecords;
   let generator: SearchAiFormattedPayload["generator"] = "fallback";
   let strategy: SearchAiFormattedPayload["strategy"] | undefined;
+  let contactSheet: SearchAiContactSheetRow[] = [];
 
   try {
     const chunkSize = 8;
@@ -849,8 +996,13 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
         strategy = {
           xlsx: formattedChunk.strategy.xlsx || "",
           pdf: formattedChunk.strategy.pdf || "",
-          pdfSafety: formattedChunk.strategy.pdfSafety || ""
+          pdfSafety: formattedChunk.strategy.pdfSafety || "",
+          contactsSheet: formattedChunk.strategy.contactsSheet || ""
         };
+      }
+
+      if (formattedChunk.contactSheet.length > 0) {
+        contactSheet = contactSheet.concat(formattedChunk.contactSheet);
       }
 
       for (const item of formattedChunk.items) {
@@ -873,7 +1025,8 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
     strategy = {
       xlsx: "Organizar a lista em abas legíveis, com colunas padronizadas e todos os campos disponíveis preservados para análise e filtro.",
       pdf: "Distribuir cada empresa em ficha cadastral com seções curtas e rótulos claros para facilitar a leitura sem poluir a página.",
-      pdfSafety: "Usar texto limpo, sem markdown, emojis ou símbolos decorativos, mantendo quebras controladas e caracteres compatíveis com o PDF."
+      pdfSafety: "Usar texto limpo, sem markdown, emojis ou símbolos decorativos, mantendo quebras controladas e caracteres compatíveis com o PDF.",
+      contactsSheet: "Criar aba Contatos WhatsApp com nome, telefone em dígitos e link clicável para WhatsApp Web."
     };
   }
 
@@ -889,7 +1042,20 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
     totalRecords: formattedRecords.length,
     strategy,
     summary: buildSummary(formattedRecords),
-    records: formattedRecords
+    records: formattedRecords,
+    contactSheet:
+      contactSheet.length > 0
+        ? contactSheet
+            .map((item) => {
+              const normalized = normalizeWhatsappContact(item.phone, item.whatsappWeb);
+              return {
+                name: blankWhenMissing(item.name),
+                phone: normalized.phone,
+                whatsappWeb: normalized.whatsappWeb
+              };
+            })
+            .filter((item) => item.phone)
+        : buildContactSheetFromRecords(formattedRecords)
   };
 
   await saveSearchAiFormatPayload({
@@ -910,6 +1076,7 @@ export function buildAiFormattedWorkbookRows(payload: SearchAiFormattedPayload) 
     ...(payload.strategy?.xlsx ? [["Estratégia do XLSX", payload.strategy.xlsx]] : []),
     ...(payload.strategy?.pdf ? [["Estratégia do PDF", payload.strategy.pdf]] : []),
     ...(payload.strategy?.pdfSafety ? [["Segurança visual do PDF", payload.strategy.pdfSafety]] : []),
+    ...(payload.strategy?.contactsSheet ? [["Estratégia da aba Contatos WhatsApp", payload.strategy.contactsSheet]] : []),
     ...payload.summary.map((item) => [item.label, item.value])
   ];
 
@@ -934,7 +1101,8 @@ export function buildAiFormattedWorkbookRows(payload: SearchAiFormattedPayload) 
       "Site",
       "Canal recomendado",
       "Completude",
-      "Nota comercial"
+      "Nota comercial",
+      "WhatsApp Web"
     ]
   ];
 
@@ -959,7 +1127,8 @@ export function buildAiFormattedWorkbookRows(payload: SearchAiFormattedPayload) 
       record.website,
       record.contactChannel,
       record.dataCompleteness,
-      record.commercialNote
+      record.commercialNote,
+      record.whatsappWeb
     ]);
   }
 
@@ -967,6 +1136,26 @@ export function buildAiFormattedWorkbookRows(payload: SearchAiFormattedPayload) 
     summaryRows,
     listRows
   };
+}
+
+function resolveContactSheetRows(payload: SearchAiFormattedPayload) {
+  const sourceRows = Array.isArray(payload.contactSheet) && payload.contactSheet.length > 0
+    ? payload.contactSheet
+    : buildContactSheetFromRecords(payload.records);
+
+  return sourceRows
+    .map((item) => {
+      const normalized = normalizeWhatsappContact(item.phone, item.whatsappWeb);
+      const phone = normalized.phone;
+      if (!phone) return null;
+
+      return {
+        name: blankWhenMissing(item.name) || "-",
+        phone,
+        whatsappWeb: normalized.whatsappWeb
+      };
+    })
+    .filter((item): item is { name: string; phone: string; whatsappWeb: string } => Boolean(item));
 }
 
 export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload, rows: SearchAiExportSourceRow[]): AiFormattedWorkbookSheet[] {
@@ -997,7 +1186,8 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
       "Site",
       "Canal recomendado",
       "Completude",
-      "Observação comercial"
+      "Observação comercial",
+      "WhatsApp Web"
     ]
   ];
 
@@ -1040,7 +1230,8 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
       blankWhenMissing(record.aiRecord.website),
       blankWhenMissing(record.aiRecord.contactChannel),
       blankWhenMissing(record.aiRecord.dataCompleteness),
-      blankWhenMissing(record.aiRecord.commercialNote)
+      blankWhenMissing(record.aiRecord.commercialNote),
+      blankWhenMissing(record.aiRecord.whatsappWeb)
     ]);
 
     const display = buildDisplayEstablishment(record.establishment);
@@ -1083,12 +1274,27 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
     jsonRows.push(["", "", "", ""]);
   }
 
+  const contactsRows: Array<Array<string | WorkbookCell>> = [
+    ["Nome", "Telefone", "Link WhatsApp Web"]
+  ];
+
+  for (const contact of resolveContactSheetRows(payload)) {
+    contactsRows.push([
+      contact.name,
+      contact.phone,
+      {
+        value: contact.whatsappWeb,
+        hyperlink: contact.whatsappWeb
+      }
+    ]);
+  }
+
   return [
     {
       name: "Empresas organizadas",
       rows: organizedRows,
-      columnWidths: [10, 34, 28, 22, 20, 14, 36, 36, 26, 14, 22, 16, 12, 22, 8, 18, 12, 38, 18, 30, 28, 18, 14, 36],
-      wrapColumns: [1, 2, 6, 7, 8, 10, 17, 19, 20, 23]
+      columnWidths: [10, 34, 28, 22, 20, 14, 36, 36, 26, 14, 22, 16, 12, 22, 8, 18, 12, 38, 18, 30, 28, 18, 14, 36, 34],
+      wrapColumns: [1, 2, 6, 7, 8, 10, 17, 19, 20, 23, 24]
     },
     {
       name: "Ficha completa",
@@ -1101,6 +1307,12 @@ export function buildAiFormattedWorkbookSheets(payload: SearchAiFormattedPayload
       rows: jsonRows,
       columnWidths: [10, 34, 22, 92],
       wrapColumns: [3]
+    },
+    {
+      name: "Contatos WhatsApp",
+      rows: contactsRows,
+      columnWidths: [34, 18, 42],
+      wrapColumns: [0, 2]
     }
   ];
 }
@@ -1174,9 +1386,12 @@ export function buildAiFormattedPdfInput(payload: SearchAiFormattedPayload, rows
   if (payload.strategy?.pdfSafety) {
     summary.unshift({ label: "Segurança visual do PDF", value: payload.strategy.pdfSafety });
   }
+  if (payload.strategy?.contactsSheet) {
+    summary.unshift({ label: "Estratégia da aba Contatos WhatsApp", value: payload.strategy.contactsSheet });
+  }
 
   return {
-    title: `${payload.headline} · Lista formatada por IA`,
+    title: `${payload.headline} · Lista pronta para prospecção com IA`,
     subtitle: payload.subtitle,
     generatedAt: formatDateTime(payload.generatedAt),
     summary,

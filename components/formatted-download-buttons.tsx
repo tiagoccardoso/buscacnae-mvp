@@ -47,7 +47,7 @@ export function FormattedDownloadButtons({ searchId }: FormattedDownloadButtonsP
   }, []);
 
   async function handleDownload(kind: DownloadKind) {
-    const label = kind === "xlsx" ? "XLSX formatado" : "PDF formatado";
+    const label = kind === "xlsx" ? "XLSX pronto para prospecção" : "PDF legível por registro";
     setActiveKind(kind);
     setStatus({
       type: "processing",
@@ -68,7 +68,7 @@ export function FormattedDownloadButtons({ searchId }: FormattedDownloadButtonsP
       const blob = await response.blob();
       const filename = readFilenameFromDisposition(
         response.headers.get("content-disposition"),
-        `lista-formatada-ia.${kind}`
+        `lista-pronta-prospeccao-ia.${kind}`
       );
 
       const objectUrl = window.URL.createObjectURL(blob);
@@ -117,7 +117,7 @@ export function FormattedDownloadButtons({ searchId }: FormattedDownloadButtonsP
           onClick={() => handleDownload("xlsx")}
           aria-busy={activeKind === "xlsx"}
         >
-          {activeKind === "xlsx" ? "Processando XLSX..." : "Baixar XLSX formatado"}
+          {activeKind === "xlsx" ? "Processando XLSX..." : "Baixar XLSX com Contatos WhatsApp"}
         </button>
         <button
           type="button"
@@ -126,7 +126,7 @@ export function FormattedDownloadButtons({ searchId }: FormattedDownloadButtonsP
           onClick={() => handleDownload("pdf")}
           aria-busy={activeKind === "pdf"}
         >
-          {activeKind === "pdf" ? "Processando PDF..." : "Baixar PDF formatado"}
+          {activeKind === "pdf" ? "Processando PDF..." : "Baixar PDF legível por registro"}
         </button>
       </div>
 
