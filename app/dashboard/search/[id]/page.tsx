@@ -14,12 +14,12 @@ import {
   type SearchAiFormatOrderRecord
 } from "@/lib/billing";
 import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
-import { getAiFormattingPriceCents } from "@/lib/env";
 import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
 import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
 import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
+import { getAiFormatPricingTable, getAiFormattingPriceSummary } from "@/lib/ai-format-pricing";
 
 type SearchResultPageProps = {
   params: Promise<{ id: string }>;
@@ -81,6 +81,9 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
   const summary = getSearchSummary(search.data);
   const pricingSummary = readLeadPricingSummary((search.data.query_payload as Record<string, unknown> | null)?.leadPricingSummary);
+  const totalLeadsForAiFormat = Math.max(0, Number(search.data.total_results ?? 0));
+  const aiFormatPriceSummary = getAiFormattingPriceSummary(totalLeadsForAiFormat);
+  const aiFormatPricingTable = getAiFormatPricingTable();
 
   let order: SearchAccessOrderRecord | null = null;
   let orderErrorMessage = "";
@@ -238,9 +241,9 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                   <div className="grid-2">
                     <div className="stack" style={{ gap: 6 }}>
                       <span className="kicker">Upgrade da lista</span>
-                      <strong style={{ fontSize: "1.8rem" }}>{formatMoney(getAiFormattingPriceCents() / 100)}</strong>
+                      <strong style={{ fontSize: "1.8rem" }}>{aiFormatPriceSummary.formattedAmount}</strong>
                       <span className="muted">
-                        Transforme sua lista em uma base pronta para prospecção com XLSX organizado, aba Contatos WhatsApp e PDF legível.
+                        O valor do upgrade com IA varia conforme a quantidade de leads da sua lista.
                       </span>
                     </div>
                     <div className="stack" style={{ gap: 6 }}>
@@ -252,10 +255,38 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                     </div>
                   </div>
 
+                  <div className="surface card stack" style={{ gap: 10 }}>
+                    <span className="kicker">Tabela de cobrança do upgrade com IA</span>
+                    <div className="stack" style={{ gap: 6 }}>
+                      {aiFormatPricingTable.map((tier) => (
+                        <div key={tier.id} className="inline-actions" style={{ justifyContent: "space-between", gap: 8 }}>
+                          <span className="muted">{tier.label}</span>
+                          <strong style={{ fontSize: "0.95rem" }}>
+                            {tier.id === "above_1000"
+                              ? `${formatMoney(tier.baseAmountCents / 100)} + ${formatMoney(tier.extraLeadUnitAmountCents / 100)} por lead adicional`
+                              : formatMoney(tier.baseAmountCents / 100)}
+                          </strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="notice">
                     {aiFormatUnlocked
                       ? "Upgrade com IA ativo. Baixe agora o XLSX organizado com a aba Contatos WhatsApp e o PDF legível por registro."
-                      : "Economize tempo na preparação da prospecção. A IA organiza os dados da lista, melhora a visualização das informações e cria uma aba de contatos com link direto para WhatsApp Web."}
+                      : "Você recebe XLSX organizado, aba Contatos WhatsApp e PDF legível por registro."}
+                    {!aiFormatUnlocked ? (
+                      <>
+                        <br />
+                        {`Sua lista tem ${aiFormatPriceSummary.totalLeads} leads. Valor do upgrade com IA: ${aiFormatPriceSummary.formattedAmount}.`}
+                        {aiFormatPriceSummary.hasAdditionalLeadCharge ? (
+                          <>
+                            <br />
+                            {`${formatMoney(aiFormatPriceSummary.baseAmountCents / 100)} base + ${aiFormatPriceSummary.extraLeadCount} leads adicionais x ${formatMoney(aiFormatPriceSummary.extraLeadUnitAmountCents / 100)}.`}
+                          </>
+                        ) : null}
+                      </>
+                    ) : null}
                   </div>
 
                   <div className="inline-actions">
@@ -265,7 +296,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                       <form action="/api/stripe/ai-format-checkout" method="POST" data-analytics-event="ai_format_checkout_started">
                         <input type="hidden" name="searchId" value={id} />
                         <button type="submit" className="button">
-                          Quero minha lista pronta para prospecção por {formatMoney(getAiFormattingPriceCents() / 100)}
+                          Quero minha lista pronta para prospecção por {aiFormatPriceSummary.formattedAmount}
                         </button>
                       </form>
                     )}

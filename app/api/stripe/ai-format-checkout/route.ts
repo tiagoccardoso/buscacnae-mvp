@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getBaseUrl } from "@/lib/env";
 import { createOneTimeCheckoutSession } from "@/lib/stripe";
+import { getAiFormattingPriceSummary } from "@/lib/ai-format-pricing";
 import {
   ensureSearchAccessOrderForSearch,
   ensureSearchAiFormatOrderForSearch,
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
     successUrl: successUrl.toString(),
     cancelUrl: cancelUrl.toString(),
     productName: "Lista pronta para prospecção com IA",
-    productDescription: "XLSX organizado, aba Contatos WhatsApp e PDF legível",
+    productDescription: `Upgrade com IA para ${getAiFormattingPriceSummary(Number(search.total_results ?? 0)).totalLeads} leads: XLSX organizado, aba Contatos WhatsApp e PDF legível`,
     metadata: {
       order_type: "search_ai_format",
       search_query_id: searchId
