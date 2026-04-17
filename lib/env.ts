@@ -110,6 +110,8 @@ export function getMinimumCheckoutAmountCents() {
 }
 
 export function getAiFormattingPriceCents() {
+  // Deprecated: mantenha apenas para compatibilidade retroativa.
+  // A regra principal do upgrade com IA agora está em lib/ai-format-pricing.ts.
   return Number(getEnv("AI_FORMATTING_PRICE_CENTS") || "1000");
 }
 

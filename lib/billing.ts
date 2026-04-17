@@ -2,8 +2,9 @@ import crypto from "node:crypto";
 import Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe";
-import { getAiFormattingPriceCents, getMinimumCheckoutAmountCents } from "@/lib/env";
+import { getMinimumCheckoutAmountCents } from "@/lib/env";
 import { readLeadPricingSummary, type LeadPricingSummary } from "@/lib/lead-pricing";
+import { getAiFormattingPriceCentsByLeadCount } from "@/lib/ai-format-pricing";
 
 export type SearchAccessOrderRecord = {
   id: string;
@@ -1010,13 +1011,14 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
   const normalizedEmail = typeof args.email === "string" ? args.email.trim().toLowerCase() : "";
   let resolvedProfileId = args.profileId ?? null;
   let resolvedEmail = normalizedEmail;
+  let totalLeads = 0;
 
   const existing = await getSearchAiFormatOrderBySearchQueryId(args.searchQueryId);
 
   if (!resolvedProfileId || !resolvedEmail) {
     const { data: search, error: searchError } = await admin
       .from("search_queries")
-      .select("profile_id")
+      .select("profile_id, total_results")
       .eq("id", args.searchQueryId)
       .maybeSingle();
 
@@ -1025,6 +1027,26 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
     }
 
     resolvedProfileId = resolvedProfileId ?? search.profile_id ?? null;
+    totalLeads = Math.max(0, Number(search.total_results ?? 0));
+  }
+
+  if (totalLeads <= 0) {
+    const { data: search } = await admin
+      .from("search_queries")
+      .select("total_results")
+      .eq("id", args.searchQueryId)
+      .maybeSingle();
+
+    totalLeads = Math.max(0, Number(search?.total_results ?? 0));
+  }
+
+  if (totalLeads <= 0) {
+    const { count } = await admin
+      .from("search_results")
+      .select("id", { count: "exact", head: true })
+      .eq("search_query_id", args.searchQueryId);
+
+    totalLeads = Math.max(0, Number(count ?? 0));
   }
 
   if (!resolvedEmail && resolvedProfileId) {
@@ -1041,6 +1063,8 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
     throw new Error("Não foi possível determinar o e-mail da cobrança de formatação por IA.");
   }
 
+  const dynamicAmountCents = getAiFormattingPriceCentsByLeadCount(totalLeads);
+
   if (existing) {
     const updates: Partial<SearchAiFormatOrderRecord> = {};
 
@@ -1052,8 +1076,8 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
       updates.email = resolvedEmail;
     }
 
-    if (existing.amount_cents !== getAiFormattingPriceCents()) {
-      updates.amount_cents = getAiFormattingPriceCents();
+    if (existing.amount_cents !== dynamicAmountCents) {
+      updates.amount_cents = dynamicAmountCents;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -1082,7 +1106,7 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
       profile_id: resolvedProfileId,
       email: resolvedEmail,
       search_query_id: args.searchQueryId,
-      amount_cents: getAiFormattingPriceCents(),
+      amount_cents: dynamicAmountCents,
       currency: "brl",
       status: "pending"
     })
