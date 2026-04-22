@@ -203,10 +203,13 @@ export function mergeEstablishmentSources(
   if (!overlay) return { ...base };
 
   const mergedProviderPayload = mergeProviderPayloads(base.provider_payload, overlay.provider_payload);
+  const sanitizedOverlay = Object.fromEntries(
+    Object.entries(overlay).filter(([, value]) => value !== undefined && value !== null && !(typeof value === "string" && !value.trim()))
+  );
 
   return {
     ...base,
-    ...overlay,
+    ...sanitizedOverlay,
     provider_payload: mergedProviderPayload,
   };
 }

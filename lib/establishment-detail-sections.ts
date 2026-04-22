@@ -142,9 +142,26 @@ export function formatEstablishmentPathLabel(path: string) {
 }
 
 export function buildAddressSummary(establishment: Record<string, unknown>) {
-  const parts = [establishment.address_line, establishment.address_number, establishment.complement]
-    .map((value) => (typeof value === "string" ? value.trim() : value === null || value === undefined ? "" : String(value).trim()))
-    .filter(Boolean);
+  const addressLine = typeof establishment.address_line === "string" ? establishment.address_line.trim() : "";
+  const addressNumber = typeof establishment.address_number === "string"
+    ? establishment.address_number.trim()
+    : establishment.address_number === null || establishment.address_number === undefined
+      ? ""
+      : String(establishment.address_number).trim();
+  const complement = typeof establishment.complement === "string"
+    ? establishment.complement.trim()
+    : establishment.complement === null || establishment.complement === undefined
+      ? ""
+      : String(establishment.complement).trim();
+
+  const normalizedLine = addressLine.replace(/\s+/g, " ").trim();
+  const hasNumberInLine = addressNumber ? normalizedLine.includes(addressNumber) : false;
+
+  const parts = [
+    normalizedLine,
+    addressNumber && !hasNumberInLine ? addressNumber : "",
+    complement
+  ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(", ") : null;
 }

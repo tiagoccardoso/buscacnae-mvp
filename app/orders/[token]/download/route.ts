@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSearchAccessOrderByAccessToken, syncSearchAccessOrderPaymentStatus } from "@/lib/billing";
+import { mergeEstablishmentSources } from "@/lib/establishment-canonical";
 import { buildDisplayEstablishment, getEstablishmentPayload } from "@/lib/establishment-presenter";
 import { createXlsxWorkbook } from "@/lib/export/xlsx";
 import { buildEstablishmentDetailSections } from "@/lib/establishment-detail-sections";
 import { formatCnpj, formatDate, formatMoney } from "@/lib/format";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { extractSingleObject, flattenUnknownToRows, safeJsonStringify } from "@/lib/utils";
+import { extractSingleObject } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,24 +32,27 @@ function toCell(value: unknown) {
   return String(value).trim();
 }
 
-function stringifyMultiline(value: unknown) {
-  return safeJsonStringify(value, 2);
-}
-
 function formatSecondaryCnaes(value: unknown) {
+  const formatEntry = (item: unknown) => {
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      const record = item as Record<string, unknown>;
+      const code = toCell(record.codigo ?? record.code ?? record.id ?? record.subclasse);
+      const description = toCell(record.descricao ?? record.description ?? record.text);
+      if (code && description) return `${code} - ${description}`;
+      if (description) return description;
+      if (code) return code;
+      return "";
+    }
+
+    return toCell(item);
+  };
+
   if (!Array.isArray(value)) {
-    return toCell(value);
+    return formatEntry(value);
   }
 
   return value
-    .map((item) => {
-      if (item && typeof item === "object" && !Array.isArray(item)) {
-        const record = item as Record<string, unknown>;
-        return toCell(record.descricao ?? record.codigo ?? record.id ?? safeJsonStringify(item, 0));
-      }
-
-      return toCell(item);
-    })
+    .map((item) => formatEntry(item))
     .filter(Boolean)
     .join(" • ");
 }
@@ -62,14 +66,6 @@ function formatMaybeDate(value: unknown) {
 function formatMaybeMoney(value: unknown) {
   if (value === null || value === undefined || value === "") return "";
   return formatMoney(value as number | string);
-}
-
-function toRawSection(path: string) {
-  const root = path.split(/[\[.]/, 1)[0] || "raiz";
-  return root
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .replace(/^./, (char) => char.toUpperCase());
 }
 
 function buildFichaRows(position: unknown, establishment: Record<string, unknown>) {
@@ -105,8 +101,6 @@ function buildFichaRows(position: unknown, establishment: Record<string, unknown
   }
 
 
-  push("Dados brutos formatados (JSON)", "JSON", rawJsonPayload ? stringifyMultiline(rawJsonPayload) : "");
-
   rows.push(["", "", "", "", "", ""]);
   return rows;
 }
@@ -134,7 +128,7 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
       .maybeSingle(),
     admin
       .from("search_results")
-      .select("position, establishment_id, establishments(*)")
+      .select("position, establishment_id, provider_payload, establishments(*)")
       .eq("search_query_id", order.search_query_id)
       .order("position", { ascending: true })
   ]);
@@ -168,8 +162,7 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
       "CEP",
       "Endereço",
       "Número",
-      "Complemento",
-      "Dados brutos formatados (JSON)"
+      "Complemento"
     ]
   ];
 
@@ -177,17 +170,13 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
     ["Posição", "CNPJ", "Razão Social", "Grupo", "Campo", "Valor"]
   ];
 
-  const rawSheetRows: string[][] = [
-    ["Posição", "CNPJ", "Razão Social", "Seção", "Campo bruto", "Valor bruto"]
-  ];
-
   for (const row of rows ?? []) {
     const establishment = extractSingleObject(row.establishments);
     if (!establishment) continue;
 
-    const display = buildDisplayEstablishment(establishment);
-    const payload = getEstablishmentPayload(display);
-    const formattedPayload = stringifyMultiline(payload ?? display.provider_payload);
+    const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
+
+    const display = buildDisplayEstablishment(mergedEstablishment);
 
     crmSheetRows.push([
       toCell(row.position),
@@ -217,25 +206,10 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
       toCell(display.cep),
       toCell(display.address_line),
       toCell(display.address_number),
-      toCell(display.complement),
-      formattedPayload
+      toCell(display.complement)
     ]);
 
-    fichaSheetRows.push(...buildFichaRows(row.position, establishment));
-
-    const flattenedRawRows = flattenUnknownToRows(payload ?? display.provider_payload);
-    for (const flatRow of flattenedRawRows) {
-      rawSheetRows.push([
-        toCell(row.position),
-        formatCnpj(toCell(display.cnpj)),
-        toCell(display.company_name),
-        toRawSection(flatRow.path),
-        flatRow.path,
-        flatRow.value
-      ]);
-    }
-
-    rawSheetRows.push(["", "", "", "", "", ""]);
+    fichaSheetRows.push(...buildFichaRows(row.position, mergedEstablishment));
   }
 
   const workbook = createXlsxWorkbook({
@@ -243,20 +217,18 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
       {
         name: "Leads CRM",
         rows: crmSheetRows,
-        columnWidths: [10, 22, 16, 34, 28, 18, 14, 14, 32, 36, 16, 28, 18, 10, 10, 16, 18, 30, 24, 16, 8, 22, 14, 18, 14, 30, 12, 18, 86],
-        wrapColumns: [8, 9, 11, 16, 17, 24, 25, 27, 28]
+        columnWidths: [10, 22, 16, 34, 28, 18, 14, 16, 34, 46, 16, 28, 18, 10, 10, 16, 18, 30, 24, 12, 8, 22, 14, 18, 14, 44, 12, 18],
+        wrapColumns: [8, 9, 11, 16, 17, 24, 25, 27],
+        freezeHeader: true,
+        autoFilter: true
       },
       {
         name: "Ficha completa",
         rows: fichaSheetRows,
         columnWidths: [10, 22, 34, 18, 24, 96],
-        wrapColumns: [5]
-      },
-      {
-        name: "Dados brutos",
-        rows: rawSheetRows,
-        columnWidths: [10, 22, 34, 18, 44, 96],
-        wrapColumns: [4, 5]
+        wrapColumns: [5],
+        freezeHeader: true,
+        autoFilter: true
       }
     ]
   });
