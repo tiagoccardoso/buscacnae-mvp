@@ -47,6 +47,13 @@ export type SearchAiFormatOrderRecord = {
   format_error: string | null;
   format_started_at: string | null;
   format_finished_at: string | null;
+  format_progress: number | null;
+  format_cursor: number | null;
+  format_attempts: number | null;
+  format_last_heartbeat_at: string | null;
+  format_job_payload: unknown;
+  format_lock_token: string | null;
+  format_lock_acquired_at: string | null;
   formatted_at: string | null;
   paid_at: string | null;
   unlocked_at: string | null;
@@ -1183,6 +1190,8 @@ export function readSearchAiFormatProcessingStatus(order: SearchAiFormatOrderRec
 export async function markSearchAiFormatOrderProcessingStarted(args: { orderId: string }) {
   const admin = createSupabaseAdminClient();
   const now = new Date().toISOString();
+  const currentOrder = await getSearchAiFormatOrderById(args.orderId);
+  const nextAttempts = Math.max(0, Number(currentOrder?.format_attempts ?? 0)) + 1;
 
   const { data: startedOrder, error } = await admin
     .from("search_ai_format_orders")
@@ -1190,7 +1199,13 @@ export async function markSearchAiFormatOrderProcessingStarted(args: { orderId: 
       format_status: "processing",
       format_started_at: now,
       format_finished_at: null,
-      format_error: null
+      format_error: null,
+      format_progress: 0,
+      format_cursor: 0,
+      format_last_heartbeat_at: now,
+      format_lock_token: null,
+      format_lock_acquired_at: null,
+      format_attempts: nextAttempts
     })
     .eq("id", args.orderId)
     .is("formatted_payload", null)
@@ -1209,10 +1224,10 @@ export async function markSearchAiFormatOrderProcessingStarted(args: { orderId: 
     };
   }
 
-  const currentOrder = await getSearchAiFormatOrderById(args.orderId);
+  const refreshedOrder = await getSearchAiFormatOrderById(args.orderId);
   return {
     started: false as const,
-    order: currentOrder
+    order: refreshedOrder
   };
 }
 
@@ -1226,7 +1241,13 @@ export async function markSearchAiFormatOrderReady(args: { orderId: string; payl
       format_status: "ready",
       format_error: null,
       format_finished_at: now,
-      formatted_at: now
+      formatted_at: now,
+      format_progress: 100,
+      format_cursor: 0,
+      format_job_payload: null,
+      format_last_heartbeat_at: now,
+      format_lock_token: null,
+      format_lock_acquired_at: null
     })
     .eq("id", args.orderId);
 }
@@ -1239,7 +1260,10 @@ export async function markSearchAiFormatOrderError(args: { orderId: string; erro
     .update({
       format_status: "error",
       format_error: args.error,
-      format_finished_at: now
+      format_finished_at: now,
+      format_last_heartbeat_at: now,
+      format_lock_token: null,
+      format_lock_acquired_at: null
     })
     .eq("id", args.orderId);
 }
@@ -1250,7 +1274,14 @@ export async function resetSearchAiFormatOrderProcessing(args: { orderId: string
     format_status: "idle",
     format_started_at: null,
     format_finished_at: null,
-    format_error: null
+    format_error: null,
+    format_progress: 0,
+    format_cursor: 0,
+    format_job_payload: null,
+    format_last_heartbeat_at: null,
+    format_lock_token: null,
+    format_lock_acquired_at: null,
+    format_attempts: 0
   };
 
   if (args.clearPayload) {
@@ -1262,6 +1293,97 @@ export async function resetSearchAiFormatOrderProcessing(args: { orderId: string
     .from("search_ai_format_orders")
     .update(updates)
     .eq("id", args.orderId);
+}
+
+export async function heartbeatSearchAiFormatOrder(args: { orderId: string; lockToken: string }) {
+  const admin = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+  await admin
+    .from("search_ai_format_orders")
+    .update({
+      format_last_heartbeat_at: now
+    })
+    .eq("id", args.orderId)
+    .eq("format_lock_token", args.lockToken);
+}
+
+export async function claimSearchAiFormatOrderProcessingLock(args: { orderId: string; staleAfterMinutes?: number }) {
+  const admin = createSupabaseAdminClient();
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const staleAfterMinutes = Math.max(1, Math.trunc(args.staleAfterMinutes ?? 10));
+  const staleBefore = new Date(now.getTime() - staleAfterMinutes * 60_000).toISOString();
+  const lockToken = crypto.randomUUID();
+
+  const { data, error } = await admin
+    .from("search_ai_format_orders")
+    .update({
+      format_lock_token: lockToken,
+      format_lock_acquired_at: nowIso,
+      format_last_heartbeat_at: nowIso
+    })
+    .eq("id", args.orderId)
+    .eq("format_status", "processing")
+    .or(`format_lock_token.is.null,format_last_heartbeat_at.lt.${staleBefore}`)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    const currentOrder = await getSearchAiFormatOrderById(args.orderId);
+    return {
+      claimed: false as const,
+      lockToken: null,
+      order: currentOrder
+    };
+  }
+
+  return {
+    claimed: true as const,
+    lockToken,
+    order: data as SearchAiFormatOrderRecord
+  };
+}
+
+export async function releaseSearchAiFormatOrderProcessingLock(args: { orderId: string; lockToken: string }) {
+  const admin = createSupabaseAdminClient();
+  await admin
+    .from("search_ai_format_orders")
+    .update({
+      format_lock_token: null,
+      format_lock_acquired_at: null
+    })
+    .eq("id", args.orderId)
+    .eq("format_lock_token", args.lockToken);
+}
+
+export async function saveSearchAiFormatJobProgress(args: {
+  orderId: string;
+  lockToken: string;
+  cursor: number;
+  progress: number;
+  jobPayload: unknown;
+}) {
+  const admin = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+  const { error } = await admin
+    .from("search_ai_format_orders")
+    .update({
+      format_cursor: Math.max(0, Math.trunc(args.cursor)),
+      format_progress: Math.max(0, Math.min(99, Math.trunc(args.progress))),
+      format_job_payload: args.jobPayload,
+      format_last_heartbeat_at: now
+    })
+    .eq("id", args.orderId)
+    .eq("format_lock_token", args.lockToken)
+    .eq("format_status", "processing");
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function markSearchAiFormatOrderCheckoutCreated(args: {

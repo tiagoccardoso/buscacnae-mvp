@@ -74,10 +74,14 @@ export async function GET(_request: Request, { params }: RouteProps) {
 
   const processingStatus = readSearchAiFormatProcessingStatus(syncedAiOrder);
   if (processingStatus !== "ready" || !syncedAiOrder.formatted_payload) {
+    const message =
+      processingStatus === "error"
+        ? syncedAiOrder.format_error || "A preparação com IA falhou. Tente novamente."
+        : "A formatação com IA ainda está em processamento. Tente novamente em instantes.";
     return NextResponse.json(
       {
         status: processingStatus,
-        message: "A formatação com IA ainda está em processamento. Tente novamente em instantes."
+        message
       },
       { status: 409 }
     );
