@@ -1,4 +1,4 @@
-import { getCasaDosDadosKey, getDiscoveryMaxResults } from "@/lib/env";
+import { getCasaDosDadosKey, getDiscoveryMaxResults, getDiscoveryPageSize } from "@/lib/env";
 import { DiscoverySearchInput, DiscoverySearchOutput, NormalizedEstablishment } from "@/lib/types";
 import {
   coalesceArray,
@@ -228,12 +228,14 @@ export async function searchWithCasaDosDados(
   const normalizedStateCode = input.stateCode.trim().toLowerCase();
   const normalizedCityName = input.cityName.trim().toLowerCase();
 
+  const pageSize = Math.max(1, Math.trunc(getDiscoveryPageSize() || 50));
+  const maxResults = Math.max(0, Math.trunc(getDiscoveryMaxResults() || 0));
   const body: Record<string, unknown> = {
     codigo_atividade_principal: [normalizeCode(input.cnae)],
     incluir_atividade_secundaria: false,
     situacao_cadastral: ["ATIVA"],
     pagina: 1,
-    limite: getDiscoveryMaxResults()
+    limite: pageSize
   };
 
   if (normalizedStateCode) {
@@ -272,35 +274,93 @@ export async function searchWithCasaDosDados(
     body.data_abertura = openedAtRange;
   }
 
-  const response = await fetch("https://api.casadosdados.com.br/v5/cnpj/pesquisa", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": getCasaDosDadosKey(),
-      Accept: "application/json"
-    },
-    body: JSON.stringify(body),
-    cache: "no-store"
-  });
+  const rawPages: Record<string, unknown>[] = [];
+  const accumulatedRows: unknown[] = [];
+  let providerTotalResults: number | null = null;
+  let page = 1;
+  let pagesFetched = 0;
+  let hitFetchLimit = false;
 
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`Casa dos Dados respondeu ${response.status}: ${message}`);
+  while (true) {
+    const response = await fetch("https://api.casadosdados.com.br/v5/cnpj/pesquisa", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": getCasaDosDadosKey(),
+        Accept: "application/json"
+      },
+      body: JSON.stringify({
+        ...body,
+        pagina: page,
+        limite: pageSize
+      }),
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(`Casa dos Dados respondeu ${response.status}: ${message}`);
+    }
+
+    const rawPage = (await response.json()) as Record<string, unknown>;
+    rawPages.push(rawPage);
+    pagesFetched += 1;
+
+    if (providerTotalResults === null) {
+      const candidateTotals = [rawPage.total, rawPage.total_registros, rawPage.total_resultados];
+      for (const candidate of candidateTotals) {
+        if (typeof candidate === "number" && Number.isFinite(candidate)) {
+          providerTotalResults = Math.max(0, Math.trunc(candidate));
+          break;
+        }
+      }
+    }
+
+    const pageRows = coalesceArray(rawPage.registros, rawPage.cnpjs, rawPage.resultados, rawPage.data, rawPage) ?? [];
+    if (pageRows.length === 0) {
+      break;
+    }
+
+    accumulatedRows.push(...pageRows);
+
+    if (maxResults > 0 && accumulatedRows.length >= maxResults) {
+      hitFetchLimit = true;
+      break;
+    }
+
+    if (providerTotalResults !== null && accumulatedRows.length >= providerTotalResults) {
+      break;
+    }
+
+    page += 1;
   }
 
-  const raw = (await response.json()) as Record<string, unknown>;
-  const rows = coalesceArray(raw.registros, raw.cnpjs, raw.resultados, raw.data, raw) ?? [];
+  const fetchedRows = (maxResults > 0 ? accumulatedRows.slice(0, maxResults) : accumulatedRows) as Record<string, unknown>[];
+  const dedupedRows = Array.from(
+    new Map(
+      fetchedRows
+        .map((item) => {
+          const cnpj = normalizeCnpj(coalesceString(item.cnpj, item.cnpj_completo, item.cnpj_formatado) ?? "");
+          return cnpj ? [cnpj, item] as const : null;
+        })
+        .filter((item): item is readonly [string, Record<string, unknown>] => Boolean(item))
+    ).values()
+  );
 
-  const normalized = rows
+  const normalized = dedupedRows
     .map((item) => normalizeCasaDosDadosEstablishment(item as Record<string, unknown>))
     .filter(Boolean) as NormalizedEstablishment[];
 
   return {
     provider: "casadosdados",
-    raw,
+    raw: rawPages.length === 1 ? rawPages[0] : { paginas: rawPages },
     normalized: normalized.map((item) => ({
       ...item,
       cityName: item.cityName ? toTitleCase(item.cityName) : item.cityName
-    }))
+    })),
+    providerTotalResults,
+    fetchedResults: normalized.length,
+    pagesFetched,
+    hitFetchLimit
   };
 }
