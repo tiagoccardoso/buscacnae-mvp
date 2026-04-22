@@ -95,8 +95,8 @@ export function SearchImmersiveStage() {
         aria-pressed={activePane === "cities"}
       >
         <span className="kicker">Cidades</span>
-        <strong>Filtro local ou visão estadual</strong>
-        <span className="muted">Refine por município ou pesquise o estado inteiro quando preferir amplitude.</span>
+        <strong>Filtro local por cidade</strong>
+        <span className="muted">Refine por município para manter o recorte geográfico da pesquisa.</span>
       </button>
     </div>
   );

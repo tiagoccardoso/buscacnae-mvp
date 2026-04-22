@@ -315,7 +315,7 @@ export function SearchFilterBuilder({
   defaultCnaes = [],
   defaultStateCodes = [],
   defaultCitySelections = [],
-  defaultStateWide = false,
+  defaultStateWide: _defaultStateWide = false,
   defaultActivityStartYear = ""
 }: SearchFilterBuilderProps) {
   const [selectedCnaes, setSelectedCnaes] = useState<PickerOption[]>(() => buildDefaultCnaeOptions(defaultCnaes));
@@ -330,7 +330,7 @@ export function SearchFilterBuilder({
   const [cnaesLoading, setCnaesLoading] = useState(false);
   const [statesLoading, setStatesLoading] = useState(false);
   const [citiesLoading, setCitiesLoading] = useState(false);
-  const [stateWide, setStateWide] = useState(defaultStateWide);
+  const stateWide = false;
   const [activityStartYear, setActivityStartYear] = useState(defaultActivityStartYear);
 
   const filteredCnaes = useMemo(() => {
@@ -647,7 +647,7 @@ export function SearchFilterBuilder({
         <PickerField
           id="cityPicker"
           label="Cidade"
-          helper="Inclua múltiplas cidades dentro dos estados escolhidos ou use a busca estadual."
+          helper="Inclua múltiplas cidades dentro dos estados escolhidos."
           placeholder={selectedStates.length > 0 ? "Digite o nome da cidade" : "Selecione primeiro ao menos um estado"}
           query={cityQuery}
           setQuery={setCityQuery}
@@ -666,17 +666,6 @@ export function SearchFilterBuilder({
       </div>
 
       <div className="search-builder-footer">
-        <label className="filter-switch filter-switch-premium">
-          <input
-            type="checkbox"
-            name="stateWide"
-            value="on"
-            checked={stateWide}
-            onChange={(event) => setStateWide(event.target.checked)}
-          />
-          <span>Pesquisar o estado inteiro quando não quiser filtrar por cidade</span>
-        </label>
-
         <div className="field" style={{ marginTop: 0 }}>
           <label htmlFor="activityStartYear">Ano mínimo de início da atividade</label>
           <div className="year-filter-card">
@@ -703,9 +692,7 @@ export function SearchFilterBuilder({
           </div>
 
           <span className="tiny">
-            {stateWide
-              ? "Com busca estadual ativa, as cidades são ignoradas e a consulta roda em todos os municípios dos estados escolhidos."
-              : "Use o assistente para encontrar CNAEs relacionados à atividade da empresa ou escolha manualmente pela lista. Se não informar o ano, a pesquisa considera empresas de todos os períodos."}
+            {"Use o assistente para encontrar CNAEs relacionados à atividade da empresa ou escolha manualmente pela lista. Se não informar o ano, a pesquisa considera empresas de todos os períodos."}
           </span>
         </div>
       </div>
