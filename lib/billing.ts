@@ -43,13 +43,18 @@ export type SearchAiFormatOrderRecord = {
   stripe_payment_intent_id: string | null;
   checkout_url: string | null;
   formatted_payload: unknown;
+  format_status: "idle" | "processing" | "ready" | "error" | null;
   format_error: string | null;
+  format_started_at: string | null;
+  format_finished_at: string | null;
   formatted_at: string | null;
   paid_at: string | null;
   unlocked_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+export type SearchAiFormatProcessingStatus = "idle" | "processing" | "ready" | "error";
 
 export type SearchAccessBulkOrderRecord = {
   id: string;
@@ -1162,6 +1167,103 @@ export async function syncSearchAiFormatOrderPaymentStatus(order: SearchAiFormat
   return order;
 }
 
+export function readSearchAiFormatProcessingStatus(order: SearchAiFormatOrderRecord): SearchAiFormatProcessingStatus {
+  if (order.formatted_payload) {
+    return "ready";
+  }
+
+  const rawStatus = typeof order.format_status === "string" ? order.format_status : "";
+  if (rawStatus === "processing" || rawStatus === "ready" || rawStatus === "error") {
+    return rawStatus;
+  }
+
+  return "idle";
+}
+
+export async function markSearchAiFormatOrderProcessingStarted(args: { orderId: string }) {
+  const admin = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+
+  const { data: startedOrder, error } = await admin
+    .from("search_ai_format_orders")
+    .update({
+      format_status: "processing",
+      format_started_at: now,
+      format_finished_at: null,
+      format_error: null
+    })
+    .eq("id", args.orderId)
+    .is("formatted_payload", null)
+    .in("format_status", ["idle", "error"])
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (startedOrder) {
+    return {
+      started: true as const,
+      order: startedOrder as SearchAiFormatOrderRecord
+    };
+  }
+
+  const currentOrder = await getSearchAiFormatOrderById(args.orderId);
+  return {
+    started: false as const,
+    order: currentOrder
+  };
+}
+
+export async function markSearchAiFormatOrderReady(args: { orderId: string; payload: unknown }) {
+  const admin = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+  await admin
+    .from("search_ai_format_orders")
+    .update({
+      formatted_payload: args.payload,
+      format_status: "ready",
+      format_error: null,
+      format_finished_at: now,
+      formatted_at: now
+    })
+    .eq("id", args.orderId);
+}
+
+export async function markSearchAiFormatOrderError(args: { orderId: string; error: string }) {
+  const admin = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+  await admin
+    .from("search_ai_format_orders")
+    .update({
+      format_status: "error",
+      format_error: args.error,
+      format_finished_at: now
+    })
+    .eq("id", args.orderId);
+}
+
+export async function resetSearchAiFormatOrderProcessing(args: { orderId: string; clearPayload?: boolean }) {
+  const admin = createSupabaseAdminClient();
+  const updates: Record<string, unknown> = {
+    format_status: "idle",
+    format_started_at: null,
+    format_finished_at: null,
+    format_error: null
+  };
+
+  if (args.clearPayload) {
+    updates.formatted_payload = null;
+    updates.formatted_at = null;
+  }
+
+  await admin
+    .from("search_ai_format_orders")
+    .update(updates)
+    .eq("id", args.orderId);
+}
+
 export async function markSearchAiFormatOrderCheckoutCreated(args: {
   orderId: string;
   customerId?: string | null;
@@ -1242,15 +1344,18 @@ export async function saveSearchAiFormatPayload(args: {
   payload: unknown;
   error?: string | null;
 }) {
-  const admin = createSupabaseAdminClient();
-  await admin
-    .from("search_ai_format_orders")
-    .update({
-      formatted_payload: args.payload,
-      format_error: args.error ?? null,
-      formatted_at: new Date().toISOString()
-    })
-    .eq("id", args.orderId);
+  if (args.error) {
+    await markSearchAiFormatOrderError({
+      orderId: args.orderId,
+      error: args.error
+    });
+    return;
+  }
+
+  await markSearchAiFormatOrderReady({
+    orderId: args.orderId,
+    payload: args.payload
+  });
 }
 
 async function unlockSearchAccessOrderFromCheckoutSession(session: Stripe.Checkout.Session) {

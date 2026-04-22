@@ -959,20 +959,20 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
 
     return normalizedPayload;
   }
-
-  const admin = createSupabaseAdminClient();
-  const [{ data: search }, { data: rows }] = await Promise.all([
-    admin
-      .from("search_queries")
-      .select("*")
-      .eq("id", order.search_query_id)
-      .maybeSingle(),
-    admin
-      .from("search_results")
-      .select("position, provider_payload, establishments(*)")
-      .eq("search_query_id", order.search_query_id)
-      .order("position", { ascending: true })
-  ]);
+  try {
+    const admin = createSupabaseAdminClient();
+    const [{ data: search }, { data: rows }] = await Promise.all([
+      admin
+        .from("search_queries")
+        .select("*")
+        .eq("id", order.search_query_id)
+        .maybeSingle(),
+      admin
+        .from("search_results")
+        .select("position, provider_payload, establishments(*)")
+        .eq("search_query_id", order.search_query_id)
+        .order("position", { ascending: true })
+    ]);
 
   const aiInputRecords = ((rows ?? []) as Array<{ position?: number | string | null; establishments?: unknown; provider_payload?: unknown }>)
     .map((row) => buildFormattingAiInputRecord(row))
@@ -1061,12 +1061,21 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
         : buildContactSheetFromRecords(formattedRecords)
   };
 
-  await saveSearchAiFormatPayload({
-    orderId: order.id,
-    payload
-  });
+    await saveSearchAiFormatPayload({
+      orderId: order.id,
+      payload
+    });
 
-  return payload;
+    return payload;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Não foi possível concluir a preparação da lista com IA.";
+    await saveSearchAiFormatPayload({
+      orderId: order.id,
+      payload: null,
+      error: errorMessage
+    });
+    throw error;
+  }
 }
 
 export function buildAiFormattedWorkbookRows(payload: SearchAiFormattedPayload) {

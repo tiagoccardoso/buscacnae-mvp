@@ -5,9 +5,11 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/empty-state";
 import { LeadToggleForm } from "@/components/lead-toggle-form";
 import { FormattedDownloadButtons } from "@/components/formatted-download-buttons";
+import { AiFormatProcessingPanel } from "@/components/ai-format-processing-panel";
 import {
   ensureSearchAccessOrderForSearch,
   getSearchAiFormatOrderBySearchQueryId,
+  readSearchAiFormatProcessingStatus,
   syncSearchAccessOrderPaymentStatus,
   syncSearchAiFormatOrderPaymentStatus,
   type SearchAccessOrderRecord,
@@ -140,6 +142,8 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   }
 
   const aiFormatUnlocked = aiFormatOrder?.status === "paid";
+  const aiFormatProcessingStatus = aiFormatOrder ? readSearchAiFormatProcessingStatus(aiFormatOrder) : "idle";
+  const autoStartAiProcessing = aiFormatState === "success" && aiFormatUnlocked && aiFormatProcessingStatus === "idle";
   const unlockedRows = orderUnlocked ? rows ?? [] : (rows ?? []).slice(0, 1);
   const hiddenResultsCount = Math.max(0, (rows?.length ?? 0) - unlockedRows.length);
 
@@ -238,9 +242,9 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                     <Link href={`/orders/${order.access_token}`} className="button">
                       Abrir lista liberada
                     </Link>
-                    <Link href={`/orders/${order.access_token}/download`} className="button-ghost">
+                    <a href={`/orders/${order.access_token}/download`} className="button-ghost">
                       Baixar XLSX
-                    </Link>
+                    </a>
                   </>
                 ) : order.result_count === 0 ? (
                   <Link href={`/orders/${order.access_token}`} className="button">
@@ -291,7 +295,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
                   <div className="notice">
                     {aiFormatUnlocked
-                      ? "Upgrade com IA ativo. Baixe agora o XLSX organizado com a aba Contatos WhatsApp e o PDF legível por registro."
+                      ? "Upgrade com IA ativo."
                       : "Você recebe XLSX organizado, aba Contatos WhatsApp e PDF legível por registro."}
                     {!aiFormatUnlocked ? (
                       <>
@@ -308,15 +312,22 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                   </div>
 
                   <div className="inline-actions">
-                    {aiFormatUnlocked ? (
-                      <FormattedDownloadButtons searchId={id} />
-                    ) : (
+                    {!aiFormatUnlocked ? (
                       <form action="/api/stripe/ai-format-checkout" method="POST" data-analytics-event="ai_format_checkout_started">
                         <input type="hidden" name="searchId" value={id} />
                         <button type="submit" className="button">
                           Quero minha lista pronta para prospecção por {aiFormatPriceSummary.formattedAmount}
                         </button>
                       </form>
+                    ) : aiFormatProcessingStatus === "ready" ? (
+                      <FormattedDownloadButtons searchId={id} />
+                    ) : (
+                      <AiFormatProcessingPanel
+                        searchId={id}
+                        initialStatus={aiFormatProcessingStatus}
+                        initialError={aiFormatOrder?.format_error}
+                        autoStart={autoStartAiProcessing}
+                      />
                     )}
                   </div>
                 </div>

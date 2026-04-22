@@ -3,10 +3,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   ensureSearchAccessOrderForSearch,
   getSearchAiFormatOrderBySearchQueryId,
+  readSearchAiFormatProcessingStatus,
   syncSearchAccessOrderPaymentStatus,
   syncSearchAiFormatOrderPaymentStatus
 } from "@/lib/billing";
-import { buildAiFormattedPdfInput, ensureSearchAiFormattingPayload } from "@/lib/ai-formatting";
+import { buildAiFormattedPdfInput, type SearchAiFormattedPayload } from "@/lib/ai-formatting";
 import { createFormattedListPdf } from "@/lib/export/pdf";
 
 export const runtime = "nodejs";
@@ -71,17 +72,28 @@ export async function GET(_request: Request, { params }: RouteProps) {
     return new NextResponse("O pagamento do upgrade com IA ainda não foi confirmado para liberar os downloads.", { status: 403 });
   }
 
-  const [payload, { data: rows }] = await Promise.all([
-    ensureSearchAiFormattingPayload(syncedAiOrder),
-    supabase
-      .from("search_results")
-      .select("position, provider_payload, establishments(*)")
-      .eq("search_query_id", id)
-      .order("position", { ascending: true })
-  ]);
+  const processingStatus = readSearchAiFormatProcessingStatus(syncedAiOrder);
+  if (processingStatus !== "ready" || !syncedAiOrder.formatted_payload) {
+    return NextResponse.json(
+      {
+        status: processingStatus,
+        message: "A formatação com IA ainda está em processamento. Tente novamente em instantes."
+      },
+      { status: 409 }
+    );
+  }
+
+  const { data: rows } = await supabase
+    .from("search_results")
+    .select("position, provider_payload, establishments(*)")
+    .eq("search_query_id", id)
+    .order("position", { ascending: true });
 
   const pdf = createFormattedListPdf(
-    buildAiFormattedPdfInput(payload, (rows ?? []) as Array<Record<string, unknown>>)
+    buildAiFormattedPdfInput(
+      syncedAiOrder.formatted_payload as SearchAiFormattedPayload,
+      (rows ?? []) as Array<Record<string, unknown>>
+    )
   );
 
   const fileParts = [

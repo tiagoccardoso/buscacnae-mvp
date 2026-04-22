@@ -51,7 +51,7 @@ export function FormattedDownloadButtons({ searchId }: FormattedDownloadButtonsP
     setActiveKind(kind);
     setStatus({
       type: "processing",
-      text: `Processando ${label}. O download será iniciado automaticamente após a conclusão.`
+      text: `Preparando download de ${label}...`
     });
 
     try {
@@ -61,7 +61,19 @@ export function FormattedDownloadButtons({ searchId }: FormattedDownloadButtonsP
       });
 
       if (!response.ok) {
-        const errorText = (await response.text()).trim();
+        const contentType = response.headers.get("content-type") || "";
+        let errorText = "";
+        if (contentType.includes("application/json")) {
+          const payload = (await response.json()) as { message?: string };
+          errorText = typeof payload?.message === "string" ? payload.message.trim() : "";
+        } else {
+          errorText = (await response.text()).trim();
+        }
+
+        if (response.status === 409) {
+          throw new Error(errorText || "A formatação com IA ainda está em processamento. Volte em alguns minutos.");
+        }
+
         throw new Error(errorText || `Não foi possível gerar o ${label.toLowerCase()}.`);
       }
 
