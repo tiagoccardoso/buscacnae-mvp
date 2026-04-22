@@ -143,6 +143,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
   const aiFormatUnlocked = aiFormatOrder?.status === "paid";
   const aiFormatProcessingStatus = aiFormatOrder ? readSearchAiFormatProcessingStatus(aiFormatOrder) : "idle";
+  const aiFormatInitialError = aiFormatProcessingStatus === "error" ? aiFormatOrder?.format_error ?? null : null;
   const autoStartAiProcessing = aiFormatState === "success" && aiFormatUnlocked && aiFormatProcessingStatus === "idle";
   const unlockedRows = orderUnlocked ? rows ?? [] : (rows ?? []).slice(0, 1);
   const hiddenResultsCount = Math.max(0, (rows?.length ?? 0) - unlockedRows.length);
@@ -325,7 +326,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                       <AiFormatProcessingPanel
                         searchId={id}
                         initialStatus={aiFormatProcessingStatus}
-                        initialError={aiFormatOrder?.format_error}
+                        initialError={aiFormatInitialError}
                         autoStart={autoStartAiProcessing}
                       />
                     )}

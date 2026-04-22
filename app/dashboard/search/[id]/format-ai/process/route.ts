@@ -3,9 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   ensureSearchAccessOrderForSearch,
   getSearchAiFormatOrderBySearchQueryId,
-  markSearchAiFormatOrderProcessingStarted,
   readSearchAiFormatProcessingStatus,
-  resetSearchAiFormatOrderProcessing,
   syncSearchAccessOrderPaymentStatus,
   syncSearchAiFormatOrderPaymentStatus
 } from "@/lib/billing";
@@ -18,7 +16,7 @@ type RouteProps = {
   params: Promise<{ id: string }> | { id: string };
 };
 
-export async function POST(request: Request, { params }: RouteProps) {
+export async function POST(_request: Request, { params }: RouteProps) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
   const {
@@ -28,9 +26,6 @@ export async function POST(request: Request, { params }: RouteProps) {
   if (!user) {
     return NextResponse.json({ message: "Faça login para preparar sua lista com IA." }, { status: 401 });
   }
-
-  const body = await request.json().catch(() => ({}));
-  const forceRestart = body?.force === true;
 
   const { data: search } = await supabase
     .from("search_queries")
@@ -50,7 +45,6 @@ export async function POST(request: Request, { params }: RouteProps) {
     provider: typeof search.provider === "string" ? search.provider : undefined,
     totalResults: typeof search.total_results === "number" ? search.total_results : undefined
   });
-
   const syncedAccessOrder = await syncSearchAccessOrderPaymentStatus(accessOrder);
 
   if (!["paid", "free"].includes(syncedAccessOrder.status)) {
@@ -67,50 +61,34 @@ export async function POST(request: Request, { params }: RouteProps) {
     return NextResponse.json({ message: "O pagamento do upgrade com IA ainda não foi confirmado." }, { status: 403 });
   }
 
-  const currentStatus = readSearchAiFormatProcessingStatus(syncedAiOrder);
-
-  if (currentStatus === "ready") {
+  const processingStatus = readSearchAiFormatProcessingStatus(syncedAiOrder);
+  if (processingStatus === "ready") {
     return NextResponse.json({ status: "ready", message: "A lista formatada com IA já está pronta para download." });
   }
 
-  if (currentStatus === "processing") {
-    return NextResponse.json({ status: "processing", message: "A lista com IA já está em processamento." }, { status: 202 });
-  }
-
-  if (currentStatus === "error" && !forceRestart) {
+  if (processingStatus !== "processing") {
     return NextResponse.json(
-      {
-        status: "error",
-        message: syncedAiOrder.format_error || "A última tentativa falhou. Clique em tentar novamente."
-      },
+      { status: processingStatus, message: syncedAiOrder.format_error || "A preparação ainda não foi iniciada." },
       { status: 409 }
     );
   }
 
-  if (currentStatus === "error" && forceRestart) {
-    await resetSearchAiFormatOrderProcessing({ orderId: syncedAiOrder.id, clearPayload: true });
-  }
-
-  const claim = await markSearchAiFormatOrderProcessingStarted({ orderId: syncedAiOrder.id });
-  const claimedOrder = claim.order;
-
-  if (!claim.started || !claimedOrder) {
-    const status = claimedOrder ? readSearchAiFormatProcessingStatus(claimedOrder) : "processing";
-    return NextResponse.json({ status, message: "A preparação já foi iniciada por outra execução." }, { status: 202 });
-  }
-
   try {
-    await processSearchAiFormattingOrderStep({ order: claimedOrder, maxChunks: 1 });
+    const result = await processSearchAiFormattingOrderStep({ order: syncedAiOrder, maxChunks: 1 });
+
+    if (result.status === "ready") {
+      return NextResponse.json({ status: "ready", message: "A lista formatada com IA está pronta para download." });
+    }
+
+    return NextResponse.json(
+      {
+        status: "processing",
+        message: "Estamos preparando sua lista com IA. Você não precisa ficar nesta tela. Pode sair e voltar mais tarde."
+      },
+      { status: 202 }
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Falha ao iniciar o processamento da lista com IA.";
+    const message = error instanceof Error ? error.message : "Falha durante o processamento da lista com IA.";
     return NextResponse.json({ status: "error", message }, { status: 500 });
   }
-
-  return NextResponse.json(
-    {
-      status: "processing",
-      message: "Estamos preparando sua lista com IA. Você pode sair desta página e voltar depois."
-    },
-    { status: 202 }
-  );
 }

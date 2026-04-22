@@ -5,7 +5,16 @@ import { getSearchSummary } from "@/lib/search-summary";
 import { buildEstablishmentDetailSections } from "@/lib/establishment-detail-sections";
 import { buildDisplayEstablishment, getEstablishmentPayload } from "@/lib/establishment-presenter";
 import { extractSingleObject, safeJsonStringify } from "@/lib/utils";
-import { saveSearchAiFormatPayload, type SearchAiFormatOrderRecord } from "@/lib/billing";
+import {
+  claimSearchAiFormatOrderProcessingLock,
+  heartbeatSearchAiFormatOrder,
+  markSearchAiFormatOrderError,
+  markSearchAiFormatOrderReady,
+  releaseSearchAiFormatOrderProcessingLock,
+  saveSearchAiFormatJobProgress,
+  saveSearchAiFormatPayload,
+  type SearchAiFormatOrderRecord
+} from "@/lib/billing";
 import type { WorkbookCell } from "@/lib/export/xlsx";
 
 type FormattingSourceRecord = {
@@ -942,140 +951,230 @@ function buildFormattingAiInputRecord(
   };
 }
 
-export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrderRecord) {
-  if (isStoredPayload(order.formatted_payload)) {
-    const storedPayload = order.formatted_payload;
-    const normalizedPayload = normalizeStoredPayload(storedPayload);
-    const shouldPersist =
-      !Array.isArray(storedPayload.contactSheet) ||
-      normalizedPayload.records.some((record, index) => record.whatsappWeb !== storedPayload.records[index]?.whatsappWeb);
+type SearchAiFormattingJobState = {
+  summary: { headline: string };
+  sourceRecords: FormattingSourceRecord[];
+  aiInputRecords: FormattingAiInputRecord[];
+  aiRecords: Array<Partial<SearchAiFormattedRecord> & { position: number }>;
+  contactSheet: SearchAiContactSheetRow[];
+  strategy?: {
+    xlsx: string;
+    pdf: string;
+    pdfSafety: string;
+    contactsSheet: string;
+  };
+  chunkSize: number;
+  totalChunks: number;
+};
 
-    if (shouldPersist) {
-      await saveSearchAiFormatPayload({
-        orderId: order.id,
-        payload: normalizedPayload
-      });
-    }
+function getDefaultStrategy() {
+  return {
+    xlsx: "Organizar a lista em abas legíveis, com colunas padronizadas e todos os campos disponíveis preservados para análise e filtro.",
+    pdf: "Distribuir cada empresa em ficha cadastral com seções curtas e rótulos claros para facilitar a leitura sem poluir a página.",
+    pdfSafety: "Usar texto limpo, sem markdown, emojis ou símbolos decorativos, mantendo quebras controladas e caracteres compatíveis com o PDF.",
+    contactsSheet: "Criar aba Contatos WhatsApp com nome, telefone em dígitos e link clicável para WhatsApp Web."
+  };
+}
 
-    return normalizedPayload;
-  }
-  try {
-    const admin = createSupabaseAdminClient();
-    const [{ data: search }, { data: rows }] = await Promise.all([
-      admin
-        .from("search_queries")
-        .select("*")
-        .eq("id", order.search_query_id)
-        .maybeSingle(),
-      admin
-        .from("search_results")
-        .select("position, provider_payload, establishments(*)")
-        .eq("search_query_id", order.search_query_id)
-        .order("position", { ascending: true })
-    ]);
+function normalizeAiFormattingJobState(value: unknown): SearchAiFormattingJobState | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (!Array.isArray(record.sourceRecords) || !Array.isArray(record.aiInputRecords)) return null;
+
+  return {
+    summary:
+      record.summary && typeof record.summary === "object" && !Array.isArray(record.summary)
+        ? { headline: String((record.summary as Record<string, unknown>).headline ?? "Lista pronta para prospecção com IA") }
+        : { headline: "Lista pronta para prospecção com IA" },
+    sourceRecords: record.sourceRecords as FormattingSourceRecord[],
+    aiInputRecords: record.aiInputRecords as FormattingAiInputRecord[],
+    aiRecords: Array.isArray(record.aiRecords) ? (record.aiRecords as Array<Partial<SearchAiFormattedRecord> & { position: number }>) : [],
+    contactSheet: Array.isArray(record.contactSheet) ? (record.contactSheet as SearchAiContactSheetRow[]) : [],
+    strategy:
+      record.strategy && typeof record.strategy === "object" && !Array.isArray(record.strategy)
+        ? {
+            xlsx: String((record.strategy as Record<string, unknown>).xlsx ?? ""),
+            pdf: String((record.strategy as Record<string, unknown>).pdf ?? ""),
+            pdfSafety: String((record.strategy as Record<string, unknown>).pdfSafety ?? ""),
+            contactsSheet: String((record.strategy as Record<string, unknown>).contactsSheet ?? "")
+          }
+        : undefined,
+    chunkSize: Math.max(1, Number(record.chunkSize ?? 8)),
+    totalChunks: Math.max(0, Number(record.totalChunks ?? 0))
+  };
+}
+
+async function buildSearchAiFormattingJobPlan(order: SearchAiFormatOrderRecord) {
+  const admin = createSupabaseAdminClient();
+  const [{ data: search }, { data: rows }] = await Promise.all([
+    admin.from("search_queries").select("*").eq("id", order.search_query_id).maybeSingle(),
+    admin
+      .from("search_results")
+      .select("position, provider_payload, establishments(*)")
+      .eq("search_query_id", order.search_query_id)
+      .order("position", { ascending: true })
+  ]);
 
   const aiInputRecords = ((rows ?? []) as Array<{ position?: number | string | null; establishments?: unknown; provider_payload?: unknown }>)
     .map((row) => buildFormattingAiInputRecord(row))
     .filter((item): item is FormattingAiInputRecord => Boolean(item));
-
   const sourceRecords = aiInputRecords.map((record) => record.sourceRecord);
-  const fallbackRecords = createFallbackRecords(sourceRecords);
-  let formattedRecords = fallbackRecords;
-  let generator: SearchAiFormattedPayload["generator"] = "fallback";
-  let strategy: SearchAiFormattedPayload["strategy"] | undefined;
-  let contactSheet: SearchAiContactSheetRow[] = [];
+  const chunkSize = 8;
+  const totalChunks = Math.ceil(aiInputRecords.length / chunkSize);
 
-  try {
-    const chunkSize = 8;
-    const aiRecords = new Map<number, Partial<SearchAiFormattedRecord> & { position?: number }>();
+  return {
+    summary: getSearchSummary(search ?? {}),
+    sourceRecords,
+    aiInputRecords,
+    aiRecords: [],
+    contactSheet: [],
+    strategy: undefined,
+    chunkSize,
+    totalChunks
+  } satisfies SearchAiFormattingJobState;
+}
 
-    for (let start = 0; start < aiInputRecords.length; start += chunkSize) {
-      const chunk = aiInputRecords.slice(start, start + chunkSize);
-      const formattedChunk = await formatChunkWithOpenAi(chunk);
-
-      if (!formattedChunk) {
-        aiRecords.clear();
-        strategy = undefined;
-        break;
-      }
-
-      if (!strategy && formattedChunk.strategy) {
-        strategy = {
-          xlsx: formattedChunk.strategy.xlsx || "",
-          pdf: formattedChunk.strategy.pdf || "",
-          pdfSafety: formattedChunk.strategy.pdfSafety || "",
-          contactsSheet: formattedChunk.strategy.contactsSheet || ""
-        };
-      }
-
-      if (formattedChunk.contactSheet.length > 0) {
-        contactSheet = contactSheet.concat(formattedChunk.contactSheet);
-      }
-
-      for (const item of formattedChunk.items) {
-        if (typeof item.position === "number") {
-          aiRecords.set(item.position, item);
-        }
-      }
-    }
-
-    if (aiRecords.size > 0 || sourceRecords.length === 0) {
-      formattedRecords = sourceRecords.map((record) => mergeAiRecord(record, aiRecords.get(record.position)));
-      generator = sourceRecords.length > 0 ? "openai" : "fallback";
-    }
-  } catch {
-    generator = "fallback";
-    strategy = undefined;
+async function finalizeSearchAiFormattingPayload(order: SearchAiFormatOrderRecord, state: SearchAiFormattingJobState) {
+  const aiRecordsByPosition = new Map<number, Partial<SearchAiFormattedRecord> & { position?: number }>();
+  for (const item of state.aiRecords) {
+    if (typeof item.position === "number") aiRecordsByPosition.set(item.position, item);
   }
 
-  if (!strategy) {
-    strategy = {
-      xlsx: "Organizar a lista em abas legíveis, com colunas padronizadas e todos os campos disponíveis preservados para análise e filtro.",
-      pdf: "Distribuir cada empresa em ficha cadastral com seções curtas e rótulos claros para facilitar a leitura sem poluir a página.",
-      pdfSafety: "Usar texto limpo, sem markdown, emojis ou símbolos decorativos, mantendo quebras controladas e caracteres compatíveis com o PDF.",
-      contactsSheet: "Criar aba Contatos WhatsApp com nome, telefone em dígitos e link clicável para WhatsApp Web."
-    };
-  }
+  const formattedRecords =
+    aiRecordsByPosition.size > 0 || state.sourceRecords.length === 0
+      ? state.sourceRecords.map((record) => mergeAiRecord(record, aiRecordsByPosition.get(record.position)))
+      : createFallbackRecords(state.sourceRecords);
 
-  const summary = getSearchSummary(search ?? {});
+  const generator: SearchAiFormattedPayload["generator"] = state.sourceRecords.length > 0 && aiRecordsByPosition.size > 0 ? "openai" : "fallback";
+  const strategy = state.strategy ?? getDefaultStrategy();
+  const summaryItems = buildSummary(formattedRecords);
+  const contactSheet =
+    state.contactSheet.length > 0
+      ? state.contactSheet
+          .map((item) => ({ name: blankWhenMissing(item.name), ...resolveWhatsappContact(item.phone, item.whatsappWeb) }))
+          .filter((item) => item.phone)
+      : buildContactSheetFromRecords(formattedRecords);
+
   const payload: SearchAiFormattedPayload = {
     generator,
     generatedAt: new Date().toISOString(),
     model: getOpenAiModel(),
     orderId: order.id,
     searchQueryId: order.search_query_id,
-    headline: summary.headline,
+    headline: state.summary.headline,
     subtitle: `${formattedRecords.length} registro(s) organizados para exportação em XLSX e PDF`,
     totalRecords: formattedRecords.length,
     strategy,
-    summary: buildSummary(formattedRecords),
+    summary: summaryItems,
     records: formattedRecords,
-    contactSheet:
-      contactSheet.length > 0
-        ? contactSheet
-            .map((item) => ({
-              name: blankWhenMissing(item.name),
-              ...resolveWhatsappContact(item.phone, item.whatsappWeb)
-            }))
-            .filter((item) => item.phone)
-        : buildContactSheetFromRecords(formattedRecords)
+    contactSheet
   };
 
-    await saveSearchAiFormatPayload({
-      orderId: order.id,
-      payload
-    });
+  await markSearchAiFormatOrderReady({ orderId: order.id, payload });
+}
 
-    return payload;
+export async function processSearchAiFormattingOrderStep(args: { order: SearchAiFormatOrderRecord; maxChunks?: number }) {
+  const maxChunks = Math.max(1, Math.trunc(args.maxChunks ?? 1));
+  const claim = await claimSearchAiFormatOrderProcessingLock({ orderId: args.order.id });
+  if (!claim.claimed || !claim.order || !claim.lockToken) {
+    return { status: "processing" as const, done: false };
+  }
+
+  const lockedOrder = claim.order;
+  const lockToken = claim.lockToken;
+
+  try {
+    if (isStoredPayload(lockedOrder.formatted_payload)) {
+      const normalizedPayload = normalizeStoredPayload(lockedOrder.formatted_payload);
+      await markSearchAiFormatOrderReady({ orderId: lockedOrder.id, payload: normalizedPayload });
+      return { status: "ready" as const, done: true };
+    }
+
+    const currentState = normalizeAiFormattingJobState(lockedOrder.format_job_payload) ?? (await buildSearchAiFormattingJobPlan(lockedOrder));
+    let cursor = Math.max(0, Number(lockedOrder.format_cursor ?? 0));
+    const totalChunks = Math.max(currentState.totalChunks, Math.ceil(currentState.aiInputRecords.length / currentState.chunkSize));
+    let processed = 0;
+
+    while (cursor < totalChunks && processed < maxChunks) {
+      const start = cursor * currentState.chunkSize;
+      const chunk = currentState.aiInputRecords.slice(start, start + currentState.chunkSize);
+      const formattedChunk = await formatChunkWithOpenAi(chunk);
+
+      if (formattedChunk) {
+        if (!currentState.strategy && formattedChunk.strategy) {
+          currentState.strategy = {
+            xlsx: formattedChunk.strategy.xlsx || "",
+            pdf: formattedChunk.strategy.pdf || "",
+            pdfSafety: formattedChunk.strategy.pdfSafety || "",
+            contactsSheet: formattedChunk.strategy.contactsSheet || ""
+          };
+        }
+
+        if (formattedChunk.contactSheet.length > 0) {
+          currentState.contactSheet = currentState.contactSheet.concat(formattedChunk.contactSheet);
+        }
+
+        for (const item of formattedChunk.items) {
+          if (typeof item.position === "number") {
+            const index = currentState.aiRecords.findIndex((existing) => existing.position === item.position);
+            if (index >= 0) {
+              currentState.aiRecords[index] = { ...currentState.aiRecords[index], ...item, position: item.position };
+            } else {
+              currentState.aiRecords.push({ ...item, position: item.position });
+            }
+          }
+        }
+      }
+
+      cursor += 1;
+      processed += 1;
+
+      const progress = totalChunks > 0 ? Math.floor((cursor / totalChunks) * 100) : 99;
+      await saveSearchAiFormatJobProgress({
+        orderId: lockedOrder.id,
+        lockToken,
+        cursor,
+        progress,
+        jobPayload: currentState
+      });
+      await heartbeatSearchAiFormatOrder({ orderId: lockedOrder.id, lockToken });
+    }
+
+    if (cursor >= totalChunks) {
+      await finalizeSearchAiFormattingPayload(lockedOrder, currentState);
+      return { status: "ready" as const, done: true };
+    }
+
+    return { status: "processing" as const, done: false };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Não foi possível concluir a preparação da lista com IA.";
-    await saveSearchAiFormatPayload({
-      orderId: order.id,
-      payload: null,
-      error: errorMessage
-    });
+    await markSearchAiFormatOrderError({ orderId: lockedOrder.id, error: errorMessage });
     throw error;
+  } finally {
+    await releaseSearchAiFormatOrderProcessingLock({ orderId: lockedOrder.id, lockToken });
   }
+}
+
+export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrderRecord) {
+  if (isStoredPayload(order.formatted_payload)) {
+    const storedPayload = order.formatted_payload;
+    const normalizedPayload = normalizeStoredPayload(storedPayload);
+    await saveSearchAiFormatPayload({ orderId: order.id, payload: normalizedPayload });
+    return normalizedPayload;
+  }
+
+  while (true) {
+    const result = await processSearchAiFormattingOrderStep({ order, maxChunks: 2 });
+    if (result.done) break;
+  }
+
+  const admin = createSupabaseAdminClient();
+  const { data: updated } = await admin.from("search_ai_format_orders").select("*").eq("id", order.id).maybeSingle();
+  if (updated?.formatted_payload && isStoredPayload(updated.formatted_payload)) {
+    return updated.formatted_payload;
+  }
+
+  throw new Error("A preparação com IA não gerou payload final.");
 }
 
 export function buildAiFormattedWorkbookRows(payload: SearchAiFormattedPayload) {
