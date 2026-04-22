@@ -83,7 +83,7 @@ export async function POST(_request: Request, { params }: RouteProps) {
     return NextResponse.json(
       {
         status: "processing",
-        message: "Estamos preparando sua lista com IA. Você não precisa ficar nesta tela. Pode sair e voltar mais tarde."
+        message: "Estamos preparando sua lista com IA. Enquanto esta tela estiver aberta, o processamento continuará avançando."
       },
       { status: 202 }
     );
