@@ -32,6 +32,10 @@ export type DiscoverySearchOutput = {
   provider: DiscoveryProvider;
   raw: unknown;
   normalized: NormalizedEstablishment[];
+  providerTotalResults?: number | null;
+  fetchedResults?: number | null;
+  pagesFetched?: number | null;
+  hitFetchLimit?: boolean;
 };
 
 export type NormalizedEstablishment = {

@@ -287,6 +287,13 @@ function dedupeNormalizedRows(rows: NormalizedEstablishment[]) {
   return Array.from(aggregated.values());
 }
 
+function resolveTotalFound(providerTotalResults: number | null | undefined, dedupedCount: number) {
+  if (typeof providerTotalResults === "number" && Number.isFinite(providerTotalResults)) {
+    return Math.max(0, Math.trunc(providerTotalResults));
+  }
+  return Math.max(0, Math.trunc(dedupedCount));
+}
+
 async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>) {
   if (items.length === 0) return [] as R[];
 
@@ -460,11 +467,27 @@ export async function prepareSearchOrder(
         ])
       );
 
-      return applyPublicFilters(hydratedRows, input);
+      const filteredRows = applyPublicFilters(hydratedRows, input);
+      return {
+        filteredRows,
+        providerTotalResults: providerResponse.providerTotalResults ?? null,
+        fetchedResults: providerResponse.fetchedResults ?? providerResponse.normalized.length,
+        hitFetchLimit: providerResponse.hitFetchLimit ?? false
+      };
     });
 
-    for (const filteredRows of searchResponses) {
-      for (const row of filteredRows) {
+    let providerTotalResults: number | null = null;
+    let fetchedResults = 0;
+    let hitFetchLimit = false;
+
+    for (const response of searchResponses) {
+      if (providerTotalResults === null && typeof response.providerTotalResults === "number") {
+        providerTotalResults = response.providerTotalResults;
+      }
+      fetchedResults += Math.max(0, Math.trunc(response.fetchedResults ?? 0));
+      hitFetchLimit = hitFetchLimit || response.hitFetchLimit;
+
+      for (const row of response.filteredRows) {
         const normalizedCnpj = normalizeCnpj(row.cnpj);
         if (!normalizedCnpj) continue;
         const hydratedRow = hydrateNormalizedEstablishment({ ...row, cnpj: normalizedCnpj });
@@ -474,6 +497,8 @@ export async function prepareSearchOrder(
     }
 
     const allRows = dedupeNormalizedRows(Array.from(aggregatedByCnpj.values()));
+    const mergedResults = allRows.length;
+    const totalFound = resolveTotalFound(providerTotalResults, mergedResults);
     const pricingSummary = buildLeadPricingSummary(
       allRows.map((row) => ({
         email: row.email,
@@ -500,6 +525,10 @@ export async function prepareSearchOrder(
       capitalSocialMax: input.capitalSocialMax,
       activityStartYear: input.activityStartYear,
       filterLabels: buildPublicFilterLabels(input),
+      providerTotalResults: providerTotalResults ?? null,
+      fetchedResults,
+      mergedResults,
+      hitFetchLimit,
       leadPricingSummary: {
         basic: pricingSummary.tiers.find((tier) => tier.key === "basic")?.count ?? 0,
         phone: pricingSummary.tiers.find((tier) => tier.key === "phone")?.count ?? 0,
@@ -530,7 +559,7 @@ export async function prepareSearchOrder(
         state_code: representativeLocation.stateCode,
         city_ibge: null,
         query_payload: queryPayload,
-        total_results: allRows.length,
+        total_results: totalFound,
         cached: false
       })
       .select("id")
@@ -619,7 +648,7 @@ export async function prepareSearchOrder(
       profileId: input.profileId,
       email,
       provider,
-      totalResults: allRows.length,
+      totalResults: mergedResults,
       pricingSummary
     });
 
@@ -700,6 +729,9 @@ export async function runDiscoverySearch(
     let raw: unknown;
     let normalizedRows: NormalizedEstablishment[] = [];
     let cachedHit = false;
+    let providerTotalResults: number | null = null;
+    let fetchedResults: number | null = null;
+    let hitFetchLimit = false;
     const localRows = hasAdvancedPublicFilters({
       requireEmail: normalizedInput.requireEmail,
       requireAddress: normalizedInput.requireAddress,
@@ -734,6 +766,9 @@ export async function runDiscoverySearch(
             : await searchWithCnpjWs(normalizedInput);
 
       raw = providerResponse.raw;
+      providerTotalResults = providerResponse.providerTotalResults ?? null;
+      fetchedResults = providerResponse.fetchedResults ?? providerResponse.normalized.length;
+      hitFetchLimit = providerResponse.hitFetchLimit ?? false;
       normalizedRows = await mergeRowsWithStoredEstablishments(
         dedupeNormalizedRows([
           ...providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row)),
@@ -783,6 +818,15 @@ export async function runDiscoverySearch(
         cnpj: normalizeCnpj(row.cnpj)
       }))
       .filter((row) => row.cnpj);
+    const mergedResults = cleanRows.length;
+    const totalFound = resolveTotalFound(providerTotalResults, mergedResults);
+    const queryPayload = {
+      ...normalizedInput,
+      providerTotalResults,
+      fetchedResults: fetchedResults ?? mergedResults,
+      mergedResults,
+      hitFetchLimit
+    };
 
     const establishmentsPayload = cleanRows.map((row) => ({
       cnpj: row.cnpj,
@@ -843,8 +887,8 @@ export async function runDiscoverySearch(
         city_name: normalizedInput.cityName,
         state_code: normalizedInput.stateCode,
         city_ibge: normalizedInput.cityIbge || null,
-        query_payload: normalizedInput,
-        total_results: cleanRows.length,
+        query_payload: queryPayload,
+        total_results: totalFound,
         cached: cachedHit
       })
       .select("id")

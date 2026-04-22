@@ -98,7 +98,11 @@ export function getDiscoveryCacheTtlHours() {
 }
 
 export function getDiscoveryMaxResults() {
-  return Number(getEnv("DISCOVERY_MAX_RESULTS") || "50");
+  return Number(getEnv("DISCOVERY_MAX_RESULTS") || "0");
+}
+
+export function getDiscoveryPageSize() {
+  return Number(getEnv("DISCOVERY_PAGE_SIZE") || "50");
 }
 
 export function isBillingBypassed() {
