@@ -104,9 +104,9 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
                   <span className="muted">Formato disponível para download: XLSX.</span>
                 </div>
                 <div className="inline-actions">
-                  <Link href={`/orders/${token}/download`} className="button" data-analytics-event="payment_completed" data-analytics-label="Order XLSX">
+                  <a href={`/orders/${token}/download`} className="button" data-analytics-event="payment_completed" data-analytics-label="Order XLSX">
                     Baixar XLSX
-                  </Link>
+                  </a>
                   <Link href={`/?reuse=${currentOrder.search_query_id}`} className="button-ghost" data-analytics-event="search_reused" data-analytics-label="Order repeat search">
                     Repetir busca
                   </Link>
