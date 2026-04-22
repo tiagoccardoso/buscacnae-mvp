@@ -395,6 +395,10 @@ export async function searchWithCnpjWs(input: DiscoverySearchInput): Promise<Dis
     normalized: normalized.map((item) => ({
       ...item,
       cityName: item.cityName ? toTitleCase(item.cityName) : item.cityName
-    }))
+    })),
+    providerTotalResults: null,
+    fetchedResults: normalized.length,
+    pagesFetched: null,
+    hitFetchLimit: false
   };
 }

@@ -135,7 +135,14 @@ async function enrichWithCnpjWs(rows: NormalizedEstablishment[]) {
 
 export async function searchWithHybrid(input: DiscoverySearchInput): Promise<DiscoverySearchOutput> {
   const casaResponse = await searchWithCasaDosDados(input);
-  const enriched = await enrichWithCnpjWs(casaResponse.normalized);
+  const enrichedRows = await enrichWithCnpjWs(casaResponse.normalized);
+  const mergedByCnpj = new Map<string, NormalizedEstablishment>();
+  for (const row of enrichedRows) {
+    const cnpj = normalizeCnpj(row.cnpj);
+    if (!cnpj) continue;
+    mergedByCnpj.set(cnpj, { ...row, cnpj });
+  }
+  const mergedResults = Array.from(mergedByCnpj.values());
 
   return {
     provider: "hybrid",
@@ -143,9 +150,16 @@ export async function searchWithHybrid(input: DiscoverySearchInput): Promise<Dis
       motor_principal: "casadosdados",
       complemento: "cnpjws",
       pesquisa: casaResponse.raw,
-      resultados_enriquecidos: enriched.map((item) => item.providerPayload)
+      resultados_enriquecidos: mergedResults.map((item) => item.providerPayload),
+      provider_total_resultados: casaResponse.providerTotalResults ?? null,
+      resultados_carregados: casaResponse.fetchedResults ?? null,
+      resultados_unicos_merge: mergedResults.length
     },
-    normalized: enriched
+    normalized: mergedResults,
+    providerTotalResults: casaResponse.providerTotalResults ?? null,
+    fetchedResults: casaResponse.fetchedResults ?? mergedResults.length,
+    pagesFetched: casaResponse.pagesFetched ?? null,
+    hitFetchLimit: casaResponse.hitFetchLimit ?? false
   };
 }
 

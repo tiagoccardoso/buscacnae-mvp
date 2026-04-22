@@ -53,6 +53,15 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     .maybeSingle();
 
   const summary = getSearchSummary(search ?? {});
+  const queryPayload =
+    search?.query_payload && typeof search.query_payload === "object" && !Array.isArray(search.query_payload)
+      ? (search.query_payload as Record<string, unknown>)
+      : {};
+  const fetchedResults =
+    typeof queryPayload.fetchedResults === "number" && Number.isFinite(queryPayload.fetchedResults)
+      ? Math.max(0, Math.trunc(queryPayload.fetchedResults))
+      : null;
+  const hitFetchLimit = queryPayload.hitFetchLimit === true;
   const pricingSummary = readLeadPricingSummary((search?.query_payload as Record<string, unknown> | null)?.leadPricingSummary);
 
   const { data: rows } = await admin
@@ -102,6 +111,11 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
           <p className="section-copy">
             Confirme o volume encontrado, a composição do lote e o valor total antes de liberar a lista completa.
           </p>
+          {hitFetchLimit && fetchedResults !== null ? (
+            <p className="muted" style={{ marginTop: -6 }}>
+              {search?.total_results ?? 0} encontrados · {fetchedResults} carregados para esta operação.
+            </p>
+          ) : null}
 
           {reason ? <div className="notice danger">{reason}</div> : null}
           {checkoutState === "cancelled" ? (

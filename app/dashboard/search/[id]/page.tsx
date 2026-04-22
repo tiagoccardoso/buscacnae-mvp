@@ -80,6 +80,15 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   }
 
   const summary = getSearchSummary(search.data);
+  const searchQueryPayload =
+    search.data.query_payload && typeof search.data.query_payload === "object" && !Array.isArray(search.data.query_payload)
+      ? (search.data.query_payload as Record<string, unknown>)
+      : {};
+  const fetchedResults =
+    typeof searchQueryPayload.fetchedResults === "number" && Number.isFinite(searchQueryPayload.fetchedResults)
+      ? Math.max(0, Math.trunc(searchQueryPayload.fetchedResults))
+      : null;
+  const hitFetchLimit = searchQueryPayload.hitFetchLimit === true;
   const pricingSummary = readLeadPricingSummary((search.data.query_payload as Record<string, unknown> | null)?.leadPricingSummary);
   const totalLeadsForAiFormat = Math.max(0, Number(search.data.total_results ?? 0));
   const aiFormatPriceSummary = getAiFormattingPriceSummary(totalLeadsForAiFormat);
@@ -149,6 +158,9 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
               <span className="muted">
                 {search.data.total_results} resultados · {search.data.cached ? "cache" : "consulta nova"} · {formatDateTime(search.data.created_at)}
               </span>
+              {hitFetchLimit && fetchedResults !== null ? (
+                <span className="muted">{fetchedResults} carregados para esta operação.</span>
+              ) : null}
             </div>
             <div className="inline-actions">
               <Link href={`/dashboard/search?reuse=${id}`} className="button-ghost">
@@ -165,6 +177,12 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
               <strong>{search.data.total_results}</strong>
               <span className="muted">Empresas retornadas</span>
             </div>
+            {hitFetchLimit && fetchedResults !== null ? (
+              <div className="stat-box stat-box-premium">
+                <strong>{fetchedResults}</strong>
+                <span className="muted">Carregadas nesta operação</span>
+              </div>
+            ) : null}
             <div className="stat-box stat-box-premium">
               <strong>{summary.cnaeText}</strong>
               <span className="muted">CNAEs do recorte</span>
