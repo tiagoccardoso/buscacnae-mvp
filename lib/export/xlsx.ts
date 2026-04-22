@@ -252,7 +252,7 @@ function buildSheetXml(sheet: WorkbookSheet, matrix: number[][]) {
   </sheetViews>`;
 
   const autoFilterXml = sheet.autoFilter !== false && maxColumns > 0 && lastRow > 1
-    ? `<autoFilter ref="A1:${lastColumn}1"/>`
+    ? `<autoFilter ref="A1:${lastColumn}${lastRow}"/>`
     : "";
 
   const hyperlinksXml = hyperlinks.length > 0

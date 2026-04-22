@@ -127,7 +127,16 @@ function collectPayloadSources(establishment: Record<string, unknown>) {
   const candidates = [
     payload,
     payload?.consulta_cnpj,
+    payload?.consulta_cnpj && typeof payload.consulta_cnpj === "object" && !Array.isArray(payload.consulta_cnpj)
+      ? extractSingleObject((payload.consulta_cnpj as Record<string, unknown>).estabelecimento)
+      : null,
     payload?.cnpjws_consulta,
+    payload?.cnpjws_consulta && typeof payload.cnpjws_consulta === "object" && !Array.isArray(payload.cnpjws_consulta)
+      ? extractSingleObject((payload.cnpjws_consulta as Record<string, unknown>).estabelecimento)
+      : null,
+    payload?.cnpjws_consulta && typeof payload.cnpjws_consulta === "object" && !Array.isArray(payload.cnpjws_consulta)
+      ? extractSingleObject((payload.cnpjws_consulta as Record<string, unknown>).simples)
+      : null,
     payload?.cnpjws_consulta && typeof payload.cnpjws_consulta === "object" && !Array.isArray(payload.cnpjws_consulta)
       ? extractSingleObject((payload.cnpjws_consulta as Record<string, unknown>).consulta_cnpj)
       : null,
@@ -138,6 +147,84 @@ function collectPayloadSources(establishment: Record<string, unknown>) {
   return candidates.filter(
     (candidate): candidate is Record<string, unknown> => !!candidate && typeof candidate === "object" && !Array.isArray(candidate)
   );
+}
+
+function dedupeAddressType(type: string, street: string) {
+  const normalizedType = type.trim();
+  const normalizedStreet = street.trim();
+  if (!normalizedType || !normalizedStreet) return [normalizedType, normalizedStreet] as const;
+
+  if (/^\d/.test(normalizedType)) {
+    return ["", normalizedStreet] as const;
+  }
+
+  const escapedType = normalizedType.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (new RegExp(`^${escapedType}\\b`, "i").test(normalizedStreet)) {
+    return ["", normalizedStreet] as const;
+  }
+
+  return [normalizedType, normalizedStreet] as const;
+}
+
+function normalizeAddressLine(rawValue: unknown) {
+  const line = extractFirstText(rawValue);
+  if (!line) return null;
+
+  return line
+    .replace(/\s+/g, " ")
+    .replace(/\b(rua|avenida|av\.?|travessa|rodovia|alameda|estrada)\s+\1\b/gi, "$1")
+    .trim();
+}
+
+function findFirstUnknownFromPaths(sources: Record<string, unknown>[], paths: string[][]): unknown {
+  for (const source of sources) {
+    for (const path of paths) {
+      const nested = readPath(source, path);
+      if (hasContent(nested)) {
+        return nested;
+      }
+    }
+  }
+  return null;
+}
+
+function resolveSecondaryCnaes(establishment: Record<string, unknown>, sources: Record<string, unknown>[]) {
+  const direct = getValue(establishment, "secondary_cnaes", "atividades_secundarias");
+  if (hasContent(direct)) return direct;
+
+  return findFirstUnknownFromPaths(sources, [
+    ["atividade_secundaria"],
+    ["atividades_secundarias"],
+    ["estabelecimento", "atividade_secundaria"],
+    ["estabelecimento", "atividades_secundarias"],
+    ["consulta_cnpj", "atividade_secundaria"],
+    ["consulta_cnpj", "atividades_secundarias"],
+    ["cnpjws_consulta", "estabelecimento", "atividade_secundaria"]
+  ]);
+}
+
+function resolvePrimaryCnaeCode(establishment: Record<string, unknown>, sources: Record<string, unknown>[]) {
+  return getValue(establishment, "primary_cnae_code", "cnae_principal") ??
+    findFirstFromPaths(sources, [
+      ["atividade_principal", "codigo"],
+      ["atividade_principal", "id"],
+      ["codigo_atividade_principal"],
+      ["cnae_fiscal_principal"],
+      ["estabelecimento", "cnae_fiscal_principal"],
+      ["consulta_cnpj", "cnae_fiscal_principal"]
+    ]);
+}
+
+function resolvePrimaryCnaeDescription(establishment: Record<string, unknown>, sources: Record<string, unknown>[]) {
+  return getValue(establishment, "primary_cnae_description", "atividade_principal_descricao") ??
+    findFirstFromPaths(sources, [
+      ["atividade_principal", "descricao"],
+      ["atividade_principal_descricao"],
+      ["descricao_atividade_principal"],
+      ["cnae_fiscal_principal_descricao"],
+      ["estabelecimento", "cnae_fiscal_principal_descricao"],
+      ["consulta_cnpj", "cnae_fiscal_principal_descricao"]
+    ]);
 }
 
 function findFirstFromPaths(
@@ -159,7 +246,8 @@ function findFirstFromPaths(
 
 function resolveAddressLine(establishment: Record<string, unknown>, sources: Record<string, unknown>[]) {
   const directLine = getValue(establishment, "address_line", "logradouro");
-  if (typeof directLine === "string" && directLine.trim()) return directLine.trim();
+  const normalizedDirect = normalizeAddressLine(directLine);
+  if (normalizedDirect) return normalizedDirect;
 
   for (const source of sources) {
     const address = readPath(source, ["endereco"]);
@@ -168,8 +256,9 @@ function resolveAddressLine(establishment: Record<string, unknown>, sources: Rec
       : source;
 
     const type = extractFirstText(addressRecord.tipo_logradouro);
-    const street = extractFirstText(addressRecord.logradouro);
-    const line = [type, street].filter(Boolean).join(" ").trim();
+    const street = extractFirstText(addressRecord.logradouro ?? addressRecord.tipo_e_logradouro);
+    const [safeType, safeStreet] = dedupeAddressType(type ?? "", street ?? "");
+    const line = normalizeAddressLine([safeType, safeStreet].filter(Boolean).join(" "));
     if (line) return line;
   }
 
@@ -199,16 +288,9 @@ export function buildDisplayEstablishment(establishment: Record<string, unknown>
     opened_at:
       getValue(establishment, "opened_at", "data_abertura", "data_inicio_atividade") ??
       findFirstFromPaths(payloadSources, [["data_abertura"], ["data_inicio_atividade"], ["situacao_cadastral", "data"]]),
-    primary_cnae_code:
-      getValue(establishment, "primary_cnae_code", "cnae_principal") ??
-      findFirstFromPaths(payloadSources, [["atividade_principal", "codigo"], ["atividade_principal", "id"], ["codigo_atividade_principal"]]),
-    primary_cnae_description:
-      getValue(establishment, "primary_cnae_description", "atividade_principal_descricao") ??
-      findFirstFromPaths(payloadSources, [["atividade_principal", "descricao"], ["atividade_principal_descricao"], ["descricao_atividade_principal"]]),
-    secondary_cnaes:
-      getValue(establishment, "secondary_cnaes", "atividades_secundarias") ??
-      readPath(payloadSources[0], ["atividade_secundaria"]) ??
-      readPath(payloadSources[0], ["atividades_secundarias"]),
+    primary_cnae_code: resolvePrimaryCnaeCode(establishment, payloadSources),
+    primary_cnae_description: resolvePrimaryCnaeDescription(establishment, payloadSources),
+    secondary_cnaes: resolveSecondaryCnaes(establishment, payloadSources),
     legal_nature_code:
       getValue(establishment, "legal_nature_code", "natureza_juridica_id") ??
       findFirstFromPaths(payloadSources, [["codigo_natureza_juridica"], ["natureza_juridica", "codigo"]]),
@@ -220,51 +302,51 @@ export function buildDisplayEstablishment(establishment: Record<string, unknown>
       findFirstFromPaths(payloadSources, [["porte_empresa", "descricao"], ["porte", "descricao"], ["porte"]]),
     simples_opt_in:
       getValue(establishment, "simples_opt_in", "simples") ??
-      findFirstFromPaths(payloadSources, [["simples", "optante"], ["simples_optante"]]),
+      findFirstFromPaths(payloadSources, [["simples", "optante"], ["simples_optante"], ["cnpjws_consulta", "simples", "optante"], ["cnpjws_consulta", "simples", "simples"]]),
     mei_opt_in:
       getValue(establishment, "mei_opt_in", "mei") ??
-      findFirstFromPaths(payloadSources, [["mei", "optante"], ["mei_optante"]]),
+      findFirstFromPaths(payloadSources, [["mei", "optante"], ["mei_optante"], ["cnpjws_consulta", "simples", "mei"], ["simples", "mei"]]),
     capital_social:
       getValue(establishment, "capital_social") ??
       findFirstFromPaths(payloadSources, [["capital_social"]]),
     email:
       getValue(establishment, "email") ??
-      findFirstFromPaths(payloadSources, [["contato_email"], ["email"], ["contacts", "email"], ["contacts", "emails"]]),
+      findFirstFromPaths(payloadSources, [["contato_email"], ["email"], ["contacts", "email"], ["contacts", "emails"], ["estabelecimento", "email"], ["consulta_cnpj", "email"]]),
     phone:
       getValue(establishment, "phone", "telefone") ??
       findFirstFromPaths(
         payloadSources,
-        [["contato_telefonico"], ["telefone"], ["telefone1"], ["contacts", "telefone"], ["contacts", "telefones"]],
+        [["contato_telefonico"], ["telefone"], ["telefone1"], ["ddd_telefone_1"], ["contacts", "telefone"], ["contacts", "telefones"], ["estabelecimento", "telefone1"], ["consulta_cnpj", "telefone"]],
         extractPhoneText
       ),
     website:
       getValue(establishment, "website", "site") ??
-      findFirstFromPaths(payloadSources, [["website"], ["site"], ["url"], ["contacts", "website"], ["contacts", "site"]]),
+      findFirstFromPaths(payloadSources, [["website"], ["site"], ["url"], ["contacts", "website"], ["contacts", "site"], ["estabelecimento", "site"], ["consulta_cnpj", "site"]]),
     country:
       getValue(establishment, "country", "pais") ??
       findFirstFromPaths(payloadSources, [["pais", "nome"], ["pais_nome"], ["pais"]]),
     state_code:
       getValue(establishment, "state_code", "uf") ??
-      findFirstFromPaths(payloadSources, [["endereco", "uf"], ["uf"]]),
+      findFirstFromPaths(payloadSources, [["endereco", "uf"], ["uf"], ["estabelecimento", "uf"], ["consulta_cnpj", "uf"]]),
     city_name:
       getValue(establishment, "city_name", "cidade", "municipio") ??
-      findFirstFromPaths(payloadSources, [["endereco", "municipio"], ["cidade_nome"], ["cidade"], ["municipio"]]),
+      findFirstFromPaths(payloadSources, [["endereco", "municipio"], ["cidade_nome"], ["cidade"], ["municipio"], ["estabelecimento", "cidade"], ["consulta_cnpj", "municipio"]]),
     city_ibge:
       getValue(establishment, "city_ibge", "cidade_id", "ibge_id") ??
-      findFirstFromPaths(payloadSources, [["endereco", "ibge", "codigo_municipio"], ["codigo_municipio_ibge"], ["cidade_id"], ["ibge_id"]]),
+      findFirstFromPaths(payloadSources, [["endereco", "ibge", "codigo_municipio"], ["codigo_municipio_ibge"], ["cidade_id"], ["ibge_id"], ["estabelecimento", "codigo_municipio_ibge"], ["consulta_cnpj", "codigo_municipio_ibge"]]),
     cep:
       getValue(establishment, "cep") ??
-      findFirstFromPaths(payloadSources, [["endereco", "cep"], ["cep"]]),
+      findFirstFromPaths(payloadSources, [["endereco", "cep"], ["cep"], ["estabelecimento", "cep"], ["consulta_cnpj", "cep"]]),
     neighborhood:
       getValue(establishment, "neighborhood", "bairro") ??
-      findFirstFromPaths(payloadSources, [["endereco", "bairro"], ["bairro"]]),
+      findFirstFromPaths(payloadSources, [["endereco", "bairro"], ["bairro"], ["estabelecimento", "bairro"], ["consulta_cnpj", "bairro"]]),
     address_line: resolveAddressLine(establishment, payloadSources),
     address_number:
       getValue(establishment, "address_number", "numero") ??
-      findFirstFromPaths(payloadSources, [["endereco", "numero"], ["numero"]]),
+      findFirstFromPaths(payloadSources, [["endereco", "numero"], ["numero"], ["estabelecimento", "numero"], ["consulta_cnpj", "numero"]]),
     complement:
       getValue(establishment, "complement", "complemento") ??
-      findFirstFromPaths(payloadSources, [["endereco", "complemento"], ["complemento"]]),
+      findFirstFromPaths(payloadSources, [["endereco", "complemento"], ["complemento"], ["estabelecimento", "complemento"], ["consulta_cnpj", "complemento"]]),
     provider_payload: getValue(establishment, "provider_payload")
   };
 }
