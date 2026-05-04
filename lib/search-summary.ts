@@ -65,6 +65,8 @@ export function getSearchSummary(source: SearchSummarySource) {
   const citySelections = readCitySelections(payload?.citySelections).map((item) => `${item.cityName}/${item.stateCode}`);
   const filterLabels = readStringArray(payload?.filterLabels);
   const stateWide = payload?.stateWide === true;
+  const activityStartYear = typeof payload?.activityStartYear === "number" ? Math.trunc(payload.activityStartYear) : null;
+  const activityStartYearExact = payload?.activityStartYearExact === true;
 
   const cnaeText = cnaes.length > 0 ? formatCompactList(cnaes, "Todos os CNAEs") : source.cnae_code ?? "Todos os CNAEs";
 
@@ -88,6 +90,11 @@ export function getSearchSummary(source: SearchSummarySource) {
     locationText,
     headline: `${cnaeText} · ${locationText}`,
     stateWide,
-    filterLabels
+    filterLabels: [
+      ...filterLabels,
+      ...(activityStartYear
+        ? [activityStartYearExact ? `Ativas somente em ${activityStartYear}` : `Ativas desde ${activityStartYear}`]
+        : [])
+    ]
   };
 }

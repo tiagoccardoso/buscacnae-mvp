@@ -92,6 +92,11 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
       : null;
   const hitFetchLimit = searchQueryPayload.hitFetchLimit === true;
   const pricingSummary = readLeadPricingSummary((search.data.query_payload as Record<string, unknown> | null)?.leadPricingSummary);
+  const autoRefinementSuggested = searchQueryPayload.autoRefinementSuggested === true;
+  const autoRefinementReason = typeof searchQueryPayload.autoRefinementReason === "string" ? searchQueryPayload.autoRefinementReason : "";
+  const suggestedActivityStartYear =
+    typeof searchQueryPayload.suggestedActivityStartYear === "number" ? Math.trunc(searchQueryPayload.suggestedActivityStartYear) : null;
+  const suggestedActivityStartYearExact = searchQueryPayload.suggestedActivityStartYearExact === true;
   const totalLeadsForAiFormat = Math.max(0, Number(search.data.total_results ?? 0));
   const aiFormatPriceSummary = getAiFormattingPriceSummary(totalLeadsForAiFormat);
   const aiFormatPricingTable = getAiFormatPricingTable();
@@ -205,6 +210,20 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                   {label}
                 </span>
               ))}
+            </div>
+          ) : null}
+
+          {autoRefinementSuggested && suggestedActivityStartYear ? (
+            <div className="notice warning">
+              <div className="stack" style={{ gap: 8 }}>
+                <span>{autoRefinementReason || "Essa busca ficou ampla. Recomendamos aplicar recorte temporal por ano."}</span>
+                <Link
+                  href={`/dashboard/search?reuse=${id}&suggestedYear=${suggestedActivityStartYear}&suggestedExact=${suggestedActivityStartYearExact ? "1" : "0"}`}
+                  className="button-ghost"
+                >
+                  Refazer com recorte temporal sugerido
+                </Link>
+              </div>
             </div>
           ) : null}
         </div>

@@ -12,6 +12,7 @@ type SearchQueryPayload = {
   capitalSocialMin?: unknown;
   capitalSocialMax?: unknown;
   activityStartYear?: unknown;
+  activityStartYearExact?: unknown;
 };
 
 function readStringArray(value: unknown) {
@@ -66,6 +67,7 @@ export function getSearchFilterDefaults(payload: unknown) {
     defaultSimplesOnly: parsed?.simplesOnly === true,
     defaultCapitalSocialMin: readNumberString(parsed?.capitalSocialMin),
     defaultCapitalSocialMax: readNumberString(parsed?.capitalSocialMax),
-    defaultActivityStartYear: readNumberString(parsed?.activityStartYear)
+    defaultActivityStartYear: readNumberString(parsed?.activityStartYear),
+    defaultActivityStartYearExact: parsed?.activityStartYearExact === true
   };
 }
