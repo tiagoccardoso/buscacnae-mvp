@@ -28,10 +28,21 @@ export default async function DashboardPage() {
       .maybeSingle()
   ]);
 
+  const latestSearchId = latestSearch.data?.id ?? null;
+  const latestOrder = latestSearchId
+    ? await admin
+        .from("search_access_orders")
+        .select("result_count")
+        .eq("search_query_id", latestSearchId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+
   const searchTotal = searchCount ?? 0;
   const leadTotal = leadCount ?? 0;
   const orderTotal = orderCount ?? 0;
-  const latestResults = latestSearch.data?.total_results ?? 0;
+  const latestResults = latestOrder.data?.result_count ?? latestSearch.data?.total_results ?? 0;
   const latestCity = latestSearch.data?.city_name ?? "Sem buscas";
 
   return (
@@ -86,11 +97,11 @@ export default async function DashboardPage() {
                 {latestSearch.data.cnae_code} · {latestSearch.data.city_name}/{latestSearch.data.state_code}
               </h2>
               <p className="section-copy">
-                {latestSearch.data.total_results} resultados encontrados em {formatDateTime(latestSearch.data.created_at)}.
+                {latestResults} resultados encontrados em {formatDateTime(latestSearch.data.created_at)}.
               </p>
               <div className="stat-grid stat-grid-premium">
                 <div className="stat-box stat-box-premium">
-                  <strong>{latestSearch.data.total_results}</strong>
+                  <strong>{latestResults}</strong>
                   <span className="muted">Empresas retornadas</span>
                 </div>
                 <div className="stat-box stat-box-premium">
