@@ -461,6 +461,12 @@ export async function ensureSearchAccessOrderForSearch(args: {
   let resolvedTotalResults = resolveFiniteInteger(args.totalResults);
   let resolvedPricingSummary = args.pricingSummary ?? null;
 
+  const resolveTotalResultsFromPricingSummary = (summary: LeadPricingSummary | null | undefined) => {
+    if (!summary) return null;
+    const candidate = resolveFiniteInteger(summary.totalLeads);
+    return candidate;
+  };
+
   const existing = await getLatestSearchAccessOrderBySearchQueryId(args.searchQueryId);
 
   if (!resolvedProfileId || !resolvedProvider || resolvedTotalResults === null || !resolvedPricingSummary) {
@@ -483,6 +489,16 @@ export async function ensureSearchAccessOrderForSearch(args: {
         : null;
       resolvedPricingSummary = readLeadPricingSummary(payload?.leadPricingSummary);
     }
+
+    const pricingSummaryTotal = resolveTotalResultsFromPricingSummary(resolvedPricingSummary);
+    if (pricingSummaryTotal !== null) {
+      resolvedTotalResults = pricingSummaryTotal;
+    }
+  }
+
+  const directPricingSummaryTotal = resolveTotalResultsFromPricingSummary(resolvedPricingSummary);
+  if (directPricingSummaryTotal !== null) {
+    resolvedTotalResults = directPricingSummaryTotal;
   }
 
   if (resolvedTotalResults === null) {
