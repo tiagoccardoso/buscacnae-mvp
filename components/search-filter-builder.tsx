@@ -19,6 +19,7 @@ type SearchFilterBuilderProps = {
   defaultCitySelections?: Array<{ cityName: string; stateCode: string }>;
   defaultStateWide?: boolean;
   defaultActivityStartYear?: string;
+  defaultActivityStartYearExact?: boolean;
 };
 
 function normalizeText(value: string) {
@@ -316,7 +317,8 @@ export function SearchFilterBuilder({
   defaultStateCodes = [],
   defaultCitySelections = [],
   defaultStateWide: _defaultStateWide = false,
-  defaultActivityStartYear = ""
+  defaultActivityStartYear = "",
+  defaultActivityStartYearExact = false
 }: SearchFilterBuilderProps) {
   const [selectedCnaes, setSelectedCnaes] = useState<PickerOption[]>(() => buildDefaultCnaeOptions(defaultCnaes));
   const [selectedStates, setSelectedStates] = useState<PickerOption[]>(() => buildDefaultStateOptions(defaultStateCodes));
@@ -332,6 +334,7 @@ export function SearchFilterBuilder({
   const [citiesLoading, setCitiesLoading] = useState(false);
   const stateWide = false;
   const [activityStartYear, setActivityStartYear] = useState(defaultActivityStartYear);
+  const [activityStartYearExact, setActivityStartYearExact] = useState(defaultActivityStartYearExact);
 
   const filteredCnaes = useMemo(() => {
     const selectedValues = new Set(selectedCnaes.map((item) => item.value));
@@ -667,12 +670,16 @@ export function SearchFilterBuilder({
 
       <div className="search-builder-footer">
         <div className="field" style={{ marginTop: 0 }}>
-          <label htmlFor="activityStartYear">Ano mínimo de início da atividade</label>
+          <label htmlFor="activityStartYear">Ano mínimo da empresa ativa</label>
           <div className="year-filter-card">
             <div className="year-filter-copy">
               <strong>Filtre empresas a partir de um ano específico</strong>
               <span>
-                Exemplo: ao informar 2020, a busca considera empresas com início de atividade em 2020 ou depois.
+                {!activityStartYear
+                  ? "Se não informar ano, a pesquisa considera empresas de todos os períodos."
+                  : activityStartYearExact
+                    ? "A pesquisa considera apenas empresas ativas no ano informado."
+                    : "A pesquisa considera empresas ativas a partir do ano informado."}
               </span>
             </div>
             <div className="year-filter-input-wrap">
@@ -682,13 +689,22 @@ export function SearchFilterBuilder({
                 type="number"
                 inputMode="numeric"
                 className="input input-premium year-filter-input"
-                placeholder="2020"
                 min="1900"
                 max={new Date().getFullYear()}
                 value={activityStartYear}
                 onChange={(event) => setActivityStartYear(event.target.value)}
               />
             </div>
+            <label className="checkbox-inline" style={{ marginTop: 10 }}>
+              <input
+                type="checkbox"
+                name="activityStartYearExact"
+                checked={activityStartYearExact}
+                onChange={(event) => setActivityStartYearExact(event.target.checked)}
+                disabled={!activityStartYear}
+              />
+              Buscar somente no ano informado
+            </label>
           </div>
 
           <span className="tiny">

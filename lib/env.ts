@@ -105,6 +105,10 @@ export function getDiscoveryPageSize() {
   return Number(getEnv("DISCOVERY_PAGE_SIZE") || "50");
 }
 
+export function getDiscoveryAutoRefinementThreshold() {
+  return Number(getEnv("DISCOVERY_AUTO_REFINEMENT_THRESHOLD") || "1500");
+}
+
 export function isBillingBypassed() {
   return getEnv("BYPASS_BILLING").toLowerCase() === "true";
 }

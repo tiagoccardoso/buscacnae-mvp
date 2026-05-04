@@ -73,7 +73,8 @@ export async function runSearchAction(formData: FormData) {
     simplesOnly: formData.get("simplesOnly") === "on",
     capitalSocialMin: normalizedCapitalRange.min,
     capitalSocialMax: normalizedCapitalRange.max,
-    activityStartYear: parseYearInput(formData.get("activityStartYear"))
+    activityStartYear: parseYearInput(formData.get("activityStartYear")),
+    activityStartYearExact: formData.get("activityStartYearExact") === "on"
   });
 
   if (!result.ok) {

@@ -1,6 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { hydrateNormalizedEstablishment, normalizeCompanySizeInput, canonicalizeEstablishment, normalizedToPresenterSource, mergeNormalizedEstablishments } from "@/lib/establishment-canonical";
-import { getDiscoveryCacheTtlHours, getDiscoveryProvider, getMinimumCheckoutAmountCents } from "@/lib/env";
+import { getDiscoveryAutoRefinementThreshold, getDiscoveryCacheTtlHours, getDiscoveryProvider, getMinimumCheckoutAmountCents } from "@/lib/env";
 import { DiscoverySearchInput, NormalizedEstablishment, ServiceResult } from "@/lib/types";
 import { normalizeCode, normalizeCnpj, normalizeText, sha256, toTitleCase } from "@/lib/utils";
 import { buildLeadPricingSummary } from "@/lib/lead-pricing";
@@ -35,6 +35,7 @@ type PrepareSearchOrderInput = {
   capitalSocialMin: number | null;
   capitalSocialMax: number | null;
   activityStartYear: number | null;
+  activityStartYearExact: boolean;
 };
 
 
@@ -102,6 +103,20 @@ function hasAdvancedPublicFilters(input: Pick<PrepareSearchOrderInput, "requireE
     input.capitalSocialMax !== null ||
     input.activityStartYear !== null
   );
+}
+
+
+export function buildAutoRefinementMetadata(totalFound: number, threshold = getDiscoveryAutoRefinementThreshold()) {
+  const safeThreshold = Number.isFinite(threshold) && threshold > 0 ? Math.trunc(threshold) : 1500;
+  const shouldSuggest = totalFound > safeThreshold;
+  return {
+    autoRefinementSuggested: shouldSuggest,
+    autoRefinementReason: shouldSuggest
+      ? `Busca ampla com ${totalFound} resultados. Recomendamos recorte temporal por ano para melhorar a precisão.`
+      : "",
+    suggestedActivityStartYear: shouldSuggest ? new Date().getFullYear() - 2 : null,
+    suggestedActivityStartYearExact: shouldSuggest ? false : null
+  };
 }
 
 function normalizeStoredEstablishmentRow(row: Record<string, unknown>): NormalizedEstablishment {
@@ -358,6 +373,7 @@ function applyPublicFilters<
     if (input.activityStartYear !== null) {
       const openedAtYear = canonical.openedYear ?? extractActivityStartYearFromPayload(row.providerPayload);
       if (openedAtYear === null || openedAtYear < input.activityStartYear) return false;
+      if (input.activityStartYearExact && openedAtYear !== input.activityStartYear) return false;
     }
     return true;
   });
@@ -446,7 +462,8 @@ export async function prepareSearchOrder(
         simplesOnly: input.simplesOnly,
         capitalSocialMin: input.capitalSocialMin,
         capitalSocialMax: input.capitalSocialMax,
-        activityStartYear: input.activityStartYear
+        activityStartYear: input.activityStartYear,
+        activityStartYearExact: input.activityStartYearExact
       };
 
       const providerResponse =
@@ -524,6 +541,7 @@ export async function prepareSearchOrder(
       capitalSocialMin: input.capitalSocialMin,
       capitalSocialMax: input.capitalSocialMax,
       activityStartYear: input.activityStartYear,
+      activityStartYearExact: input.activityStartYearExact,
       filterLabels: buildPublicFilterLabels(input),
       providerTotalResults: providerTotalResults ?? null,
       fetchedResults,
@@ -538,6 +556,7 @@ export async function prepareSearchOrder(
         totalAmountCents: pricingTotalAmountCents
       }
     };
+    Object.assign(queryPayload, buildAutoRefinementMetadata(totalFound));
 
     const representativeLocation =
       searchTargets.find((item) => item.cityName.trim().length > 0) ??
@@ -676,7 +695,8 @@ function normalizeInput(input: DiscoverySearchInput) {
     simplesOnly: input.simplesOnly ?? false,
     capitalSocialMin: input.capitalSocialMin ?? null,
     capitalSocialMax: input.capitalSocialMax ?? null,
-    activityStartYear: input.activityStartYear ?? null
+    activityStartYear: input.activityStartYear ?? null,
+    activityStartYearExact: input.activityStartYearExact ?? false
   };
 }
 
@@ -696,7 +716,8 @@ function buildCacheKey(input: ReturnType<typeof normalizeInput>, provider: strin
       simplesOnly: input.simplesOnly,
       capitalSocialMin: input.capitalSocialMin,
       capitalSocialMax: input.capitalSocialMax,
-      activityStartYear: input.activityStartYear
+      activityStartYear: input.activityStartYear,
+      activityStartYearExact: input.activityStartYearExact
     })
   );
 }
@@ -809,7 +830,8 @@ export async function runDiscoverySearch(
       simplesOnly: normalizedInput.simplesOnly,
       capitalSocialMin: normalizedInput.capitalSocialMin,
       capitalSocialMax: normalizedInput.capitalSocialMax,
-      activityStartYear: normalizedInput.activityStartYear
+      activityStartYear: normalizedInput.activityStartYear,
+      activityStartYearExact: normalizedInput.activityStartYearExact
     });
 
     const cleanRows = dedupeNormalizedRows(filteredRows)
@@ -827,6 +849,7 @@ export async function runDiscoverySearch(
       mergedResults,
       hitFetchLimit
     };
+    Object.assign(queryPayload, buildAutoRefinementMetadata(totalFound));
 
     const establishmentsPayload = cleanRows.map((row) => ({
       cnpj: row.cnpj,
