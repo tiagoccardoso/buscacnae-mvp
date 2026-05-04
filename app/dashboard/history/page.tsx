@@ -63,6 +63,22 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     .order("created_at", { ascending: false })
     .limit(50);
 
+  const searchIds = (searches ?? []).map((search) => search.id);
+  const { data: orders } = searchIds.length
+    ? await admin
+        .from("search_access_orders")
+        .select("search_query_id, result_count, updated_at")
+        .in("search_query_id", searchIds)
+        .order("updated_at", { ascending: false })
+    : { data: [] as Array<{ search_query_id: string; result_count: number; updated_at: string }> };
+
+  const orderResultCountBySearchId = new Map<string, number>();
+  for (const order of orders ?? []) {
+    if (!orderResultCountBySearchId.has(order.search_query_id) && typeof order.result_count === "number") {
+      orderResultCountBySearchId.set(order.search_query_id, order.result_count);
+    }
+  }
+
   const feedback = (
     <>
       {statusMessage ? <div className="notice success">{statusMessage}</div> : null}
@@ -148,7 +164,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 <td>
                   {search.city_name}/{search.state_code}
                 </td>
-                <td>{search.total_results}</td>
+                <td>{orderResultCountBySearchId.get(search.id) ?? search.total_results}</td>
                 <td>{search.cached ? "cache" : "consulta"}</td>
                 <td>
                   <div className="history-row-actions">
