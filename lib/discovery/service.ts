@@ -935,7 +935,17 @@ export async function runDiscoverySearch(
             provider_payload: row.providerPayload
           };
         })
-        .filter(Boolean);
+        .filter(
+          (
+            item
+          ): item is {
+            search_query_id: string;
+            profile_id: string;
+            establishment_id: string;
+            position: number;
+            provider_payload: unknown;
+          } => item !== null
+        );
 
       if (searchResultsPayload.length > 0) {
         const { error: searchResultsError } = await admin.from("search_results").insert(searchResultsPayload);
