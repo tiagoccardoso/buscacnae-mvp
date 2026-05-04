@@ -33,9 +33,10 @@ function mapCasaDosDadosCompanySizes(values: string[] | undefined) {
   return Array.from(new Set(mapped));
 }
 
-function buildCasaDosDadosDateRange(year: number | null | undefined) {
+function buildCasaDosDadosDateRange(year: number | null | undefined, exactYear = false) {
   if (!year || !Number.isInteger(year)) return null;
-  return { data_minima: `${year}-01-01` };
+  if (!exactYear) return { data_minima: `${year}-01-01` };
+  return { data_minima: `${year}-01-01`, data_maxima: `${year}-12-31` };
 }
 
 function buildCasaDosDadosCapitalRange(min: number | null | undefined, max: number | null | undefined) {
@@ -269,7 +270,7 @@ export async function searchWithCasaDosDados(
     body.capital_social = capitalRange;
   }
 
-  const openedAtRange = buildCasaDosDadosDateRange(input.activityStartYear ?? null);
+  const openedAtRange = buildCasaDosDadosDateRange(input.activityStartYear ?? null, input.activityStartYearExact === true);
   if (openedAtRange) {
     body.data_abertura = openedAtRange;
   }

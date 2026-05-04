@@ -12,6 +12,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const params = searchParams ? await searchParams : {};
   const error = typeof params.error === "string" ? params.error : "";
   const reuse = typeof params.reuse === "string" ? params.reuse : "";
+  const suggestedYear = typeof params.suggestedYear === "string" ? params.suggestedYear : "";
+  const suggestedExact = params.suggestedExact === "1";
 
   let reuseDefaults = {};
   let reuseMessage = "";
@@ -35,6 +37,13 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         reuseMessage = "Filtros carregados a partir de uma busca anterior. Ajuste o que quiser antes de rodar novamente.";
       }
     }
+  }
+  if (suggestedYear) {
+    reuseDefaults = {
+      ...reuseDefaults,
+      defaultActivityStartYear: suggestedYear,
+      defaultActivityStartYearExact: suggestedExact
+    };
   }
 
   return (
