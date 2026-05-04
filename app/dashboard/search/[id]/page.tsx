@@ -120,6 +120,8 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   }
 
   const orderUnlocked = order?.status === "paid" || order?.status === "free";
+  const effectiveResultCount = order?.result_count ?? Math.max(0, Number(search.data.total_results ?? 0));
+
   const admin = createSupabaseAdminClient();
 
   const { data: rows } = await admin
@@ -166,7 +168,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                 {summary.headline}
               </h2>
               <span className="muted">
-                {search.data.total_results} resultados · {search.data.cached ? "cache" : "consulta nova"} · {formatDateTime(search.data.created_at)}
+                {effectiveResultCount} resultados · {search.data.cached ? "cache" : "consulta nova"} · {formatDateTime(search.data.created_at)}
               </span>
               {hitFetchLimit && fetchedResults !== null ? (
                 <span className="muted">{fetchedResults} carregados para esta operação.</span>
@@ -184,7 +186,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
           <div className="stat-grid stat-grid-premium">
             <div className="stat-box stat-box-premium">
-              <strong>{search.data.total_results}</strong>
+              <strong>{effectiveResultCount}</strong>
               <span className="muted">Empresas retornadas</span>
             </div>
             {hitFetchLimit && fetchedResults !== null ? (
