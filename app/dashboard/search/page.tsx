@@ -1,5 +1,6 @@
 import { SearchFilterBuilder } from "@/components/search-filter-builder";
 import { SearchImmersiveStage } from "@/components/search-immersive-stage";
+import { DashboardSearchSubmitButton } from "@/components/dashboard-search-submit-button";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSearchFilterDefaults } from "@/lib/search-filter-defaults";
 import { runSearchAction } from "./server-actions";
@@ -64,9 +65,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           <SearchFilterBuilder {...reuseDefaults} />
 
           <div className="home-form-actions home-form-actions-premium immersive-submit-row">
-            <button type="submit" className="button button-lg">
-              Ver volume e preço da busca
-            </button>
+            <DashboardSearchSubmitButton />
             <span className="tiny">
               O resultado fica salvo no dashboard e já mostra a rota de compra da lista para avançar sem sair do fluxo.
             </span>

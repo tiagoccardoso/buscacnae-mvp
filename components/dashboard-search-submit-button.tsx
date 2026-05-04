@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
-export function PublicSearchSubmitButton() {
+export function DashboardSearchSubmitButton() {
   const { pending } = useFormStatus();
   const [progress, setProgress] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -36,7 +36,7 @@ export function PublicSearchSubmitButton() {
   return (
     <div className="stack" style={{ gap: 10 }}>
       <button type="submit" className="button button-lg" disabled={pending} aria-disabled={pending}>
-        {pending ? "Pesquisando e calculando o valor da lista..." : "Ver volume e valor da lista"}
+        {pending ? "Buscando volume e preço..." : "Ver volume e preço da busca"}
       </button>
 
       {pending ? (
