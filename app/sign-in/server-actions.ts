@@ -1,13 +1,27 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth, ensureProfileForUser, getCurrentUser, isKnownAuthEmail } from "@/lib/auth/server";
+import { auth, ensureProfileForUser, getCurrentUser } from "@/lib/auth/server";
 import { claimSearchAccessOrderForUser, claimSearchAccessOrdersForUserByEmail } from "@/lib/billing";
+
+type AuthMode = "login" | "recover" | "signup";
+
+const PASSWORD_MIN_LENGTH = 8;
 
 function sanitizeNextPath(value: string | null) {
   if (!value) return "/dashboard";
   if (!value.startsWith("/") || value.startsWith("//")) return "/dashboard";
   return value;
+}
+
+function sanitizeMode(value: string | null): AuthMode {
+  if (value === "recover" || value === "signup") return value;
+  return "login";
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function buildSignInUrl(params: Record<string, string>) {
@@ -19,63 +33,166 @@ function buildSignInUrl(params: Record<string, string>) {
   return query ? `/sign-in?${query}` : "/sign-in";
 }
 
-export async function requestAccessCodeAction(formData: FormData) {
+function withAuthParams(formData: FormData, extras: Record<string, string>) {
+  const next = sanitizeNextPath(String(formData.get("next") ?? ""));
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const mode = sanitizeMode(String(formData.get("mode") ?? ""));
+
+  return buildSignInUrl({
+    mode,
+    next,
+    order_id: orderId,
+    ...extras
+  });
+}
+
+async function getRequestOrigin() {
+  const headersList = await headers();
+  const host = headersList.get("x-forwarded-host") ?? headersList.get("host");
+  const proto = headersList.get("x-forwarded-proto") ?? "http";
+
+  if (!host) return "http://localhost:3000";
+  return `${proto}://${host}`;
+}
+
+function getFriendlyAuthError(action: "login" | "signup") {
+  if (action === "signup") {
+    return "Não foi possível criar sua conta agora. Verifique os dados informados ou tente novamente em alguns instantes.";
+  }
+
+  return "Não foi possível entrar. Confira seu e-mail e senha e tente novamente.";
+}
+
+async function claimOrdersForAuthenticatedUser(orderId: string) {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  await ensureProfileForUser(user);
+
+  try {
+    await claimSearchAccessOrdersForUserByEmail({ userId: user.id, email: user.email });
+    if (orderId) {
+      await claimSearchAccessOrderForUser({ orderId, userId: user.id, email: user.email });
+    }
+  } catch (claimError) {
+    console.error("Falha ao vincular buscas públicas ao histórico após autenticação Neon Auth.", claimError);
+  }
+}
+
+export async function signInWithPasswordAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
   const next = sanitizeNextPath(String(formData.get("next") ?? ""));
   const orderId = String(formData.get("orderId") ?? "").trim();
 
-  if (!email) {
-    redirect("/sign-in?error=Informe um email válido.");
+  if (!email || !password) {
+    redirect(withAuthParams(formData, { mode: "login", email, error: "Informe e-mail e senha para entrar." }));
   }
 
-  const isAllowed = await isKnownAuthEmail(email);
-  if (!isAllowed) {
-    redirect("/sign-in?error=Use o mesmo e-mail cadastrado em uma compra ou perfil existente.");
+  if (!isValidEmail(email)) {
+    redirect(withAuthParams(formData, { mode: "login", email, error: "Informe um e-mail válido." }));
   }
 
-  const { error } = await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
+  const { error } = await auth.signIn.email({ email, password });
 
   if (error) {
-    redirect(`/sign-in?error=${encodeURIComponent(error.message || "Não foi possível enviar o código de acesso.")}`);
+    console.error("Falha no login por e-mail e senha com Neon Auth.", error);
+    redirect(withAuthParams(formData, { mode: "login", email, error: getFriendlyAuthError("login") }));
+  }
+
+  await claimOrdersForAuthenticatedUser(orderId);
+
+  redirect(next);
+}
+
+export async function requestPasswordRecoveryAction(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+
+  if (!email) {
+    redirect(withAuthParams(formData, { mode: "recover", error: "Informe seu e-mail para recuperar a senha." }));
+  }
+
+  if (!isValidEmail(email)) {
+    redirect(withAuthParams(formData, { mode: "recover", email, error: "Informe um e-mail válido." }));
+  }
+
+  const origin = await getRequestOrigin();
+  const resetUrl = `${origin}/api/auth/forget-password`;
+  const redirectTo = `${origin}/sign-in`;
+
+  try {
+    await fetch(resetUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, redirectTo }),
+      cache: "no-store"
+    });
+  } catch (error) {
+    console.error("Falha ao solicitar recuperação de senha via Neon Auth.", error);
   }
 
   redirect(
-    buildSignInUrl({
+    withAuthParams(formData, {
+      mode: "recover",
       email,
-      next,
-      order_id: orderId,
-      message: "Enviamos o código de acesso para o seu email."
+      message: "Se o e-mail estiver cadastrado, enviaremos as instruções para recuperar a senha em instantes."
     })
   );
 }
 
-export async function verifyAccessCodeAction(formData: FormData) {
+export async function signUpWithPasswordAction(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const otp = String(formData.get("otp") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const passwordConfirmation = String(formData.get("passwordConfirmation") ?? "");
   const next = sanitizeNextPath(String(formData.get("next") ?? ""));
   const orderId = String(formData.get("orderId") ?? "").trim();
 
-  if (!email || !otp) {
-    redirect(buildSignInUrl({ email, next, order_id: orderId, error: "Informe o e-mail e o código recebido." }));
+  if (!name) {
+    redirect(withAuthParams(formData, { mode: "signup", email, error: "Informe seu nome para criar a conta." }));
   }
 
-  const { error } = await auth.signIn.emailOtp({ email, otp });
+  if (!email || !isValidEmail(email)) {
+    redirect(withAuthParams(formData, { mode: "signup", email, error: "Informe um e-mail válido para criar a conta." }));
+  }
+
+  if (!password) {
+    redirect(withAuthParams(formData, { mode: "signup", email, error: "Informe uma senha para criar a conta." }));
+  }
+
+  if (!passwordConfirmation) {
+    redirect(withAuthParams(formData, { mode: "signup", email, error: "Confirme a senha para criar a conta." }));
+  }
+
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    redirect(withAuthParams(formData, { mode: "signup", email, error: `A senha deve ter pelo menos ${PASSWORD_MIN_LENGTH} caracteres.` }));
+  }
+
+  if (password !== passwordConfirmation) {
+    redirect(withAuthParams(formData, { mode: "signup", email, error: "A senha e a confirmação precisam ser iguais." }));
+  }
+
+  const { error } = await auth.signUp.email({ email, password, name });
+
   if (error) {
-    redirect(buildSignInUrl({ email, next, order_id: orderId, error: error.message || "Código inválido ou expirado." }));
+    console.error("Falha no cadastro por e-mail e senha com Neon Auth.", error);
+    redirect(withAuthParams(formData, { mode: "signup", email, error: getFriendlyAuthError("signup") }));
   }
 
   const user = await getCurrentUser();
   if (user) {
-    await ensureProfileForUser(user);
-    try {
-      await claimSearchAccessOrdersForUserByEmail({ userId: user.id, email: user.email });
-      if (orderId) {
-        await claimSearchAccessOrderForUser({ orderId, userId: user.id, email: user.email });
-      }
-    } catch (claimError) {
-      console.error("Falha ao vincular buscas públicas ao histórico após autenticação Neon Auth.", claimError);
-    }
+    await ensureProfileForUser({ ...user, name });
+    await claimOrdersForAuthenticatedUser(orderId);
+    redirect(next);
   }
 
-  redirect(next);
+  redirect(
+    buildSignInUrl({
+      mode: "login",
+      email,
+      next,
+      order_id: orderId,
+      message: "Conta criada com sucesso. Entre com seu e-mail e senha para acessar o dashboard."
+    })
+  );
 }
