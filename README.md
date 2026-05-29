@@ -4,7 +4,7 @@ Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cid
 
 - **Next.js 16** (App Router)
 - **Neon PostgreSQL** para banco de dados
-- **Neon Auth** para autenticação por e-mail/senha e sessão em cookie seguro
+- Autenticação própria com tabela `users`, hash de senha e sessão em cookie seguro
 - **Stripe Checkout + Customer Portal + Webhooks**
 - **CNPJ.ws Premium** ou **Casa dos Dados** como provedor de descoberta
 - **Cache próprio + histórico de consultas** no Neon PostgreSQL
@@ -14,7 +14,7 @@ Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cid
 ## O que está pronto
 
 - Landing page
-- Login por e-mail e senha via Neon Auth
+- Login por e-mail e senha usando a tabela `users`
 - Dashboard autenticado
 - Busca por CNAE + cidade/UF
 - Histórico de buscas
@@ -28,7 +28,7 @@ Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cid
 ## Requisitos
 
 - Node.js 22+
-- Projeto Neon com PostgreSQL e Neon Auth habilitados
+- Projeto Neon com PostgreSQL
 - Conta Stripe com preços criados
 - Conta no provedor de dados:
   - `CNPJ.ws Premium`, ou
@@ -38,24 +38,16 @@ Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cid
 
 O SQL do banco deve estar aplicado no Neon antes de rodar a aplicação. A aplicação usa `DATABASE_URL` e a camada `lib/db.ts` com `@neondatabase/serverless` para executar as queries.
 
-## 2) Configure autenticação no Neon Auth
+## 2) Configure autenticação própria
 
-No painel do Neon, habilite Auth na branch usada pela aplicação e configure:
+Execute o script `sql/neon_users_auth.sql` no Neon para criar a tabela `users` e preparar a tabela `profiles`.
 
-- `NEON_AUTH_BASE_URL`
+Configure:
+
+- `DATABASE_URL`
 - `NEON_AUTH_COOKIE_SECRET` com pelo menos 32 caracteres
 
-O endpoint `app/api/auth/[...path]/route.ts` publica os handlers do Neon Auth e o `middleware.ts` protege o dashboard.
-
-Se ao criar conta ou entrar aparecer `Invalid origin`, confira dois pontos:
-
-1. As origens confiáveis do Neon Auth são definidas em `lib/auth/neon.ts`, usando os domínios do BuscaCNAE, localhost e URLs padrão da Vercel.
-2. No painel do Neon Auth, adicione o mesmo domínio publicado em **Allowed origins / Authorized origins**.
-
-Exemplo:
-
-```bash
-```
+A autenticação não usa mais Neon Auth/Better Auth. O login consulta a tabela `users`, valida `password_hash` com `scrypt` e cria uma sessão por cookie seguro. A tabela `profiles` continua sendo usada para os dados complementares do usuário.
 
 ## 3) Configure a Stripe
 
@@ -120,17 +112,16 @@ npm run dev
 2. Importe na Vercel.
 3. Configure todas as variáveis do `.env.example`.
 4. Garanta que o webhook da Stripe aponte para a URL de produção.
-5. Configure os domínios e URLs de callback no Neon Auth.
+5. Execute `sql/neon_users_auth.sql` no Neon antes do primeiro cadastro.
 
 ## Fluxo de billing
 
-- Usuário entra com código de e-mail pelo Neon Auth
+- Usuário entra com e-mail e senha pela tabela `users`
 - Usuário escolhe plano
-- Stripe Checkout cria a assinatura
+- Stripe Checkout cria o pedido/compra
 - Webhook sincroniza assinatura no Neon PostgreSQL
-- Dashboard libera a busca quando houver assinatura ativa
-- Customer Portal permite gerenciar cobrança
-
+- Dashboard libera histórico/listas conforme pedidos pagos
+- 
 ## Estrutura principal
 
 ```text

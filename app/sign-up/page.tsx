@@ -35,12 +35,12 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
             <div className="signal-card">
               <span className="kicker">Perfil</span>
               <strong>Dados na tabela profiles</strong>
-              <span className="muted">O cadastro cria o usuário no Neon Auth e sincroniza os dados operacionais no perfil do sistema.</span>
+              <span className="muted">O cadastro cria o usuário na tabela users e sincroniza os dados operacionais em profiles.</span>
             </div>
             <div className="signal-card">
               <span className="kicker">Segurança</span>
-              <strong>Senha protegida pelo provedor</strong>
-              <span className="muted">A senha é gerenciada pelo Neon Auth, sem gravação em texto puro na aplicação.</span>
+              <strong>Senha protegida por hash seguro</strong>
+              <span className="muted">A senha é salva apenas como hash seguro na tabela users, nunca em texto puro.</span>
             </div>
           </div>
         </div>

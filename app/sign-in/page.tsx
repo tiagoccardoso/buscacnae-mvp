@@ -38,7 +38,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
             <div className="signal-card">
               <span className="kicker">Conta segura</span>
               <strong>Login por e-mail e senha</strong>
-              <span className="muted">Sua sessão é protegida pelo Neon Auth e mantida por cookie seguro.</span>
+              <span className="muted">Sua sessão é protegida por cookie seguro e senha criptografada.</span>
             </div>
             <div className="signal-card">
               <span className="kicker">Uso prático</span>

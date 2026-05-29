@@ -4,11 +4,11 @@
 
 - Docker Desktop instalado e em execução
 - Projeto extraído em uma pasta local
-- Credenciais configuradas no Neon PostgreSQL, Neon Auth, Stripe e provedor de descoberta
+- Credenciais configuradas no Neon PostgreSQL, autenticação própria, Stripe e provedor de descoberta
 
 ## 0) Antes de subir o container, prepare o Neon
 
-Aplique no Neon PostgreSQL o SQL do banco informado para o projeto e habilite o Neon Auth na branch usada pela aplicação.
+Aplique no Neon PostgreSQL o SQL do banco informado para o projeto e execute também `sql/neon_users_auth.sql` para criar a tabela users.
 
 Se você ainda não quiser testar cobrança no ambiente local, pode deixar `BYPASS_BILLING=true` no arquivo `.env`.
 
@@ -29,7 +29,6 @@ copy .env.docker.example .env
 Abra o arquivo `.env` e preencha os valores obrigatórios:
 
 - `DATABASE_URL`
-- `NEON_AUTH_BASE_URL`
 - `NEON_AUTH_COOKIE_SECRET`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
