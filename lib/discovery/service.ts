@@ -1,4 +1,4 @@
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createDbClient } from "@/lib/db-client";
 import { hydrateNormalizedEstablishment, normalizeCompanySizeInput, canonicalizeEstablishment, normalizedToPresenterSource, mergeNormalizedEstablishments } from "@/lib/establishment-canonical";
 import { getDiscoveryAutoRefinementThreshold, getDiscoveryCacheTtlHours, getDiscoveryProvider, getMinimumCheckoutAmountCents } from "@/lib/env";
 import { DiscoverySearchInput, NormalizedEstablishment, ServiceResult } from "@/lib/types";
@@ -160,8 +160,8 @@ function normalizeStoredEstablishmentRow(row: Record<string, unknown>): Normaliz
 }
 
 async function fetchStoredEstablishmentsForTarget(target: SearchTarget, cnaeCode: string) {
-  const admin = createSupabaseAdminClient();
-  let query = admin
+  const db = createDbClient();
+  let query = db
     .from("establishments")
     .select("cnpj, cnpj_root, company_name, trade_name, registration_status, opened_at, primary_cnae_code, primary_cnae_description, secondary_cnaes, legal_nature_code, legal_nature_description, company_size, simples_opt_in, mei_opt_in, capital_social, email, phone, website, country, state_code, city_name, city_ibge, neighborhood, cep, address_line, address_number, complement, provider_payload")
     .eq("state_code", target.stateCode)
@@ -263,12 +263,12 @@ async function fetchCitiesByState(stateCode: string): Promise<PublicCitySelectio
 async function mergeRowsWithStoredEstablishments(rows: NormalizedEstablishment[]) {
   if (rows.length === 0) return rows;
 
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const normalizedCnpjs = Array.from(new Set(rows.map((row) => normalizeCnpj(row.cnpj)).filter(Boolean)));
 
   if (normalizedCnpjs.length === 0) return rows;
 
-  const { data: storedRows, error } = await admin
+  const { data: storedRows, error } = await db
     .from("establishments")
     .select("cnpj, cnpj_root, company_name, trade_name, registration_status, opened_at, primary_cnae_code, primary_cnae_description, secondary_cnaes, legal_nature_code, legal_nature_description, company_size, simples_opt_in, mei_opt_in, capital_social, email, phone, website, country, state_code, city_name, city_ibge, neighborhood, cep, address_line, address_number, complement, provider_payload")
     .in("cnpj", normalizedCnpjs);
@@ -383,12 +383,12 @@ export async function prepareSearchOrder(
   input: PrepareSearchOrderInput
 ): Promise<ServiceResult<{ orderId: string; searchId: string; accessToken: string }>> {
   try {
-    const admin = createSupabaseAdminClient();
+    const db = createDbClient();
     const provider = getDiscoveryProvider();
     const email = input.email.trim().toLowerCase();
 
     if (input.profileId && email) {
-      const { error: profileError } = await admin.from("profiles").upsert(
+      const { error: profileError } = await db.from("profiles").upsert(
         {
           id: input.profileId,
           email
@@ -567,7 +567,7 @@ export async function prepareSearchOrder(
       };
     const cacheKey = sha256(JSON.stringify({ provider, queryPayload }));
 
-    const { data: insertedSearch, error: searchError } = await admin
+    const { data: insertedSearch, error: searchError } = await db
       .from("search_queries")
       .insert({
         profile_id: input.profileId,
@@ -620,13 +620,13 @@ export async function prepareSearchOrder(
         provider_payload: row.providerPayload
       }));
 
-      const { error: establishmentsError } = await admin.from("establishments").upsert(establishmentsPayload, { onConflict: "cnpj" });
+      const { error: establishmentsError } = await db.from("establishments").upsert(establishmentsPayload, { onConflict: "cnpj" });
 
       if (establishmentsError) {
         throw establishmentsError;
       }
 
-      const { data: storedEstablishments, error: storedEstablishmentsError } = await admin
+      const { data: storedEstablishments, error: storedEstablishmentsError } = await db
         .from("establishments")
         .select("id, cnpj")
         .in(
@@ -654,7 +654,7 @@ export async function prepareSearchOrder(
         .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
       if (searchResultsPayload.length > 0) {
-        const { error: searchResultsError } = await admin.from("search_results").insert(searchResultsPayload);
+        const { error: searchResultsError } = await db.from("search_results").insert(searchResultsPayload);
 
         if (searchResultsError) {
           throw searchResultsError;
@@ -736,11 +736,11 @@ export async function runDiscoverySearch(
       };
     }
 
-    const admin = createSupabaseAdminClient();
+    const db = createDbClient();
     const cacheKey = buildCacheKey(normalizedInput, provider);
 
     const now = new Date();
-    const { data: cached } = await admin
+    const { data: cached } = await db
       .from("provider_cache")
       .select("*")
       .eq("cache_key", cacheKey)
@@ -799,7 +799,7 @@ export async function runDiscoverySearch(
 
       const expiresAt = new Date(now.getTime() + getDiscoveryCacheTtlHours() * 60 * 60 * 1000);
 
-      await admin.from("provider_cache").upsert(
+      await db.from("provider_cache").upsert(
         {
           cache_key: cacheKey,
           provider,
@@ -883,13 +883,13 @@ export async function runDiscoverySearch(
     }));
 
     if (establishmentsPayload.length > 0) {
-      await admin.from("establishments").upsert(establishmentsPayload, {
+      await db.from("establishments").upsert(establishmentsPayload, {
         onConflict: "cnpj"
       });
     }
 
     const { data: storedEstablishments } = cleanRows.length
-      ? await admin
+      ? await db
           .from("establishments")
           .select("id, cnpj")
           .in(
@@ -900,7 +900,7 @@ export async function runDiscoverySearch(
 
     const establishmentMap = new Map((storedEstablishments ?? []).map((item) => [item.cnpj, item.id]));
 
-    const { data: insertedSearch, error: searchError } = await admin
+    const { data: insertedSearch, error: searchError } = await db
       .from("search_queries")
       .insert({
         profile_id: normalizedInput.profileId,
@@ -948,7 +948,7 @@ export async function runDiscoverySearch(
         );
 
       if (searchResultsPayload.length > 0) {
-        const { error: searchResultsError } = await admin.from("search_results").insert(searchResultsPayload);
+        const { error: searchResultsError } = await db.from("search_results").insert(searchResultsPayload);
 
         if (searchResultsError) {
           throw searchResultsError;

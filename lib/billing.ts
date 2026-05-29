@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import Stripe from "stripe";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createDbClient } from "@/lib/db-client";
 import { getStripeClient } from "@/lib/stripe";
 import { getMinimumCheckoutAmountCents } from "@/lib/env";
 import { readLeadPricingSummary, type LeadPricingSummary } from "@/lib/lead-pricing";
@@ -138,8 +138,8 @@ function serializeWebhookError(error: unknown) {
 }
 
 async function claimWebhookEventForProcessing(eventId: string, type: string, payload: unknown) {
-  const admin = createSupabaseAdminClient();
-  const { error: insertError } = await admin.from("stripe_webhook_events").insert({
+  const db = createDbClient();
+  const { error: insertError } = await db.from("stripe_webhook_events").insert({
     event_id: eventId,
     type,
     payload,
@@ -150,7 +150,7 @@ async function claimWebhookEventForProcessing(eventId: string, type: string, pay
     throw insertError;
   }
 
-  const { data: existingEvent, error: existingEventError } = await admin
+  const { data: existingEvent, error: existingEventError } = await db
     .from("stripe_webhook_events")
     .select("event_id, status, attempt_count")
     .eq("event_id", eventId)
@@ -166,7 +166,7 @@ async function claimWebhookEventForProcessing(eventId: string, type: string, pay
     return false;
   }
 
-  const { data: claimedEvent, error: claimError } = await admin
+  const { data: claimedEvent, error: claimError } = await db
     .from("stripe_webhook_events")
     .update({
       status: "processing",
@@ -188,8 +188,8 @@ async function claimWebhookEventForProcessing(eventId: string, type: string, pay
 }
 
 async function markWebhookEventProcessed(eventId: string) {
-  const admin = createSupabaseAdminClient();
-  const { error } = await admin
+  const db = createDbClient();
+  const { error } = await db
     .from("stripe_webhook_events")
     .update({
       status: "processed",
@@ -204,8 +204,8 @@ async function markWebhookEventProcessed(eventId: string) {
 }
 
 async function markWebhookEventFailed(eventId: string, errorToStore: unknown) {
-  const admin = createSupabaseAdminClient();
-  const { error } = await admin
+  const db = createDbClient();
+  const { error } = await db
     .from("stripe_webhook_events")
     .update({
       status: "failed",
@@ -225,8 +225,8 @@ export async function ensureStripeCustomerForUser({
   userId: string;
   email: string;
 }) {
-  const admin = createSupabaseAdminClient();
-  const { data: profile } = await admin.from("profiles").select("stripe_customer_id").eq("id", userId).maybeSingle();
+  const db = createDbClient();
+  const { data: profile } = await db.from("profiles").select("stripe_customer_id").eq("id", userId).maybeSingle();
 
   if (profile?.stripe_customer_id) {
     return String(profile.stripe_customer_id);
@@ -240,7 +240,7 @@ export async function ensureStripeCustomerForUser({
     }
   });
 
-  await admin
+  await db
     .from("profiles")
     .update({
       email,
@@ -253,7 +253,7 @@ export async function ensureStripeCustomerForUser({
 
 export async function syncStripeCustomer(customerId: string, customer?: Stripe.Customer) {
   const stripe = getStripeClient();
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const resolved = customer ?? ((await stripe.customers.retrieve(customerId)) as Stripe.Customer | Stripe.DeletedCustomer);
 
   if ("deleted" in resolved && resolved.deleted) {
@@ -266,7 +266,7 @@ export async function syncStripeCustomer(customerId: string, customer?: Stripe.C
     return;
   }
 
-  await admin
+  await db
     .from("profiles")
     .update({
       email: resolved.email ?? undefined,
@@ -276,14 +276,14 @@ export async function syncStripeCustomer(customerId: string, customer?: Stripe.C
 }
 
 export async function getSearchAccessOrderById(orderId: string): Promise<SearchAccessOrderRecord | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("search_access_orders").select("*").eq("id", orderId).maybeSingle();
+  const db = createDbClient();
+  const { data } = await db.from("search_access_orders").select("*").eq("id", orderId).maybeSingle();
   return (data as SearchAccessOrderRecord | null) ?? null;
 }
 
 export async function getSearchAccessOrderByAccessToken(accessToken: string): Promise<SearchAccessOrderRecord | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
+  const db = createDbClient();
+  const { data } = await db
     .from("search_access_orders")
     .select("*")
     .eq("access_token", accessToken)
@@ -292,8 +292,8 @@ export async function getSearchAccessOrderByAccessToken(accessToken: string): Pr
 }
 
 export async function getSearchAccessOrderByCheckoutSessionId(sessionId: string): Promise<SearchAccessOrderRecord | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
+  const db = createDbClient();
+  const { data } = await db
     .from("search_access_orders")
     .select("*")
     .eq("stripe_checkout_session_id", sessionId)
@@ -306,7 +306,7 @@ export async function claimSearchAccessOrderForUser(args: {
   userId: string;
   email: string;
 }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const normalizedEmail = args.email.trim().toLowerCase();
   const order = await getSearchAccessOrderById(args.orderId);
 
@@ -319,7 +319,7 @@ export async function claimSearchAccessOrderForUser(args: {
     return { claimed: false, reason: "email_mismatch" as const };
   }
 
-  const { data: search } = await admin
+  const { data: search } = await db
     .from("search_queries")
     .select("id, profile_id")
     .eq("id", order.search_query_id)
@@ -333,7 +333,7 @@ export async function claimSearchAccessOrderForUser(args: {
     return { claimed: false, reason: "search_already_claimed" as const };
   }
 
-  await admin.from("profiles").upsert(
+  await db.from("profiles").upsert(
     {
       id: args.userId,
       email: normalizedEmail
@@ -341,7 +341,7 @@ export async function claimSearchAccessOrderForUser(args: {
     { onConflict: "id" }
   );
 
-  await admin
+  await db
     .from("search_access_orders")
     .update({
       profile_id: args.userId,
@@ -349,14 +349,14 @@ export async function claimSearchAccessOrderForUser(args: {
     })
     .eq("id", order.id);
 
-  await admin
+  await db
     .from("search_queries")
     .update({
       profile_id: args.userId
     })
     .eq("id", order.search_query_id);
 
-  await admin
+  await db
     .from("search_results")
     .update({
       profile_id: args.userId
@@ -367,14 +367,14 @@ export async function claimSearchAccessOrderForUser(args: {
 }
 
 export async function claimSearchAccessOrdersForUserByEmail(args: { userId: string; email: string }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const normalizedEmail = args.email.trim().toLowerCase();
 
   if (!normalizedEmail) {
     return { claimedCount: 0 };
   }
 
-  await admin.from("profiles").upsert(
+  await db.from("profiles").upsert(
     {
       id: args.userId,
       email: normalizedEmail
@@ -382,7 +382,7 @@ export async function claimSearchAccessOrdersForUserByEmail(args: { userId: stri
     { onConflict: "id" }
   );
 
-  const { data: pendingOrders } = await admin
+  const { data: pendingOrders } = await db
     .from("search_access_orders")
     .select("id")
     .is("profile_id", null)
@@ -434,8 +434,8 @@ function resolveFiniteInteger(...values: Array<number | null | undefined>) {
 export async function getLatestSearchAccessOrderBySearchQueryId(
   searchQueryId: string
 ): Promise<SearchAccessOrderRecord | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
+  const db = createDbClient();
+  const { data } = await db
     .from("search_access_orders")
     .select("*")
     .eq("search_query_id", searchQueryId)
@@ -454,7 +454,7 @@ export async function ensureSearchAccessOrderForSearch(args: {
   totalResults?: number | null;
   pricingSummary?: LeadPricingSummary | null;
 }): Promise<SearchAccessOrderRecord> {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const normalizedEmail = typeof args.email === "string" ? args.email.trim().toLowerCase() : "";
   let resolvedProfileId = args.profileId ?? null;
   let resolvedProvider = args.provider ?? null;
@@ -470,7 +470,7 @@ export async function ensureSearchAccessOrderForSearch(args: {
   const existing = await getLatestSearchAccessOrderBySearchQueryId(args.searchQueryId);
 
   if (!resolvedProfileId || !resolvedProvider || resolvedTotalResults === null || !resolvedPricingSummary) {
-    const { data: search, error: searchError } = await admin
+    const { data: search, error: searchError } = await db
       .from("search_queries")
       .select("id, profile_id, provider, total_results, query_payload")
       .eq("id", args.searchQueryId)
@@ -502,7 +502,7 @@ export async function ensureSearchAccessOrderForSearch(args: {
   }
 
   if (resolvedTotalResults === null) {
-    const { count, error: countError } = await admin
+    const { count, error: countError } = await db
       .from("search_results")
       .select("id", { count: "exact", head: true })
       .eq("search_query_id", args.searchQueryId);
@@ -517,7 +517,7 @@ export async function ensureSearchAccessOrderForSearch(args: {
   let resolvedEmail = normalizedEmail;
 
   if (!resolvedEmail && resolvedProfileId) {
-    const { data: profile } = await admin
+    const { data: profile } = await db
       .from("profiles")
       .select("email")
       .eq("id", resolvedProfileId)
@@ -571,7 +571,7 @@ export async function ensureSearchAccessOrderForSearch(args: {
       return existing;
     }
 
-    const { data: updatedOrder, error: updateError } = await admin
+    const { data: updatedOrder, error: updateError } = await db
       .from("search_access_orders")
       .update(updates)
       .eq("id", existing.id)
@@ -587,7 +587,7 @@ export async function ensureSearchAccessOrderForSearch(args: {
 
   const now = new Date().toISOString();
   const accessToken = crypto.randomBytes(24).toString("hex");
-  const { data: insertedOrder, error: insertError } = await admin
+  const { data: insertedOrder, error: insertError } = await db
     .from("search_access_orders")
     .insert({
       access_token: accessToken,
@@ -661,8 +661,8 @@ export async function markSearchAccessOrderCheckoutCreated(args: {
   checkoutSessionId: string;
   checkoutUrl?: string | null;
 }) {
-  const admin = createSupabaseAdminClient();
-  await admin
+  const db = createDbClient();
+  await db
     .from("search_access_orders")
     .update({
       stripe_customer_id: args.customerId ?? null,
@@ -678,10 +678,10 @@ export async function markSearchAccessOrderPaid(args: {
   sessionId?: string | null;
   paymentIntentId?: string | null;
 }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const now = new Date().toISOString();
 
-  let query = admin
+  let query = db
     .from("search_access_orders")
     .update({
       status: "paid",
@@ -709,9 +709,9 @@ export async function markSearchAccessOrderPaymentFailed(args: {
   sessionId?: string | null;
   paymentIntentId?: string | null;
 }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
 
-  let query = admin
+  let query = db
     .from("search_access_orders")
     .update({
       status: "failed",
@@ -740,8 +740,8 @@ export async function getSearchAccessOrdersByIds(orderIds: string[]): Promise<Se
     return [];
   }
 
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("search_access_orders").select("*").in("id", normalizedIds);
+  const db = createDbClient();
+  const { data } = await db.from("search_access_orders").select("*").in("id", normalizedIds);
   return (data as SearchAccessOrderRecord[] | null) ?? [];
 }
 
@@ -756,10 +756,10 @@ export async function markSearchAccessOrdersPaidByIds(args: {
     return;
   }
 
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const now = new Date().toISOString();
 
-  await admin
+  await db
     .from("search_access_orders")
     .update({
       status: "paid",
@@ -782,9 +782,9 @@ export async function markSearchAccessOrdersPaymentFailedByIds(args: {
     return;
   }
 
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
 
-  await admin
+  await db
     .from("search_access_orders")
     .update({
       status: "failed",
@@ -796,14 +796,14 @@ export async function markSearchAccessOrdersPaymentFailedByIds(args: {
 }
 
 export async function getSearchAccessBulkOrderById(orderId: string): Promise<SearchAccessBulkOrderRecord | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("search_access_bulk_orders").select("*").eq("id", orderId).maybeSingle();
+  const db = createDbClient();
+  const { data } = await db.from("search_access_bulk_orders").select("*").eq("id", orderId).maybeSingle();
   return (data as SearchAccessBulkOrderRecord | null) ?? null;
 }
 
 export async function getSearchAccessBulkOrderByCheckoutSessionId(sessionId: string): Promise<SearchAccessBulkOrderRecord | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
+  const db = createDbClient();
+  const { data } = await db
     .from("search_access_bulk_orders")
     .select("*")
     .eq("stripe_checkout_session_id", sessionId)
@@ -840,8 +840,8 @@ export async function createSearchAccessBulkOrder(args: {
 
   const totalAmountCents = normalizedOrders.reduce((acc, order) => acc + Math.max(0, order.total_amount_cents), 0);
   const accessToken = crypto.randomBytes(24).toString("hex");
-  const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
+  const db = createDbClient();
+  const { data, error } = await db
     .from("search_access_bulk_orders")
     .insert({
       access_token: accessToken,
@@ -871,8 +871,8 @@ export async function markSearchAccessBulkOrderCheckoutCreated(args: {
   checkoutSessionId: string;
   checkoutUrl?: string | null;
 }) {
-  const admin = createSupabaseAdminClient();
-  const { data: updatedBulkOrder, error } = await admin
+  const db = createDbClient();
+  const { data: updatedBulkOrder, error } = await db
     .from("search_access_bulk_orders")
     .update({
       stripe_customer_id: args.customerId ?? null,
@@ -900,9 +900,9 @@ export async function markSearchAccessBulkOrderPaid(args: {
   sessionId?: string | null;
   paymentIntentId?: string | null;
 }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const now = new Date().toISOString();
-  let query = admin
+  let query = db
     .from("search_access_bulk_orders")
     .update({
       status: "paid",
@@ -930,8 +930,8 @@ export async function markSearchAccessBulkOrderPaymentFailed(args: {
   sessionId?: string | null;
   paymentIntentId?: string | null;
 }) {
-  const admin = createSupabaseAdminClient();
-  let query = admin
+  const db = createDbClient();
+  let query = db
     .from("search_access_bulk_orders")
     .update({
       status: "failed",
@@ -1001,16 +1001,16 @@ async function unlockSearchAccessBulkOrderFromCheckoutSession(session: Stripe.Ch
   });
 }
 export async function getSearchAiFormatOrderById(orderId: string): Promise<SearchAiFormatOrderRecord | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin.from("search_ai_format_orders").select("*").eq("id", orderId).maybeSingle();
+  const db = createDbClient();
+  const { data } = await db.from("search_ai_format_orders").select("*").eq("id", orderId).maybeSingle();
   return (data as SearchAiFormatOrderRecord | null) ?? null;
 }
 
 export async function getSearchAiFormatOrderBySearchQueryId(
   searchQueryId: string
 ): Promise<SearchAiFormatOrderRecord | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
+  const db = createDbClient();
+  const { data } = await db
     .from("search_ai_format_orders")
     .select("*")
     .eq("search_query_id", searchQueryId)
@@ -1021,8 +1021,8 @@ export async function getSearchAiFormatOrderBySearchQueryId(
 export async function getSearchAiFormatOrderByCheckoutSessionId(
   sessionId: string
 ): Promise<SearchAiFormatOrderRecord | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
+  const db = createDbClient();
+  const { data } = await db
     .from("search_ai_format_orders")
     .select("*")
     .eq("stripe_checkout_session_id", sessionId)
@@ -1035,7 +1035,7 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
   profileId?: string | null;
   email?: string | null;
 }): Promise<SearchAiFormatOrderRecord> {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const normalizedEmail = typeof args.email === "string" ? args.email.trim().toLowerCase() : "";
   let resolvedProfileId = args.profileId ?? null;
   let resolvedEmail = normalizedEmail;
@@ -1044,7 +1044,7 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
   const existing = await getSearchAiFormatOrderBySearchQueryId(args.searchQueryId);
 
   if (!resolvedProfileId || !resolvedEmail) {
-    const { data: search, error: searchError } = await admin
+    const { data: search, error: searchError } = await db
       .from("search_queries")
       .select("profile_id, total_results")
       .eq("id", args.searchQueryId)
@@ -1059,7 +1059,7 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
   }
 
   if (totalLeads <= 0) {
-    const { data: search } = await admin
+    const { data: search } = await db
       .from("search_queries")
       .select("total_results")
       .eq("id", args.searchQueryId)
@@ -1069,7 +1069,7 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
   }
 
   if (totalLeads <= 0) {
-    const { count } = await admin
+    const { count } = await db
       .from("search_results")
       .select("id", { count: "exact", head: true })
       .eq("search_query_id", args.searchQueryId);
@@ -1078,7 +1078,7 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
   }
 
   if (!resolvedEmail && resolvedProfileId) {
-    const { data: profile } = await admin
+    const { data: profile } = await db
       .from("profiles")
       .select("email")
       .eq("id", resolvedProfileId)
@@ -1112,7 +1112,7 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
       return existing;
     }
 
-    const { data: updatedOrder, error: updateError } = await admin
+    const { data: updatedOrder, error: updateError } = await db
       .from("search_ai_format_orders")
       .update(updates)
       .eq("id", existing.id)
@@ -1127,7 +1127,7 @@ export async function ensureSearchAiFormatOrderForSearch(args: {
   }
 
   const accessToken = crypto.randomBytes(24).toString("hex");
-  const { data: insertedOrder, error: insertError } = await admin
+  const { data: insertedOrder, error: insertError } = await db
     .from("search_ai_format_orders")
     .insert({
       access_token: accessToken,
@@ -1204,12 +1204,12 @@ export function readSearchAiFormatProcessingStatus(order: SearchAiFormatOrderRec
 }
 
 export async function markSearchAiFormatOrderProcessingStarted(args: { orderId: string }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const now = new Date().toISOString();
   const currentOrder = await getSearchAiFormatOrderById(args.orderId);
   const nextAttempts = Math.max(0, Number(currentOrder?.format_attempts ?? 0)) + 1;
 
-  const { data: startedOrder, error } = await admin
+  const { data: startedOrder, error } = await db
     .from("search_ai_format_orders")
     .update({
       format_status: "processing",
@@ -1248,9 +1248,9 @@ export async function markSearchAiFormatOrderProcessingStarted(args: { orderId: 
 }
 
 export async function markSearchAiFormatOrderReady(args: { orderId: string; payload: unknown }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const now = new Date().toISOString();
-  await admin
+  await db
     .from("search_ai_format_orders")
     .update({
       formatted_payload: args.payload,
@@ -1269,9 +1269,9 @@ export async function markSearchAiFormatOrderReady(args: { orderId: string; payl
 }
 
 export async function markSearchAiFormatOrderError(args: { orderId: string; error: string }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const now = new Date().toISOString();
-  await admin
+  await db
     .from("search_ai_format_orders")
     .update({
       format_status: "error",
@@ -1285,7 +1285,7 @@ export async function markSearchAiFormatOrderError(args: { orderId: string; erro
 }
 
 export async function resetSearchAiFormatOrderProcessing(args: { orderId: string; clearPayload?: boolean }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const updates: Record<string, unknown> = {
     format_status: "idle",
     format_started_at: null,
@@ -1305,16 +1305,16 @@ export async function resetSearchAiFormatOrderProcessing(args: { orderId: string
     updates.formatted_at = null;
   }
 
-  await admin
+  await db
     .from("search_ai_format_orders")
     .update(updates)
     .eq("id", args.orderId);
 }
 
 export async function heartbeatSearchAiFormatOrder(args: { orderId: string; lockToken: string }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const now = new Date().toISOString();
-  await admin
+  await db
     .from("search_ai_format_orders")
     .update({
       format_last_heartbeat_at: now
@@ -1324,14 +1324,14 @@ export async function heartbeatSearchAiFormatOrder(args: { orderId: string; lock
 }
 
 export async function claimSearchAiFormatOrderProcessingLock(args: { orderId: string; staleAfterMinutes?: number }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const now = new Date();
   const nowIso = now.toISOString();
   const staleAfterMinutes = Math.max(1, Math.trunc(args.staleAfterMinutes ?? 10));
   const staleBefore = new Date(now.getTime() - staleAfterMinutes * 60_000).toISOString();
   const lockToken = crypto.randomUUID();
 
-  const { data, error } = await admin
+  const { data, error } = await db
     .from("search_ai_format_orders")
     .update({
       format_lock_token: lockToken,
@@ -1365,8 +1365,8 @@ export async function claimSearchAiFormatOrderProcessingLock(args: { orderId: st
 }
 
 export async function releaseSearchAiFormatOrderProcessingLock(args: { orderId: string; lockToken: string }) {
-  const admin = createSupabaseAdminClient();
-  await admin
+  const db = createDbClient();
+  await db
     .from("search_ai_format_orders")
     .update({
       format_lock_token: null,
@@ -1383,9 +1383,9 @@ export async function saveSearchAiFormatJobProgress(args: {
   progress: number;
   jobPayload: unknown;
 }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const now = new Date().toISOString();
-  const { error } = await admin
+  const { error } = await db
     .from("search_ai_format_orders")
     .update({
       format_cursor: Math.max(0, Math.trunc(args.cursor)),
@@ -1408,8 +1408,8 @@ export async function markSearchAiFormatOrderCheckoutCreated(args: {
   checkoutSessionId: string;
   checkoutUrl?: string | null;
 }) {
-  const admin = createSupabaseAdminClient();
-  await admin
+  const db = createDbClient();
+  await db
     .from("search_ai_format_orders")
     .update({
       stripe_customer_id: args.customerId ?? null,
@@ -1425,10 +1425,10 @@ export async function markSearchAiFormatOrderPaid(args: {
   sessionId?: string | null;
   paymentIntentId?: string | null;
 }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const now = new Date().toISOString();
 
-  let query = admin
+  let query = db
     .from("search_ai_format_orders")
     .update({
       status: "paid",
@@ -1455,9 +1455,9 @@ export async function markSearchAiFormatOrderPaymentFailed(args: {
   sessionId?: string | null;
   paymentIntentId?: string | null;
 }) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
 
-  let query = admin
+  let query = db
     .from("search_ai_format_orders")
     .update({
       status: "failed",

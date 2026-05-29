@@ -1,13 +1,10 @@
 import Link from "next/link";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/server";
 import { getAppName } from "@/lib/env";
 import { SignOutButton } from "@/components/sign-out-button";
 
 export async function SiteHeader() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   return (
     <header className="container nav-shell">

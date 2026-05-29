@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser } from "@/lib/auth/server";
+import { createDbClient } from "@/lib/db-client";
 import { EmptyState } from "@/components/empty-state";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -40,10 +40,7 @@ function readErrorMessage(error: string) {
 }
 
 export default async function HistoryPage({ searchParams }: HistoryPageProps) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     return null;
@@ -55,8 +52,8 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const statusMessage = readStatusMessage(status);
   const errorMessage = readErrorMessage(error);
 
-  const admin = createSupabaseAdminClient();
-  const { data: searches } = await admin
+  const db = createDbClient();
+  const { data: searches } = await db
     .from("search_queries")
     .select("*")
     .eq("profile_id", user.id)
@@ -65,7 +62,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
 
   const searchIds = (searches ?? []).map((search) => search.id);
   const { data: orders } = searchIds.length
-    ? await admin
+    ? await db
         .from("search_access_orders")
         .select("search_query_id, result_count, updated_at")
         .in("search_query_id", searchIds)

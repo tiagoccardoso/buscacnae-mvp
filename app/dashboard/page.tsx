@@ -1,25 +1,22 @@
 import Link from "next/link";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser } from "@/lib/auth/server";
+import { createDbClient } from "@/lib/db-client";
 import { formatDateTime } from "@/lib/format";
 import { DashboardImpactVisuals } from "@/components/dashboard-impact-visuals";
 
 export default async function DashboardPage() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     return null;
   }
 
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const [{ count: searchCount }, { count: leadCount }, { count: orderCount }, latestSearch] = await Promise.all([
-    admin.from("search_queries").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
-    admin.from("saved_establishments").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
-    admin.from("search_access_orders").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
-    admin
+    db.from("search_queries").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
+    db.from("saved_establishments").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
+    db.from("search_access_orders").select("*", { count: "exact", head: true }).eq("profile_id", user.id),
+    db
       .from("search_queries")
       .select("id, cnae_code, city_name, state_code, created_at, total_results")
       .eq("profile_id", user.id)
@@ -30,7 +27,7 @@ export default async function DashboardPage() {
 
   const latestSearchId = latestSearch.data?.id ?? null;
   const latestOrder = latestSearchId
-    ? await admin
+    ? await db
         .from("search_access_orders")
         .select("result_count")
         .eq("search_query_id", latestSearchId)

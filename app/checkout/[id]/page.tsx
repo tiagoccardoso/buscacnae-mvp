@@ -5,8 +5,8 @@ import { getSearchAccessOrderById } from "@/lib/billing";
 import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
 import { getSearchSummary } from "@/lib/search-summary";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createDbClient } from "@/lib/db-client";
+import { getCurrentUser } from "@/lib/auth/server";
 import { formatCnpj, formatMoney } from "@/lib/format";
 import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
 import { extractLeadContactSignals } from "@/lib/lead-pricing";
@@ -38,15 +38,12 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   }
 
   const currentOrder = order as NonNullable<typeof order>;
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   const resolvedEmail = String(user?.email ?? currentOrder.email ?? "").trim().toLowerCase();
   const needsEmailBeforeCheckout = currentOrder.status !== "paid" && currentOrder.status !== "free" && currentOrder.result_count > 0 && !resolvedEmail;
 
-  const admin = createSupabaseAdminClient();
-  const { data: search } = await admin
+  const db = createDbClient();
+  const { data: search } = await db
     .from("search_queries")
     .select("cnae_code, city_name, state_code, total_results, query_payload")
     .eq("id", currentOrder.search_query_id)
@@ -64,7 +61,7 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
   const hitFetchLimit = queryPayload.hitFetchLimit === true;
   const pricingSummary = readLeadPricingSummary((search?.query_payload as Record<string, unknown> | null)?.leadPricingSummary);
 
-  const { data: rows } = await admin
+  const { data: rows } = await db
     .from("search_results")
     .select("position, provider_payload, establishments(*)")
     .eq("search_query_id", currentOrder.search_query_id)

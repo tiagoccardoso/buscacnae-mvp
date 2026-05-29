@@ -4,15 +4,11 @@
 
 - Docker Desktop instalado e em execução
 - Projeto extraído em uma pasta local
-- Credenciais configuradas no Supabase, Stripe e provedor de descoberta
+- Credenciais configuradas no Neon PostgreSQL, Neon Auth, Stripe e provedor de descoberta
 
-## 0) Antes de subir o container, prepare o Supabase
+## 0) Antes de subir o container, prepare o Neon
 
-No projeto do Supabase, rode o SQL abaixo no SQL Editor:
-
-```text
-supabase/migrations/20260331_init.sql
-```
+Aplique no Neon PostgreSQL o SQL do banco informado para o projeto e habilite o Neon Auth na branch usada pela aplicação.
 
 Se você ainda não quiser testar cobrança no ambiente local, pode deixar `BYPASS_BILLING=true` no arquivo `.env`.
 
@@ -32,9 +28,9 @@ copy .env.docker.example .env
 
 Abra o arquivo `.env` e preencha os valores obrigatórios:
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `DATABASE_URL`
+- `NEON_AUTH_BASE_URL`
+- `NEON_AUTH_COOKIE_SECRET`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_PRO_MONTHLY`
@@ -94,7 +90,6 @@ docker compose up --build -d
 ```cmd
 docker compose config
 ```
-
 
 ## 12) Testar novamente depois de parar tudo
 

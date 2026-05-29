@@ -1,10 +1,9 @@
-import type { NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
+import { auth } from "@/lib/auth/neon";
 
-export async function middleware(request: NextRequest) {
-  return updateSession(request);
-}
+export default auth.middleware({
+  loginUrl: "/sign-in"
+});
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"]
+  matcher: ["/dashboard/:path*"]
 };

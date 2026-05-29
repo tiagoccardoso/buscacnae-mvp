@@ -2,8 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { EstablishmentDetails } from "@/components/establishment-details";
 import { fetchCnpjWsCompanyByCnpj } from "@/lib/discovery/providers/cnpjws";
 import { formatCnpj } from "@/lib/format";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createDbClient } from "@/lib/db-client";
+import { getCurrentUser } from "@/lib/auth/server";
 import { NormalizedEstablishment } from "@/lib/types";
 
 type CompanyPageProps = {
@@ -158,10 +158,8 @@ function buildEstablishmentUpdatePayload(row: EstablishmentRow) {
 
 export default async function CompanyPage({ params }: CompanyPageProps) {
   const { cnpj } = await params;
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     redirect("/sign-in");
@@ -169,7 +167,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
 
   const normalizedCnpj = decodeURIComponent(cnpj);
 
-  const { data } = await supabase
+  const { data } = await db
     .from("establishments")
     .select("*")
     .eq("cnpj", normalizedCnpj)
@@ -187,8 +185,8 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
       if (detail.normalized) {
         company = mergeEstablishmentRow(company, detail.normalized, detail.raw);
 
-        const admin = createSupabaseAdminClient();
-        const { error } = await admin
+        const db = createDbClient();
+        const { error } = await db
           .from("establishments")
           .update(buildEstablishmentUpdatePayload(company))
           .eq("id", company.id);

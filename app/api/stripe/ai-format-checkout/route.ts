@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/server";
+import { createDbClient } from "@/lib/db-client";
 import { getBaseUrl } from "@/lib/env";
 import { createOneTimeCheckoutSession } from "@/lib/stripe";
 import { getAiFormattingPriceSummary } from "@/lib/ai-format-pricing";
@@ -22,16 +23,14 @@ export async function POST(request: Request) {
     return NextResponse.redirect(new URL("/dashboard/search?error=Busca não informada.", getBaseUrl()), 303);
   }
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     return NextResponse.redirect(new URL("/sign-in?message=Faça login para continuar.", getBaseUrl()), 303);
   }
 
-  const { data: search } = await supabase
+  const { data: search } = await db
     .from("search_queries")
     .select("id, profile_id, provider, total_results")
     .eq("id", searchId)

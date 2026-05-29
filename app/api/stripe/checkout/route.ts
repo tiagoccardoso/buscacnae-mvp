@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser } from "@/lib/auth/server";
+import { createDbClient } from "@/lib/db-client";
 import { getBaseUrl } from "@/lib/env";
 import { createOneTimeCheckoutSession } from "@/lib/stripe";
 import {
@@ -20,11 +20,8 @@ export async function POST(request: Request) {
     return NextResponse.redirect(new URL("/?error=Pedido não informado.", getBaseUrl()), 303);
   }
 
-  const supabase = await createSupabaseServerClient();
-  const admin = createSupabaseAdminClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   const order = await getSearchAccessOrderById(orderId);
 
@@ -46,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   if (order.email !== resolvedEmail || (user?.id && order.profile_id !== user.id)) {
-    await admin
+    await db
       .from("search_access_orders")
       .update({
         email: resolvedEmail,

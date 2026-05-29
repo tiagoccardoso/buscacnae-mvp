@@ -1,5 +1,5 @@
 import { getOpenAiApiKey, getOpenAiModel } from "@/lib/env";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createDbClient } from "@/lib/db-client";
 import { formatCnpj, formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { getSearchSummary } from "@/lib/search-summary";
 import { buildEstablishmentDetailSections } from "@/lib/establishment-detail-sections";
@@ -1005,10 +1005,10 @@ function normalizeAiFormattingJobState(value: unknown): SearchAiFormattingJobSta
 }
 
 async function buildSearchAiFormattingJobPlan(order: SearchAiFormatOrderRecord) {
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const [{ data: search }, { data: rows }] = await Promise.all([
-    admin.from("search_queries").select("*").eq("id", order.search_query_id).maybeSingle(),
-    admin
+    db.from("search_queries").select("*").eq("id", order.search_query_id).maybeSingle(),
+    db
       .from("search_results")
       .select("position, provider_payload, establishments(*)")
       .eq("search_query_id", order.search_query_id)
@@ -1168,8 +1168,8 @@ export async function ensureSearchAiFormattingPayload(order: SearchAiFormatOrder
     if (result.done) break;
   }
 
-  const admin = createSupabaseAdminClient();
-  const { data: updated } = await admin.from("search_ai_format_orders").select("*").eq("id", order.id).maybeSingle();
+  const db = createDbClient();
+  const { data: updated } = await db.from("search_ai_format_orders").select("*").eq("id", order.id).maybeSingle();
   if (updated?.formatted_payload && isStoredPayload(updated.formatted_payload)) {
     return updated.formatted_payload;
   }

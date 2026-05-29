@@ -5,7 +5,7 @@ import { buildDisplayEstablishment, getEstablishmentPayload } from "@/lib/establ
 import { createXlsxWorkbook } from "@/lib/export/xlsx";
 import { buildEstablishmentDetailSections } from "@/lib/establishment-detail-sections";
 import { formatCnpj, formatDate, formatMoney } from "@/lib/format";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createDbClient } from "@/lib/db-client";
 import { extractSingleObject } from "@/lib/utils";
 
 export const runtime = "nodejs";
@@ -119,14 +119,14 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
     return new NextResponse("A lista ainda não foi liberada para download.", { status: 403 });
   }
 
-  const admin = createSupabaseAdminClient();
+  const db = createDbClient();
   const [{ data: search }, { data: rows }] = await Promise.all([
-    admin
+    db
       .from("search_queries")
       .select("cnae_code, city_name, state_code, created_at")
       .eq("id", order.search_query_id)
       .maybeSingle(),
-    admin
+    db
       .from("search_results")
       .select("position, establishment_id, provider_payload, establishments(*)")
       .eq("search_query_id", order.search_query_id)

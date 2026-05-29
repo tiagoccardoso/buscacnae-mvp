@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser } from "@/lib/auth/server";
+import { createDbClient } from "@/lib/db-client";
 import { EmptyState } from "@/components/empty-state";
 import { LeadToggleForm } from "@/components/lead-toggle-form";
 import { FormattedDownloadButtons } from "@/components/formatted-download-buttons";
@@ -61,16 +61,14 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const aiFormatState = typeof resolvedSearchParams.ai_format === "string" ? resolvedSearchParams.ai_format : "";
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     redirect("/sign-in");
   }
 
-  const search = await supabase
+  const search = await db
     .from("search_queries")
     .select("*")
     .eq("id", id)
@@ -122,9 +120,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const orderUnlocked = order?.status === "paid" || order?.status === "free";
   const effectiveResultCount = order?.result_count ?? Math.max(0, Number(search.data.total_results ?? 0));
 
-  const admin = createSupabaseAdminClient();
-
-  const { data: rows } = await admin
+  const { data: rows } = await db
     .from("search_results")
     .select("position, establishment_id, provider_payload, establishments(*)")
     .eq("search_query_id", id)
@@ -132,7 +128,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
   const establishmentIds = (rows ?? []).map((row) => row.establishment_id);
   const { data: savedRows } = establishmentIds.length
-    ? await supabase
+    ? await db
         .from("saved_establishments")
         .select("establishment_id")
         .eq("profile_id", user.id)

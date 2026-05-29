@@ -11,7 +11,7 @@ import { UseCasesSection } from "@/components/use-cases-section";
 import { startPublicSearchAction } from "@/app/home-actions";
 import { buildPageMetadata } from "@/lib/seo";
 import { homeHighlights, minimumCheckoutAmount, pricingTiers } from "@/lib/site-content";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createDbClient } from "@/lib/db-client";
 import { getSearchFilterDefaults } from "@/lib/search-filter-defaults";
 
 export const metadata = buildPageMetadata({
@@ -85,8 +85,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   let reuseMessage = "";
 
   if (reuse) {
-    const admin = createSupabaseAdminClient();
-    const { data: reusedSearch } = await admin
+    const db = createDbClient();
+    const { data: reusedSearch } = await db
       .from("search_queries")
       .select("query_payload")
       .eq("id", reuse)

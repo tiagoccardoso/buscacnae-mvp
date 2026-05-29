@@ -1,7 +1,8 @@
 import { SearchFilterBuilder } from "@/components/search-filter-builder";
 import { SearchImmersiveStage } from "@/components/search-immersive-stage";
 import { DashboardSearchSubmitButton } from "@/components/dashboard-search-submit-button";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/server";
+import { createDbClient } from "@/lib/db-client";
 import { getSearchFilterDefaults } from "@/lib/search-filter-defaults";
 import { runSearchAction } from "./server-actions";
 
@@ -18,15 +19,13 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
   let reuseDefaults = {};
   let reuseMessage = "";
+  const db = createDbClient();
 
   if (reuse) {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
+    const user = await getCurrentUser();
 
     if (user) {
-      const { data: reusedSearch } = await supabase
+      const { data: reusedSearch } = await db
         .from("search_queries")
         .select("query_payload")
         .eq("id", reuse)

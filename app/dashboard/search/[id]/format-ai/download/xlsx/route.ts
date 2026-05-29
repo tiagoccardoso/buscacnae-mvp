@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/server";
+import { createDbClient } from "@/lib/db-client";
 import {
   ensureSearchAccessOrderForSearch,
   getSearchAiFormatOrderBySearchQueryId,
@@ -29,16 +30,14 @@ function sanitizeFilePart(value: string) {
 
 export async function GET(_request: Request, { params }: RouteProps) {
   const { id } = await params;
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     return new NextResponse("Faça login para baixar sua lista pronta para prospecção.", { status: 401 });
   }
 
-  const { data: search } = await supabase
+  const { data: search } = await db
     .from("search_queries")
     .select("id, profile_id, provider, total_results, cnae_code, city_name, state_code")
     .eq("id", id)
@@ -87,7 +86,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
     );
   }
 
-  const { data: rows } = await supabase
+  const { data: rows } = await db
     .from("search_results")
     .select("position, provider_payload, establishments(*)")
     .eq("search_query_id", id)
