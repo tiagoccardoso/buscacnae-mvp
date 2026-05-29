@@ -27,11 +27,12 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
 export async function ensureProfileForUser(user: CurrentUser) {
   await sql`
-    INSERT INTO profiles (id, email, full_name)
-    VALUES (${user.id}, ${user.email}, ${user.name ?? null})
+    INSERT INTO profiles (id, email, full_name, updated_at)
+    VALUES (${user.id}, ${user.email}, ${user.name ?? null}, NOW())
     ON CONFLICT (id) DO UPDATE
     SET email = EXCLUDED.email,
-        full_name = COALESCE(EXCLUDED.full_name, profiles.full_name)
+        full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
+        updated_at = NOW()
   `;
 }
 
