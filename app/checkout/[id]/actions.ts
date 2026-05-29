@@ -41,7 +41,7 @@ export async function prepareCheckoutIdentityAction(formData: FormData) {
   const { error } = await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
 
   if (error) {
-    redirect(`/checkout/${order.id}?reason=${encodeURIComponent(error.message)}`);
+    redirect(`/checkout/${order.id}?reason=${encodeURIComponent(error.message || "Não foi possível enviar o código de acesso.")}`);
   }
 
   redirect(`/sign-in?email=${encodeURIComponent(email)}&order_id=${encodeURIComponent(order.id)}&next=${encodeURIComponent("/dashboard/history?status=busca-vinculada")}&message=${encodeURIComponent("Enviamos o código de acesso para vincular sua busca.")}`);

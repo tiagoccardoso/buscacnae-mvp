@@ -36,7 +36,7 @@ export async function requestAccessCodeAction(formData: FormData) {
   const { error } = await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
 
   if (error) {
-    redirect(`/sign-in?error=${encodeURIComponent(error.message)}`);
+    redirect(`/sign-in?error=${encodeURIComponent(error.message || "Não foi possível enviar o código de acesso.")}`);
   }
 
   redirect(
