@@ -4,7 +4,7 @@ Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cid
 
 - **Next.js 16** (App Router)
 - **Neon PostgreSQL** para banco de dados
-- **Neon Auth** para autenticação por e-mail/código e sessão em cookie seguro
+- **Neon Auth** para autenticação por e-mail/senha e sessão em cookie seguro
 - **Stripe Checkout + Customer Portal + Webhooks**
 - **CNPJ.ws Premium** ou **Casa dos Dados** como provedor de descoberta
 - **Cache próprio + histórico de consultas** no Neon PostgreSQL
@@ -14,7 +14,7 @@ Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cid
 ## O que está pronto
 
 - Landing page
-- Login por código de e-mail via Neon Auth
+- Login por e-mail e senha via Neon Auth
 - Dashboard autenticado
 - Busca por CNAE + cidade/UF
 - Histórico de buscas
@@ -44,8 +44,20 @@ No painel do Neon, habilite Auth na branch usada pela aplicação e configure:
 
 - `NEON_AUTH_BASE_URL`
 - `NEON_AUTH_COOKIE_SECRET` com pelo menos 32 caracteres
+- `NEON_AUTH_TRUSTED_ORIGINS` com os domínios autorizados, por exemplo: `http://localhost:3000,https://seu-dominio.com.br`
 
 O endpoint `app/api/auth/[...path]/route.ts` publica os handlers do Neon Auth e o `middleware.ts` protege o dashboard.
+
+Se ao criar conta ou entrar aparecer `Invalid origin`, confira dois pontos:
+
+1. Defina `NEON_AUTH_TRUSTED_ORIGINS` no ambiente da aplicação com o domínio local e o domínio publicado, separados por vírgula.
+2. No painel do Neon Auth, adicione o mesmo domínio publicado em **Allowed origins / Authorized origins**.
+
+Exemplo:
+
+```bash
+NEON_AUTH_TRUSTED_ORIGINS=http://localhost:3000,https://www.buscacnae.com.br,https://buscacnae.vercel.app
+```
 
 ## 3) Configure a Stripe
 
