@@ -20,7 +20,7 @@ function extractAuthResponseUser(data: unknown): CurrentUser | null {
   const id = typeof user?.id === "string" ? user.id : "";
   const email = typeof user?.email === "string" ? user.email.trim().toLowerCase() : "";
 
-  if (!id || !email) return null;
+  if (!user || !id || !email) return null;
 
   return {
     id,
