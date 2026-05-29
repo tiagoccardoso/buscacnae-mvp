@@ -8,9 +8,12 @@ export type CurrentUser = {
   email: string;
   name?: string | null;
   authUserId?: string;
+  userId?: string;
+  role?: "user" | "admin";
+  status?: "active" | "inactive" | "blocked";
 };
 
-type ProfileColumn = {
+type TableColumn = {
   column_name: string;
   data_type: string;
 };
@@ -20,12 +23,25 @@ type ProfileIdentity = {
   email?: string | null;
 };
 
+type AppUserRecord = {
+  id: string;
+  neon_auth_user_id: string | null;
+  name: string | null;
+  email: string;
+  role: "user" | "admin";
+  status: "active" | "inactive" | "blocked";
+};
+
 type SqlRunner = <T = Record<string, unknown>>(query: string, params?: unknown[]) => Promise<T[]>;
 
 const runSql = sql as unknown as SqlRunner;
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function hasColumn(columns: Map<string, string>, column: string) {
+  return columns.has(column);
 }
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
@@ -45,18 +61,86 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   };
 
   try {
-    return await ensureProfileForUser(authUser);
+    const appUser = await ensureAppUserForAuth(authUser);
+    if (appUser.status !== "active") return null;
+
+    return await ensureProfileForUser({
+      ...authUser,
+      userId: appUser.id,
+      role: appUser.role,
+      status: appUser.status,
+      name: authUser.name ?? appUser.name
+    });
   } catch (error) {
-    console.error("Falha ao sincronizar perfil do usuário autenticado com Neon Auth.", error);
-    return authUser;
+    console.error("Falha ao sincronizar usuário autenticado com Neon Auth.", error);
+    return null;
   }
+}
+
+async function ensureUsersStorage() {
+  await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS public.users (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      neon_auth_user_id text UNIQUE,
+      name text NOT NULL,
+      email text NOT NULL UNIQUE,
+      password_hash text,
+      role text NOT NULL DEFAULT 'user',
+      status text NOT NULL DEFAULT 'active',
+      email_verified boolean NOT NULL DEFAULT false,
+      last_login_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT users_email_lowercase_check CHECK (email = lower(email)),
+      CONSTRAINT users_status_check CHECK (status IN ('active', 'inactive', 'blocked')),
+      CONSTRAINT users_role_check CHECK (role IN ('user', 'admin'))
+    )
+  `;
+
+  await sql`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS neon_auth_user_id text`;
+  await sql`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS name text`;
+  await sql`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS password_hash text`;
+  await sql`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'`;
+  await sql`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active'`;
+  await sql`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_login_at timestamptz`;
+  await sql`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()`;
+  await sql`ALTER TABLE public.users ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`;
+
+  await sql`CREATE INDEX IF NOT EXISTS idx_users_email ON public.users (email)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_users_neon_auth_user_id ON public.users (neon_auth_user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_users_status ON public.users (status)`;
+
+  await sql`
+    CREATE OR REPLACE FUNCTION public.set_updated_at()
+    RETURNS trigger AS $$
+    BEGIN
+      NEW.updated_at = now();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `;
+
+  await sql`
+    DROP TRIGGER IF EXISTS trg_users_updated_at ON public.users
+  `;
+
+  await sql`
+    CREATE TRIGGER trg_users_updated_at
+    BEFORE UPDATE ON public.users
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at()
+  `;
 }
 
 async function ensureProfilesStorage() {
   await sql`
     CREATE TABLE IF NOT EXISTS public.profiles (
       id text PRIMARY KEY,
-      neon_auth_user_id text UNIQUE,
+      neon_auth_user_id text,
+      user_id uuid,
       name text,
       email text NOT NULL UNIQUE,
       role text NOT NULL DEFAULT 'user',
@@ -68,6 +152,7 @@ async function ensureProfilesStorage() {
   `;
 
   await sql`ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS neon_auth_user_id text`;
+  await sql`ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS user_id uuid`;
   await sql`ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS name text`;
   await sql`ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'`;
   await sql`ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active'`;
@@ -75,23 +160,8 @@ async function ensureProfilesStorage() {
   await sql`ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`;
 
   await sql`CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles (email)`;
-
-  const duplicateAuthIds = await sql`
-    SELECT neon_auth_user_id
-    FROM public.profiles
-    WHERE neon_auth_user_id IS NOT NULL
-    GROUP BY neon_auth_user_id
-    HAVING count(*) > 1
-    LIMIT 1
-  `;
-
-  if (!duplicateAuthIds.length) {
-    await sql`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_neon_auth_user_id
-      ON public.profiles (neon_auth_user_id)
-      WHERE neon_auth_user_id IS NOT NULL
-    `;
-  }
+  await sql`CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON public.profiles (user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_profiles_neon_auth_user_id ON public.profiles (neon_auth_user_id)`;
 
   await sql`
     CREATE OR REPLACE FUNCTION public.set_updated_at()
@@ -122,19 +192,72 @@ async function ensureProfilesStorage() {
   `;
 }
 
-async function getProfileColumns() {
-  const columns = await sql<ProfileColumn[]>`
+async function getTableColumns(tableName: "profiles" | "users") {
+  const columns = await sql<TableColumn[]>`
     SELECT column_name, data_type
     FROM information_schema.columns
     WHERE table_schema = 'public'
-      AND table_name = 'profiles'
+      AND table_name = ${tableName}
   `;
 
   return new Map(columns.map((column) => [column.column_name, column.data_type]));
 }
 
-function hasColumn(columns: Map<string, string>, column: string) {
-  return columns.has(column);
+function normalizeRole(value: unknown): "user" | "admin" {
+  return value === "admin" ? "admin" : "user";
+}
+
+function normalizeStatus(value: unknown): "active" | "inactive" | "blocked" {
+  if (value === "inactive" || value === "blocked") return value;
+  return "active";
+}
+
+async function findAppUserByAuthOrEmail(user: CurrentUser) {
+  const authUserId = user.authUserId ?? user.id;
+  const rows = await runSql<AppUserRecord>(
+    `SELECT id::text AS id, neon_auth_user_id, name, email, role, status
+     FROM public.users
+     WHERE neon_auth_user_id = $1 OR lower(email) = $2
+     LIMIT 1`,
+    [authUserId, user.email]
+  );
+
+  return rows[0] ?? null;
+}
+
+export async function ensureAppUserForAuth(user: CurrentUser): Promise<AppUserRecord> {
+  await ensureUsersStorage();
+
+  const authUserId = user.authUserId ?? user.id;
+  const normalizedEmail = user.email.trim().toLowerCase();
+  const normalizedName = user.name?.trim() || normalizedEmail;
+  const existing = await findAppUserByAuthOrEmail({ ...user, email: normalizedEmail, authUserId });
+
+  if (existing) {
+    await runSql(
+      `UPDATE public.users
+       SET neon_auth_user_id = COALESCE(neon_auth_user_id, $1),
+           name = COALESCE(NULLIF($2, ''), name),
+           email = $3
+       WHERE id = $4`,
+      [authUserId, normalizedName, normalizedEmail, existing.id]
+    );
+
+    const refreshed = await findAppUserByAuthOrEmail({ ...user, email: normalizedEmail, authUserId });
+    if (refreshed) return refreshed;
+  }
+
+  const inserted = await runSql<AppUserRecord>(
+    `INSERT INTO public.users (neon_auth_user_id, name, email, role, status, password_hash)
+     VALUES ($1, $2, $3, 'user', 'active', NULL)
+     ON CONFLICT (email) DO UPDATE
+     SET neon_auth_user_id = COALESCE(public.users.neon_auth_user_id, EXCLUDED.neon_auth_user_id),
+         name = COALESCE(NULLIF(EXCLUDED.name, ''), public.users.name)
+     RETURNING id::text AS id, neon_auth_user_id, name, email, role, status`,
+    [authUserId, normalizedName, normalizedEmail]
+  );
+
+  return inserted[0];
 }
 
 function buildProfileLookupSql(columns: Map<string, string>) {
@@ -181,15 +304,18 @@ async function fetchProfileIdentity(user: CurrentUser, columns: Map<string, stri
   return {
     id: existingProfile.id,
     authUserId: user.authUserId ?? user.id,
+    userId: user.userId,
     email: user.email,
-    name: user.name ?? null
+    name: user.name ?? null,
+    role: user.role,
+    status: user.status
   } satisfies CurrentUser;
 }
 
 export async function ensureProfileForUser(user: CurrentUser): Promise<CurrentUser> {
   await ensureProfilesStorage();
 
-  const availableColumns = await getProfileColumns();
+  const availableColumns = await getTableColumns("profiles");
   if (!hasColumn(availableColumns, "id") || !hasColumn(availableColumns, "email")) return user;
 
   const authUserId = user.authUserId ?? user.id;
@@ -208,10 +334,11 @@ export async function ensureProfileForUser(user: CurrentUser): Promise<CurrentUs
   }
 
   if (hasColumn(availableColumns, "neon_auth_user_id")) profileValues.neon_auth_user_id = authUserId;
+  if (hasColumn(availableColumns, "user_id")) profileValues.user_id = user.userId ?? null;
   if (hasColumn(availableColumns, "name")) profileValues.name = user.name ?? null;
   if (hasColumn(availableColumns, "full_name")) profileValues.full_name = user.name ?? null;
-  if (hasColumn(availableColumns, "role")) profileValues.role = "user";
-  if (hasColumn(availableColumns, "status")) profileValues.status = "active";
+  if (hasColumn(availableColumns, "role")) profileValues.role = user.role ?? "user";
+  if (hasColumn(availableColumns, "status")) profileValues.status = user.status ?? "active";
   if (hasColumn(availableColumns, "created_at")) profileValues.created_at = new Date().toISOString();
   if (hasColumn(availableColumns, "updated_at")) profileValues.updated_at = new Date().toISOString();
 
@@ -241,13 +368,46 @@ export async function ensureProfileForUser(user: CurrentUser): Promise<CurrentUs
   return (await fetchProfileIdentity({ ...user, authUserId }, availableColumns)) ?? { ...user, authUserId };
 }
 
+export async function recordSuccessfulLoginForUser(user: CurrentUser) {
+  await ensureUsersStorage();
+
+  const authUserId = user.authUserId ?? user.id;
+  await runSql(
+    `UPDATE public.users
+     SET last_login_at = now()
+     WHERE neon_auth_user_id = $1 OR lower(email) = $2`,
+    [authUserId, user.email]
+  );
+}
+
+export async function isUserEmailRegistered(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) return false;
+
+  await ensureUsersStorage();
+
+  const rows = await sql`
+    SELECT 1
+    FROM public.users
+    WHERE lower(email) = ${normalizedEmail}
+    LIMIT 1
+  `;
+
+  return rows.length > 0;
+}
+
 export async function isProfileEmailRegistered(email: string) {
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) return false;
 
+  await ensureUsersStorage();
   await ensureProfilesStorage();
 
   const rows = await sql`
+    SELECT 1
+    FROM public.users
+    WHERE lower(email) = ${normalizedEmail}
+    UNION
     SELECT 1
     FROM public.profiles
     WHERE lower(email) = ${normalizedEmail}
@@ -261,9 +421,14 @@ export async function isKnownAuthEmail(email: string) {
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) return false;
 
+  await ensureUsersStorage();
   await ensureProfilesStorage();
 
   const rows = await sql`
+    SELECT 1
+    FROM public.users
+    WHERE lower(email) = ${normalizedEmail}
+    UNION
     SELECT 1
     FROM profiles
     WHERE lower(email) = ${normalizedEmail}

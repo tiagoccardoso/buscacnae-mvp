@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth, ensureProfileForUser, getCurrentUser, isProfileEmailRegistered } from "@/lib/auth/server";
+import { auth, ensureAppUserForAuth, ensureProfileForUser, getCurrentUser, isUserEmailRegistered, recordSuccessfulLoginForUser } from "@/lib/auth/server";
 import { claimSearchAccessOrderForUser, claimSearchAccessOrdersForUserByEmail } from "@/lib/billing";
 import type { CurrentUser } from "@/lib/auth/server";
 
@@ -85,8 +85,8 @@ function getFriendlyAuthError(action: "login" | "signup") {
   return "Não foi possível entrar. Confira seu e-mail e senha e tente novamente.";
 }
 
-async function claimOrdersForAuthenticatedUser(orderId: string) {
-  const user = await getCurrentUser();
+async function claimOrdersForAuthenticatedUser(orderId: string, authenticatedUser?: CurrentUser) {
+  const user = authenticatedUser ?? (await getCurrentUser());
   if (!user) return;
 
   const profileUser = await ensureProfileForUser(user);
@@ -122,7 +122,13 @@ export async function signInWithPasswordAction(formData: FormData) {
     redirect(withAuthParams(formData, { mode: "login", email, error: getFriendlyAuthError("login") }));
   }
 
-  await claimOrdersForAuthenticatedUser(orderId);
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect(withAuthParams(formData, { mode: "login", email, error: "Sua conta está inativa ou bloqueada. Fale com o suporte para recuperar o acesso." }));
+  }
+
+  await recordSuccessfulLoginForUser(user);
+  await claimOrdersForAuthenticatedUser(orderId, user);
 
   redirect(next);
 }
@@ -139,7 +145,7 @@ export async function requestPasswordRecoveryAction(formData: FormData) {
   }
 
   const origin = await getRequestOrigin();
-  const resetUrl = `${origin}/api/auth/request-password-reset`;
+  const resetUrl = `${origin}/api/auth/forget-password`;
   const redirectTo = `${origin}/sign-in`;
 
   let recoveryAccepted = false;
@@ -205,7 +211,7 @@ export async function signUpWithPasswordAction(formData: FormData) {
     redirect(withAuthParams(formData, { mode: "signup", email, error: "A senha e a confirmação precisam ser iguais." }));
   }
 
-  const alreadyRegistered = await isProfileEmailRegistered(email);
+  const alreadyRegistered = await isUserEmailRegistered(email);
   if (alreadyRegistered) {
     redirect(withAuthParams(formData, { mode: "signup", email, error: "Já existe uma conta cadastrada com este e-mail. Entre com sua senha ou recupere o acesso." }));
   }
@@ -217,10 +223,22 @@ export async function signUpWithPasswordAction(formData: FormData) {
     redirect(withAuthParams(formData, { mode: "signup", email, error: getFriendlyAuthError("signup") }));
   }
 
-  const user = (await getCurrentUser()) ?? extractAuthResponseUser(data);
-  if (user) {
-    await ensureProfileForUser({ ...user, name });
-    await claimOrdersForAuthenticatedUser(orderId);
+  const authUser = (await getCurrentUser()) ?? extractAuthResponseUser(data);
+  if (authUser) {
+    const appUser = await ensureAppUserForAuth({ ...authUser, name });
+    const profileUser = await ensureProfileForUser({
+      ...authUser,
+      name,
+      userId: appUser.id,
+      role: appUser.role,
+      status: appUser.status
+    });
+
+    if (appUser.status !== "active") {
+      redirect(buildSignInUrl({ mode: "login", email, next, order_id: orderId, error: "Sua conta está inativa ou bloqueada. Fale com o suporte para recuperar o acesso." }));
+    }
+
+    await claimOrdersForAuthenticatedUser(orderId, profileUser);
     redirect(next);
   }
 

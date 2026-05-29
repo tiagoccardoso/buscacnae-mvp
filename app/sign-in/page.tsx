@@ -23,7 +23,7 @@ function parseMode(value: string | string[] | undefined): AuthMode {
 function getModeCopy(mode: AuthMode) {
   if (mode === "recover") {
     return {
-      eyebrow: "Recuperar senha",
+      eyebrow: "Esqueci minha senha",
       title: "Receba as instruções para recuperar sua senha",
       description: "Informe o e-mail cadastrado. Por segurança, exibiremos a mesma confirmação mesmo que o endereço não exista na base."
     };
@@ -64,7 +64,7 @@ function AuthModeLinks({ mode, next, orderId, email }: { mode: AuthMode; next: s
         </Link>
       ) : (
         <Link href={buildHref("recover")} className="button-ghost">
-          Recuperar senha
+          Esqueci minha senha
         </Link>
       )}
       {mode !== "signup" ? (
@@ -171,8 +171,8 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
               <input type="hidden" name="next" value={next} />
               <input type="hidden" name="orderId" value={orderId} />
               <div className="field">
-                <label htmlFor="name">Nome</label>
-                <input id="name" name="name" className="input input-premium" placeholder="Seu nome" autoComplete="name" required />
+                <label htmlFor="name">Nome completo</label>
+                <input id="name" name="name" className="input input-premium" placeholder="Seu nome completo" autoComplete="name" required />
               </div>
               <div className="field">
                 <label htmlFor="signup-email">E-mail</label>
