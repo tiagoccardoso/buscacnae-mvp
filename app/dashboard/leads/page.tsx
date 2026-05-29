@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/server";
+import { createDbClient } from "@/lib/db-client";
 import { EmptyState } from "@/components/empty-state";
 import { LeadToggleForm } from "@/components/lead-toggle-form";
 import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
@@ -100,10 +101,8 @@ function rankingDescription(type: "promising" | "capital" | "contact") {
 }
 
 export default async function LeadsPage({ searchParams }: LeadsPageProps) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     return null;
@@ -117,8 +116,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const errorMessage = readErrorMessage(error);
 
   const [{ data: listRows }, { data: rows }] = await Promise.all([
-    supabase.from("saved_lead_lists").select("id,name,created_at").eq("profile_id", user.id).order("name", { ascending: true }),
-    supabase
+    db.from("saved_lead_lists").select("id,name,created_at").eq("profile_id", user.id).order("name", { ascending: true }),
+    db
       .from("saved_establishments")
       .select("created_at, notes, list_id, saved_lead_lists(id,name), establishments(*)")
       .eq("profile_id", user.id)

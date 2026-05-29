@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EstablishmentDetails } from "@/components/establishment-details";
 import { getSearchAccessOrderByAccessToken, syncSearchAccessOrderPaymentStatus } from "@/lib/billing";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createDbClient } from "@/lib/db-client";
 import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
 import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
@@ -35,8 +35,8 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
   }
 
   const currentOrder = await syncSearchAccessOrderPaymentStatus(order as NonNullable<typeof order>);
-  const admin = createSupabaseAdminClient();
-  const { data: search } = await admin
+  const db = createDbClient();
+  const { data: search } = await db
     .from("search_queries")
     .select("*")
     .eq("id", currentOrder.search_query_id)
@@ -46,7 +46,7 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
     notFound();
   }
 
-  const { data: rows } = await admin
+  const { data: rows } = await db
     .from("search_results")
     .select("position, establishment_id, provider_payload, establishments(*)")
     .eq("search_query_id", currentOrder.search_query_id)

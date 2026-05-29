@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { prepareSearchOrder } from "@/lib/discovery/service";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/server";
 import { parseNumber } from "@/lib/utils";
 
 function buildCitySelectionFromFormData(formData: FormData) {
@@ -36,10 +36,7 @@ function parseYearInput(value: FormDataEntryValue | null) {
 }
 
 export async function startPublicSearchAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   const email = String(user?.email ?? "").trim().toLowerCase();
 

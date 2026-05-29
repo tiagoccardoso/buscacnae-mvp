@@ -3,17 +3,18 @@
 Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cidade**, com:
 
 - **Next.js 16** (App Router)
-- **Supabase** para Auth, Postgres e RLS
+- **Neon PostgreSQL** para banco de dados
+- **Neon Auth** para autenticação por e-mail/código e sessão em cookie seguro
 - **Stripe Checkout + Customer Portal + Webhooks**
 - **CNPJ.ws Premium** ou **Casa dos Dados** como provedor de descoberta
-- **Cache próprio + histórico de consultas** no Supabase
+- **Cache próprio + histórico de consultas** no Neon PostgreSQL
 - **Schema orientado a estabelecimento + subclasse CNAE**
 - **CNPJ salvo como string**, preparado para o CNPJ alfanumérico de 2026
 
 ## O que está pronto
 
 - Landing page
-- Login por magic link via Supabase
+- Login por código de e-mail via Neon Auth
 - Dashboard autenticado
 - Busca por CNAE + cidade/UF
 - Histórico de buscas
@@ -21,44 +22,30 @@ Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cid
 - Favoritos / leads salvos
 - Integração com Stripe para assinatura
 - Webhook idempotente
-- SQL inicial com tabelas, índices, trigger e RLS
+- SQL inicial com tabelas, índices e triggers no Neon PostgreSQL
 - Abstração de provedor para trocar entre CNPJ.ws e Casa dos Dados
 
 ## Requisitos
 
 - Node.js 22+
-- Projeto no Supabase
+- Projeto Neon com PostgreSQL e Neon Auth habilitados
 - Conta Stripe com preços criados
 - Conta no provedor de dados:
   - `CNPJ.ws Premium`, ou
   - `Casa dos Dados`
 
-## 1) Suba o banco no Supabase
+## 1) Banco Neon PostgreSQL
 
-No SQL Editor do Supabase, rode:
+O SQL do banco deve estar aplicado no Neon antes de rodar a aplicação. A aplicação usa `DATABASE_URL` e a camada `lib/db.ts` com `@neondatabase/serverless` para executar as queries.
 
-- `supabase/migrations/20260331_init.sql`
+## 2) Configure autenticação no Neon Auth
 
-Esse script cria:
-- `profiles`
-- `subscriptions`
-- `provider_cache`
-- `search_queries`
-- `search_results`
-- `establishments`
-- `saved_establishments`
-- `stripe_webhook_events`
+No painel do Neon, habilite Auth na branch usada pela aplicação e configure:
 
-## 2) Configure autenticação no Supabase
+- `NEON_AUTH_BASE_URL`
+- `NEON_AUTH_COOKIE_SECRET` com pelo menos 32 caracteres
 
-No painel do Supabase:
-
-- Auth → Providers → Email → habilite Email OTP / Magic Link
-- Auth → URL Configuration:
-  - `Site URL`: sua URL pública
-  - `Redirect URLs`:
-    - `http://localhost:3000/auth/confirm`
-    - `https://SEU-DOMINIO/auth/confirm`
+O endpoint `app/api/auth/[...path]/route.ts` publica os handlers do Neon Auth e o `middleware.ts` protege o dashboard.
 
 ## 3) Configure a Stripe
 
@@ -67,7 +54,6 @@ Para o checkout avulso, configure também:
 - `MINIMUM_CHECKOUT_AMOUNT_CENTS=50`
 
 Isso evita erro de valor mínimo em cobranças pequenas na Stripe.
-
 
 Crie 2 preços recorrentes e coloque os IDs em:
 
@@ -124,14 +110,14 @@ npm run dev
 2. Importe na Vercel.
 3. Configure todas as variáveis do `.env.example`.
 4. Garanta que o webhook da Stripe aponte para a URL de produção.
-5. Atualize no Supabase as URLs de redirect e site URL.
+5. Configure os domínios e URLs de callback no Neon Auth.
 
 ## Fluxo de billing
 
-- Usuário entra com magic link
+- Usuário entra com código de e-mail pelo Neon Auth
 - Usuário escolhe plano
 - Stripe Checkout cria a assinatura
-- Webhook sincroniza assinatura no Supabase
+- Webhook sincroniza assinatura no Neon PostgreSQL
 - Dashboard libera a busca quando houver assinatura ativa
 - Customer Portal permite gerenciar cobrança
 
@@ -139,21 +125,22 @@ npm run dev
 
 ```text
 app/
+  api/auth/[...path]/route.ts
   api/stripe/...
-  auth/confirm/route.ts
   dashboard/...
 components/
 lib/
+  auth/server.ts
+  db.ts
+  db-client.ts
   discovery/
-  supabase/
   stripe.ts
-supabase/migrations/20260331_init.sql
 ```
 
 ## Observações importantes
 
 - O projeto já grava **CNPJ como texto** para suportar coexistência entre numérico e alfanumérico.
-- A busca usa **cache próprio** no Supabase para reduzir custo do provedor.
+- A busca usa **cache próprio** no Neon PostgreSQL para reduzir custo do provedor.
 - Os dados de empresa ficam no nível de **estabelecimento**, não apenas empresa raiz.
 - O parser dos provedores foi feito de forma resiliente, mas você pode ajustar os mapeamentos conforme sua conta/plano retornar campos adicionais.
 
@@ -165,7 +152,6 @@ supabase/migrations/20260331_init.sql
 - Adicionar logs e observabilidade
 - Adicionar proteção anti-abuso / rate limiting
 - Revisar preços e copy comercial
-
 
 ## Rodando com Docker
 

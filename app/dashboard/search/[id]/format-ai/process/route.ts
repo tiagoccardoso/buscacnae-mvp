@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/server";
+import { createDbClient } from "@/lib/db-client";
 import {
   ensureSearchAccessOrderForSearch,
   getSearchAiFormatOrderBySearchQueryId,
@@ -18,16 +19,14 @@ type RouteProps = {
 
 export async function POST(_request: Request, { params }: RouteProps) {
   const { id } = await params;
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     return NextResponse.json({ message: "Faça login para preparar sua lista com IA." }, { status: 401 });
   }
 
-  const { data: search } = await supabase
+  const { data: search } = await db
     .from("search_queries")
     .select("id, profile_id, provider, total_results")
     .eq("id", id)

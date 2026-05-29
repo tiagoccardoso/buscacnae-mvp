@@ -38,17 +38,6 @@ export function getBaseUrl() {
   return "http://localhost:3000";
 }
 
-export function getSupabaseUrl() {
-  return requireEnv("NEXT_PUBLIC_SUPABASE_URL");
-}
-
-export function getSupabasePublishableKey() {
-  return requireEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
-}
-
-export function getSupabaseServiceRoleKey() {
-  return requireEnv("SUPABASE_SERVICE_ROLE_KEY");
-}
 
 export function getStripeSecretKey() {
   return requireEnv("STRIPE_SECRET_KEY");

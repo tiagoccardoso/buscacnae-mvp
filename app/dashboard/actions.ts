@@ -2,16 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createDbClient } from "@/lib/db-client";
+import { getCurrentUser } from "@/lib/auth/server";
 
 export async function toggleSavedEstablishmentAction(formData: FormData) {
   const establishmentId = String(formData.get("establishmentId") ?? "");
   const intent = String(formData.get("intent") ?? "");
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     redirect("/sign-in");
@@ -21,8 +19,9 @@ export async function toggleSavedEstablishmentAction(formData: FormData) {
     return;
   }
 
+
   if (intent === "save") {
-    await supabase.from("saved_establishments").upsert(
+    await db.from("saved_establishments").upsert(
       {
         profile_id: user.id,
         establishment_id: establishmentId
@@ -32,7 +31,7 @@ export async function toggleSavedEstablishmentAction(formData: FormData) {
       }
     );
   } else {
-    await supabase
+    await db
       .from("saved_establishments")
       .delete()
       .eq("profile_id", user.id)
@@ -58,8 +57,8 @@ async function resolveOwnedSearchIds(searchIds: string[], profileId: string) {
     return [] as string[];
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
+  const db = createDbClient();
+  const { data, error } = await db
     .from("search_queries")
     .select("id")
     .in("id", searchIds)
@@ -89,10 +88,8 @@ function revalidateLeadPaths() {
 }
 
 export async function createSavedLeadListAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     redirect("/sign-in");
@@ -103,7 +100,7 @@ export async function createSavedLeadListAction(formData: FormData) {
     redirect("/dashboard/leads?error=lista-sem-nome");
   }
 
-  const { error } = await supabase.from("saved_lead_lists").upsert(
+  const { error } = await db.from("saved_lead_lists").upsert(
     {
       profile_id: user.id,
       name
@@ -121,10 +118,8 @@ export async function createSavedLeadListAction(formData: FormData) {
 }
 
 export async function assignSavedLeadListAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     redirect("/sign-in");
@@ -141,7 +136,7 @@ export async function assignSavedLeadListAction(formData: FormData) {
   let resolvedListId: string | null = listId || null;
 
   if (newListName) {
-    const { data: createdList, error: createError } = await supabase
+    const { data: createdList, error: createError } = await db
       .from("saved_lead_lists")
       .upsert(
         {
@@ -161,7 +156,7 @@ export async function assignSavedLeadListAction(formData: FormData) {
     resolvedListId = createdList.id;
   }
 
-  const { error } = await supabase
+  const { error } = await db
     .from("saved_establishments")
     .update({ list_id: resolvedListId })
     .eq("profile_id", user.id)
@@ -177,10 +172,8 @@ export async function assignSavedLeadListAction(formData: FormData) {
 }
 
 export async function deleteSavedLeadListAction(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     redirect("/sign-in");
@@ -191,8 +184,7 @@ export async function deleteSavedLeadListAction(formData: FormData) {
     redirect("/dashboard/leads?error=lista-invalida");
   }
 
-  const admin = createSupabaseAdminClient();
-  const { data: ownedList } = await supabase
+  const { data: ownedList } = await db
     .from("saved_lead_lists")
     .select("id")
     .eq("id", listId)
@@ -203,13 +195,13 @@ export async function deleteSavedLeadListAction(formData: FormData) {
     redirect("/dashboard/leads?error=lista-invalida");
   }
 
-  await admin
+  await db
     .from("saved_establishments")
     .update({ list_id: null })
     .eq("profile_id", user.id)
     .eq("list_id", listId);
 
-  const { error } = await admin
+  const { error } = await db
     .from("saved_lead_lists")
     .delete()
     .eq("id", listId)
@@ -226,10 +218,8 @@ export async function deleteSavedLeadListAction(formData: FormData) {
 
 export async function deleteSearchHistoryItemAction(searchId: string) {
   const normalizedSearchId = String(searchId ?? "").trim();
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     redirect("/sign-in");
@@ -244,8 +234,7 @@ export async function deleteSearchHistoryItemAction(searchId: string) {
     redirect("/dashboard/history?error=busca-nao-encontrada");
   }
 
-  const admin = createSupabaseAdminClient();
-  const { error: deleteError } = await admin.from("search_queries").delete().in("id", ownedIds);
+  const { error: deleteError } = await db.from("search_queries").delete().in("id", ownedIds);
 
   if (deleteError) {
     console.error("Falha ao excluir item do histórico", deleteError);
@@ -258,10 +247,8 @@ export async function deleteSearchHistoryItemAction(searchId: string) {
 
 export async function deleteSelectedSearchHistoryAction(formData: FormData) {
   const selectedIds = uniqueIds(formData.getAll("searchIds"));
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     redirect("/sign-in");
@@ -276,8 +263,7 @@ export async function deleteSelectedSearchHistoryAction(formData: FormData) {
     redirect("/dashboard/history?error=busca-nao-encontrada");
   }
 
-  const admin = createSupabaseAdminClient();
-  const { error } = await admin.from("search_queries").delete().in("id", ownedIds);
+  const { error } = await db.from("search_queries").delete().in("id", ownedIds);
 
   if (error) {
     console.error("Falha ao excluir buscas selecionadas", error);
@@ -289,17 +275,14 @@ export async function deleteSelectedSearchHistoryAction(formData: FormData) {
 }
 
 export async function deleteAllSearchHistoryAction() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  const db = createDbClient();
 
   if (!user) {
     redirect("/sign-in");
   }
 
-  const admin = createSupabaseAdminClient();
-  const { error } = await admin.from("search_queries").delete().eq("profile_id", user.id);
+  const { error } = await db.from("search_queries").delete().eq("profile_id", user.id);
 
   if (error) {
     console.error("Falha ao excluir histórico completo", error);
