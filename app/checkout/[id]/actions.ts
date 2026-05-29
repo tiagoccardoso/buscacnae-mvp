@@ -2,9 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { createDbClient } from "@/lib/db-client";
-import { auth, getCurrentUser } from "@/lib/auth/server";
+import { getCurrentUser } from "@/lib/auth/server";
 import { getSearchAccessOrderById } from "@/lib/billing";
-import { getBaseUrl } from "@/lib/env";
 
 export async function prepareCheckoutIdentityAction(formData: FormData) {
   const orderId = String(formData.get("orderId") ?? "").trim();
@@ -36,13 +35,12 @@ export async function prepareCheckoutIdentityAction(formData: FormData) {
 
   if (user?.id) {
     await db.from("profiles").upsert({ id: user.id, email }, { onConflict: "id" });
+    redirect(`/dashboard/history?status=busca-vinculada`);
   }
 
-  const { error } = await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
-
-  if (error) {
-    redirect(`/checkout/${order.id}?reason=${encodeURIComponent(error.message || "Não foi possível enviar o código de acesso.")}`);
-  }
-
-  redirect(`/sign-in?email=${encodeURIComponent(email)}&order_id=${encodeURIComponent(order.id)}&next=${encodeURIComponent("/dashboard/history?status=busca-vinculada")}&message=${encodeURIComponent("Enviamos o código de acesso para vincular sua busca.")}`);
+  redirect(
+    `/sign-in?email=${encodeURIComponent(email)}&order_id=${encodeURIComponent(order.id)}&next=${encodeURIComponent(
+      "/dashboard/history?status=busca-vinculada"
+    )}&message=${encodeURIComponent("Entre com sua conta para vincular esta busca ao seu dashboard.")}`
+  );
 }

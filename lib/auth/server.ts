@@ -43,18 +43,6 @@ export async function isKnownAuthEmail(email: string) {
     SELECT 1
     FROM profiles
     WHERE lower(email) = ${normalizedEmail}
-    UNION
-    SELECT 1
-    FROM search_access_orders
-    WHERE lower(email) = ${normalizedEmail}
-    UNION
-    SELECT 1
-    FROM search_access_bulk_orders
-    WHERE lower(email) = ${normalizedEmail}
-    UNION
-    SELECT 1
-    FROM search_ai_format_orders
-    WHERE lower(email) = ${normalizedEmail}
     LIMIT 1
   `;
 
