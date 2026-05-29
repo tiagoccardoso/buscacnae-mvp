@@ -2,10 +2,32 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth, ensureProfileForUser, getCurrentUser } from "@/lib/auth/server";
+import { auth, ensureProfileForUser, getCurrentUser, isProfileEmailRegistered } from "@/lib/auth/server";
 import { claimSearchAccessOrderForUser, claimSearchAccessOrdersForUserByEmail } from "@/lib/billing";
+import type { CurrentUser } from "@/lib/auth/server";
 
 type AuthMode = "login" | "recover" | "signup";
+
+type AuthResponseUser = {
+  id?: unknown;
+  email?: unknown;
+  name?: unknown;
+};
+
+function extractAuthResponseUser(data: unknown): CurrentUser | null {
+  const response = data as { user?: AuthResponseUser } | null | undefined;
+  const user = response?.user;
+  const id = typeof user?.id === "string" ? user.id : "";
+  const email = typeof user?.email === "string" ? user.email.trim().toLowerCase() : "";
+
+  if (!id || !email) return null;
+
+  return {
+    id,
+    email,
+    name: typeof user.name === "string" ? user.name : null
+  };
+}
 
 const PASSWORD_MIN_LENGTH = 8;
 
@@ -67,12 +89,12 @@ async function claimOrdersForAuthenticatedUser(orderId: string) {
   const user = await getCurrentUser();
   if (!user) return;
 
-  await ensureProfileForUser(user);
+  const profileUser = await ensureProfileForUser(user);
 
   try {
-    await claimSearchAccessOrdersForUserByEmail({ userId: user.id, email: user.email });
+    await claimSearchAccessOrdersForUserByEmail({ userId: profileUser.id, email: profileUser.email });
     if (orderId) {
-      await claimSearchAccessOrderForUser({ orderId, userId: user.id, email: user.email });
+      await claimSearchAccessOrderForUser({ orderId, userId: profileUser.id, email: profileUser.email });
     }
   } catch (claimError) {
     console.error("Falha ao vincular buscas públicas ao histórico após autenticação Neon Auth.", claimError);
@@ -117,18 +139,29 @@ export async function requestPasswordRecoveryAction(formData: FormData) {
   }
 
   const origin = await getRequestOrigin();
-  const resetUrl = `${origin}/api/auth/forget-password`;
+  const resetUrl = `${origin}/api/auth/request-password-reset`;
   const redirectTo = `${origin}/sign-in`;
 
+  let recoveryAccepted = false;
+
   try {
-    await fetch(resetUrl, {
+    const response = await fetch(resetUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, redirectTo }),
       cache: "no-store"
     });
+
+    recoveryAccepted = response.ok;
+    if (!response.ok) {
+      console.error("Neon Auth não aceitou a solicitação de recuperação de senha.", { status: response.status });
+    }
   } catch (error) {
     console.error("Falha ao solicitar recuperação de senha via Neon Auth.", error);
+  }
+
+  if (!recoveryAccepted) {
+    redirect(withAuthParams(formData, { mode: "recover", email, error: "Não foi possível iniciar a recuperação de senha agora. Tente novamente em alguns instantes." }));
   }
 
   redirect(
@@ -172,14 +205,19 @@ export async function signUpWithPasswordAction(formData: FormData) {
     redirect(withAuthParams(formData, { mode: "signup", email, error: "A senha e a confirmação precisam ser iguais." }));
   }
 
-  const { error } = await auth.signUp.email({ email, password, name });
+  const alreadyRegistered = await isProfileEmailRegistered(email);
+  if (alreadyRegistered) {
+    redirect(withAuthParams(formData, { mode: "signup", email, error: "Já existe uma conta cadastrada com este e-mail. Entre com sua senha ou recupere o acesso." }));
+  }
+
+  const { data, error } = await auth.signUp.email({ email, password, name, callbackURL: next });
 
   if (error) {
     console.error("Falha no cadastro por e-mail e senha com Neon Auth.", error);
     redirect(withAuthParams(formData, { mode: "signup", email, error: getFriendlyAuthError("signup") }));
   }
 
-  const user = await getCurrentUser();
+  const user = (await getCurrentUser()) ?? extractAuthResponseUser(data);
   if (user) {
     await ensureProfileForUser({ ...user, name });
     await claimOrdersForAuthenticatedUser(orderId);
