@@ -5,8 +5,24 @@ function normalizeAllowedOrigin(value: string | undefined) {
   return trimmed || "";
 }
 
+function addOriginWithWwwVariant(origins: Set<string>, value: string | undefined) {
+  const origin = normalizeAllowedOrigin(value);
+  if (!origin) return;
+
+  origins.add(origin);
+
+  if (origin.startsWith("www.")) {
+    origins.add(origin.replace(/^www\./, ""));
+  } else if (!origin.endsWith(".vercel.app") && !origin.startsWith("localhost") && !origin.startsWith("127.0.0.1")) {
+    origins.add(`www.${origin}`);
+  }
+}
+
 function getAllowedServerActionOrigins() {
   const origins = new Set<string>(["localhost:3000", "127.0.0.1:3000", "localhost:3001", "127.0.0.1:3001"]);
+
+  addOriginWithWwwVariant(origins, "www.buscacnae.com.br");
+  addOriginWithWwwVariant(origins, "buscacnae.com.br");
 
   for (const value of [
     process.env.NEXT_PUBLIC_SITE_URL,
@@ -18,13 +34,7 @@ function getAllowedServerActionOrigins() {
     process.env.VERCEL_BRANCH_URL,
     process.env.VERCEL_PROJECT_PRODUCTION_URL
   ]) {
-    const origin = normalizeAllowedOrigin(value);
-    if (origin) origins.add(origin);
-  }
-
-  for (const value of (process.env.NEON_AUTH_TRUSTED_ORIGINS ?? "").split(",")) {
-    const origin = normalizeAllowedOrigin(value);
-    if (origin) origins.add(origin);
+    addOriginWithWwwVariant(origins, value);
   }
 
   origins.add("*.vercel.app");

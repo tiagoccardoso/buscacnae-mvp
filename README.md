@@ -44,19 +44,17 @@ No painel do Neon, habilite Auth na branch usada pela aplicação e configure:
 
 - `NEON_AUTH_BASE_URL`
 - `NEON_AUTH_COOKIE_SECRET` com pelo menos 32 caracteres
-- `NEON_AUTH_TRUSTED_ORIGINS` com os domínios autorizados, por exemplo: `http://localhost:3000,https://seu-dominio.com.br`
 
 O endpoint `app/api/auth/[...path]/route.ts` publica os handlers do Neon Auth e o `middleware.ts` protege o dashboard.
 
 Se ao criar conta ou entrar aparecer `Invalid origin`, confira dois pontos:
 
-1. Defina `NEON_AUTH_TRUSTED_ORIGINS` no ambiente da aplicação com o domínio local e o domínio publicado, separados por vírgula.
+1. As origens confiáveis do Neon Auth são definidas em `lib/auth/neon.ts`, usando os domínios do BuscaCNAE, localhost e URLs padrão da Vercel.
 2. No painel do Neon Auth, adicione o mesmo domínio publicado em **Allowed origins / Authorized origins**.
 
 Exemplo:
 
 ```bash
-NEON_AUTH_TRUSTED_ORIGINS=http://localhost:3000,https://www.buscacnae.com.br,https://buscacnae.vercel.app
 ```
 
 ## 3) Configure a Stripe
