@@ -38,7 +38,7 @@ export async function prepareCheckoutIdentityAction(formData: FormData) {
     await db.from("profiles").upsert({ id: user.id, email }, { onConflict: "id" });
   }
 
-  const { error } = await auth.emailOtp.sendVerificationOtp({ email });
+  const { error } = await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
 
   if (error) {
     redirect(`/checkout/${order.id}?reason=${encodeURIComponent(error.message)}`);

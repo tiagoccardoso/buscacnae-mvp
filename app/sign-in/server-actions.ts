@@ -33,7 +33,7 @@ export async function requestAccessCodeAction(formData: FormData) {
     redirect("/sign-in?error=Use o mesmo e-mail cadastrado em uma compra ou perfil existente.");
   }
 
-  const { error } = await auth.emailOtp.sendVerificationOtp({ email });
+  const { error } = await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
 
   if (error) {
     redirect(`/sign-in?error=${encodeURIComponent(error.message)}`);
