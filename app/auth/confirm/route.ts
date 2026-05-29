@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   signInUrl.searchParams.set("next", next);
   if (orderId) signInUrl.searchParams.set("order_id", orderId);
   if (email) signInUrl.searchParams.set("email", email);
-  signInUrl.searchParams.set("message", "Informe o código enviado pelo Neon Auth para concluir o acesso.");
+  signInUrl.searchParams.set("message", "Entre com e-mail e senha para concluir o acesso.");
 
   return NextResponse.redirect(signInUrl);
 }
