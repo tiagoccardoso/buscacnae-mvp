@@ -89,6 +89,11 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
       ? Math.max(0, Math.trunc(searchQueryPayload.fetchedResults))
       : null;
   const hitFetchLimit = searchQueryPayload.hitFetchLimit === true;
+  const cnpjWsEnrichmentStatus = typeof searchQueryPayload.cnpjWsEnrichmentStatus === "string" ? searchQueryPayload.cnpjWsEnrichmentStatus : "";
+  const cnpjWsEnrichmentFailures =
+    typeof searchQueryPayload.cnpjWsEnrichmentFailures === "number" && Number.isFinite(searchQueryPayload.cnpjWsEnrichmentFailures)
+      ? Math.max(0, Math.trunc(searchQueryPayload.cnpjWsEnrichmentFailures))
+      : null;
   const pricingSummary = readLeadPricingSummary((search.data.query_payload as Record<string, unknown> | null)?.leadPricingSummary);
   const autoRefinementSuggested = searchQueryPayload.autoRefinementSuggested === true;
   const autoRefinementReason = typeof searchQueryPayload.autoRefinementReason === "string" ? searchQueryPayload.autoRefinementReason : "";
@@ -154,6 +159,13 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   return (
     <div className="stack">
       {aiFormatMessage ? <div className={`notice ${aiFormatMessage.type}`}>{aiFormatMessage.text}</div> : null}
+      {cnpjWsEnrichmentStatus === "falhou" || cnpjWsEnrichmentStatus === "parcial" ? (
+        <div className="notice warning">
+          A busca principal na Casa dos Dados foi concluída. O enriquecimento complementar da CNPJ.ws
+          {cnpjWsEnrichmentStatus === "parcial" ? " falhou para parte dos CNPJs" : " não pôde ser concluído"}
+          {cnpjWsEnrichmentFailures !== null ? ` (${cnpjWsEnrichmentFailures} falhas)` : ""}; os dados disponíveis foram exibidos normalmente.
+        </div>
+      ) : null}
 
       <div className="panel-grid two">
         <div className="surface-premium card-lg stack">

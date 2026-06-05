@@ -302,6 +302,19 @@ function dedupeNormalizedRows(rows: NormalizedEstablishment[]) {
   return Array.from(aggregated.values());
 }
 
+
+function readHybridEnrichmentSummary(raw: unknown) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = (raw as Record<string, unknown>).enriquecimento_cnpjws;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  return {
+    status: typeof record.status === "string" ? record.status : "desconhecido",
+    successCount: typeof record.sucessos === "number" ? Math.max(0, Math.trunc(record.sucessos)) : 0,
+    failureCount: typeof record.falhas === "number" ? Math.max(0, Math.trunc(record.falhas)) : 0
+  };
+}
+
 function resolveTotalFound(providerTotalResults: number | null | undefined, dedupedCount: number) {
   if (typeof providerTotalResults === "number" && Number.isFinite(providerTotalResults)) {
     return Math.max(0, Math.trunc(providerTotalResults));
@@ -489,13 +502,16 @@ export async function prepareSearchOrder(
         filteredRows,
         providerTotalResults: providerResponse.providerTotalResults ?? null,
         fetchedResults: providerResponse.fetchedResults ?? providerResponse.normalized.length,
-        hitFetchLimit: providerResponse.hitFetchLimit ?? false
+        hitFetchLimit: providerResponse.hitFetchLimit ?? false,
+        cnpjWsEnrichment: provider === "hybrid" ? readHybridEnrichmentSummary(providerResponse.raw) : null
       };
     });
 
     let providerTotalResults: number | null = null;
     let fetchedResults = 0;
     let hitFetchLimit = false;
+    let cnpjWsEnrichmentSuccesses = 0;
+    let cnpjWsEnrichmentFailures = 0;
 
     for (const response of searchResponses) {
       if (providerTotalResults === null && typeof response.providerTotalResults === "number") {
@@ -503,6 +519,10 @@ export async function prepareSearchOrder(
       }
       fetchedResults += Math.max(0, Math.trunc(response.fetchedResults ?? 0));
       hitFetchLimit = hitFetchLimit || response.hitFetchLimit;
+      if (response.cnpjWsEnrichment) {
+        cnpjWsEnrichmentSuccesses += response.cnpjWsEnrichment.successCount;
+        cnpjWsEnrichmentFailures += response.cnpjWsEnrichment.failureCount;
+      }
 
       for (const row of response.filteredRows) {
         const normalizedCnpj = normalizeCnpj(row.cnpj);
@@ -547,6 +567,16 @@ export async function prepareSearchOrder(
       fetchedResults,
       mergedResults,
       hitFetchLimit,
+      cnpjWsEnrichmentStatus: provider === "hybrid"
+        ? cnpjWsEnrichmentSuccesses + cnpjWsEnrichmentFailures === 0
+          ? null
+          : cnpjWsEnrichmentFailures === 0
+            ? "sucesso"
+            : cnpjWsEnrichmentSuccesses > 0
+              ? "parcial"
+              : "falhou"
+        : null,
+      cnpjWsEnrichmentFailures: provider === "hybrid" ? cnpjWsEnrichmentFailures : null,
       leadPricingSummary: {
         basic: pricingSummary.tiers.find((tier) => tier.key === "basic")?.count ?? 0,
         phone: pricingSummary.tiers.find((tier) => tier.key === "phone")?.count ?? 0,
@@ -753,6 +783,7 @@ export async function runDiscoverySearch(
     let providerTotalResults: number | null = null;
     let fetchedResults: number | null = null;
     let hitFetchLimit = false;
+    let cnpjWsEnrichment = null as ReturnType<typeof readHybridEnrichmentSummary>;
     const localRows = hasAdvancedPublicFilters({
       requireEmail: normalizedInput.requireEmail,
       requireAddress: normalizedInput.requireAddress,
@@ -790,6 +821,7 @@ export async function runDiscoverySearch(
       providerTotalResults = providerResponse.providerTotalResults ?? null;
       fetchedResults = providerResponse.fetchedResults ?? providerResponse.normalized.length;
       hitFetchLimit = providerResponse.hitFetchLimit ?? false;
+      cnpjWsEnrichment = provider === "hybrid" ? readHybridEnrichmentSummary(providerResponse.raw) : null;
       normalizedRows = await mergeRowsWithStoredEstablishments(
         dedupeNormalizedRows([
           ...providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row)),
@@ -847,7 +879,9 @@ export async function runDiscoverySearch(
       providerTotalResults,
       fetchedResults: fetchedResults ?? mergedResults,
       mergedResults,
-      hitFetchLimit
+      hitFetchLimit,
+      cnpjWsEnrichmentStatus: provider === "hybrid" ? cnpjWsEnrichment?.status ?? null : null,
+      cnpjWsEnrichmentFailures: provider === "hybrid" ? cnpjWsEnrichment?.failureCount ?? null : null
     };
     Object.assign(queryPayload, buildAutoRefinementMetadata(totalFound));
 
