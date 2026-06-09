@@ -45,6 +45,63 @@ function normalizeRows<T>(value: T | T[]) {
   return Array.isArray(value) ? value : [value];
 }
 
+
+const JSON_COLUMNS_BY_TABLE: Record<string, Set<string>> = {
+  provider_cache: new Set(["request_payload", "response_payload", "normalized_payload"]),
+  search_queries: new Set(["query_payload"]),
+  establishments: new Set(["secondary_cnaes", "provider_payload"]),
+  search_results: new Set(["provider_payload"]),
+  stripe_webhook_events: new Set(["payload"]),
+  search_access_bulk_orders: new Set(["order_ids"]),
+  search_ai_format_orders: new Set(["formatted_payload", "format_job_payload"])
+};
+
+function isJsonColumn(table: string, column: string) {
+  return JSON_COLUMNS_BY_TABLE[table]?.has(column) ?? false;
+}
+
+function sanitizeJsonValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === undefined || typeof value === "function" || typeof value === "symbol") return null;
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return null;
+    seen.add(value);
+    return value.map((item) => sanitizeJsonValue(item, seen));
+  }
+
+  if (typeof value === "object") {
+    if (seen.has(value)) return null;
+    seen.add(value);
+
+    const output: Record<string, unknown> = {};
+    for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+      output[key] = sanitizeJsonValue(nestedValue, seen);
+    }
+    return output;
+  }
+
+  return String(value);
+}
+
+function serializeJsonColumnValue(table: string, column: string, value: unknown) {
+  if (!isJsonColumn(table, column)) return value;
+  if (value === null || value === undefined) return null;
+
+  try {
+    return JSON.stringify(sanitizeJsonValue(value));
+  } catch {
+    return JSON.stringify(null);
+  }
+}
+
+function buildPlaceholder(_table: string, _column: string, index: number) {
+  return `$${index}`;
+}
+
 function parseColumns(columns: string) {
   const trimmed = columns.trim();
   if (!trimmed || trimmed === "*") return { base: ["*"], relations: [] as string[] };
@@ -329,8 +386,8 @@ class DbQuery<T = Record<string, any>[]> implements PromiseLike<QueryResult<T>> 
       .map((row) => {
         const record = row as Record<string, unknown>;
         const placeholders = columns.map((column) => {
-          params.push(record[column]);
-          return `$${params.length}`;
+          params.push(serializeJsonColumnValue(this.table, column, record[column]));
+          return buildPlaceholder(this.table, column, params.length);
         });
         return `(${placeholders.join(", ")})`;
       })
@@ -344,8 +401,8 @@ class DbQuery<T = Record<string, any>[]> implements PromiseLike<QueryResult<T>> 
   private async executeUpdate(): Promise<QueryResult<T>> {
     const record = this.payload as Record<string, unknown>;
     const columns = toColumns(record).map(assertIdentifier);
-    const params = columns.map((column) => record[column]);
-    const setSql = columns.map((column, index) => `${column} = $${index + 1}`).join(", ");
+    const params = columns.map((column) => serializeJsonColumnValue(this.table, column, record[column]));
+    const setSql = columns.map((column, index) => `${column} = ${buildPlaceholder(this.table, column, index + 1)}`).join(", ");
     const { whereSql, params: whereParams } = buildWhere(this.filters, params.length + 1);
     const allParams = [...params, ...whereParams];
     const orSql = this.buildOrClause(allParams, allParams.length + 1);
@@ -371,8 +428,8 @@ class DbQuery<T = Record<string, any>[]> implements PromiseLike<QueryResult<T>> 
       .map((row) => {
         const record = row as Record<string, unknown>;
         const placeholders = columns.map((column) => {
-          params.push(record[column]);
-          return `$${params.length}`;
+          params.push(serializeJsonColumnValue(this.table, column, record[column]));
+          return buildPlaceholder(this.table, column, params.length);
         });
         return `(${placeholders.join(", ")})`;
       })

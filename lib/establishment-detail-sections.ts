@@ -142,26 +142,37 @@ export function formatEstablishmentPathLabel(path: string) {
     .join(" → ");
 }
 
-export function buildAddressSummary(establishment: Record<string, unknown>) {
-  const addressLine = typeof establishment.address_line === "string" ? establishment.address_line.trim() : "";
-  const addressNumber = typeof establishment.address_number === "string"
-    ? establishment.address_number.trim()
-    : establishment.address_number === null || establishment.address_number === undefined
-      ? ""
-      : String(establishment.address_number).trim();
-  const complement = typeof establishment.complement === "string"
-    ? establishment.complement.trim()
-    : establishment.complement === null || establishment.complement === undefined
-      ? ""
-      : String(establishment.complement).trim();
+function cleanAddressPart(value: unknown) {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/\s+/g, " ").trim();
+}
 
-  const normalizedLine = addressLine.replace(/\s+/g, " ").trim();
-  const hasNumberInLine = addressNumber ? normalizedLine.includes(addressNumber) : false;
+function formatCepPart(value: unknown) {
+  const raw = cleanAddressPart(value);
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length !== 8) return raw;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
+
+export function buildAddressSummary(establishment: Record<string, unknown>) {
+  const addressLine = cleanAddressPart(establishment.address_line);
+  const addressNumber = cleanAddressPart(establishment.address_number);
+  const complement = cleanAddressPart(establishment.complement);
+  const neighborhood = cleanAddressPart(establishment.neighborhood);
+  const cityName = cleanAddressPart(establishment.city_name);
+  const stateCode = cleanAddressPart(establishment.state_code).toUpperCase();
+  const cep = formatCepPart(establishment.cep);
+
+  const hasNumberInLine = addressNumber ? addressLine.includes(addressNumber) : false;
+  const cityState = cityName && stateCode ? `${cityName}/${stateCode}` : cityName || stateCode;
 
   const parts = [
-    normalizedLine,
+    addressLine,
     addressNumber && !hasNumberInLine ? addressNumber : "",
-    complement
+    complement,
+    neighborhood,
+    cityState,
+    cep ? `CEP ${cep}` : ""
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(", ") : null;

@@ -226,6 +226,11 @@ function buildFieldGroups(fields: SectionField[]): FieldGroup[] {
       title: "Endereço e localização",
       description: "Informações do endereço físico e códigos de localização.",
       matchers: ["pais", "country", "uf", "estado", "state", "cidade", "city", "municipio", "bairro", "cep", "logradouro", "numero", "número", "complemento", "endereco", "endereço", "ibge", "address"]
+    },
+    {
+      title: "Quadro societário",
+      description: "Sócios, administradores e demais vínculos societários quando retornados pelo provedor.",
+      matchers: ["quadro societario", "quadro de socios", "socio", "sócio", "socios", "sócios", "qsa", "administrador", "qualificacao", "qualificação", "partner", "shareholder"]
     }
   ];
 

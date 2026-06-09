@@ -181,9 +181,9 @@ async function fetchStoredEstablishmentsForTarget(target: SearchTarget, cnaeCode
     .filter((row: NormalizedEstablishment) => Boolean(normalizeCnpj(row.cnpj)));
 }
 
-function formatServiceError(error: unknown, fallback: string) {
+function extractErrorMessage(error: unknown) {
   if (error instanceof Error) {
-    return error.message || fallback;
+    return error.message || "";
   }
 
   if (error && typeof error === "object") {
@@ -203,11 +203,49 @@ function formatServiceError(error: unknown, fallback: string) {
     }
 
     if (typeof candidate.code === "string" && candidate.code.trim()) {
-      return `${fallback} (código ${candidate.code.trim()})`;
+      return `Código ${candidate.code.trim()}`;
     }
   }
 
-  return fallback;
+  return "";
+}
+
+function logTechnicalDiscoveryError(scope: string, error: unknown) {
+  const candidate = error && typeof error === "object" ? error as { code?: unknown; name?: unknown } : null;
+  console.error("[discovery]", scope, {
+    message: extractErrorMessage(error) || "Erro sem mensagem.",
+    code: typeof candidate?.code === "string" ? candidate.code : null,
+    name: error instanceof Error ? error.name : typeof candidate?.name === "string" ? candidate.name : null
+  });
+}
+
+function formatServiceError(error: unknown, fallback: string) {
+  const message = extractErrorMessage(error);
+
+  if (/invalid input syntax for type json/i.test(message) || /json input/i.test(message)) {
+    return "Não foi possível salvar os dados retornados pela busca. Tente novamente em instantes.";
+  }
+
+  const casaStatus = message.match(/Casa dos Dados respondeu\s+(\d{3})/i);
+  if (casaStatus) {
+    const status = Number(casaStatus[1]);
+    if (status === 401 || status === 403) {
+      return "A integração com a Casa dos Dados não autorizou a consulta. Verifique a configuração da chave no ambiente.";
+    }
+    if (status === 429) {
+      return "A Casa dos Dados limitou temporariamente as consultas. Tente novamente em instantes.";
+    }
+    if (status >= 500) {
+      return "A Casa dos Dados ficou indisponível durante a consulta. Tente novamente em instantes.";
+    }
+    return "A Casa dos Dados não conseguiu concluir a consulta com os filtros informados.";
+  }
+
+  if (/Casa dos Dados retornou uma resposta em formato inválido/i.test(message)) {
+    return "A Casa dos Dados retornou uma resposta fora do formato esperado. Tente novamente em instantes.";
+  }
+
+  return message || fallback;
 }
 
 function splitMultilineValues(value: string) {
@@ -705,6 +743,7 @@ export async function prepareSearchOrder(
 
     return { ok: true, data: { orderId: order.id, searchId: insertedSearch.id, accessToken: order.access_token } };
   } catch (error) {
+    logTechnicalDiscoveryError("prepareSearchOrder", error);
     return {
       ok: false,
       error: formatServiceError(error, "Falha ao preparar o pedido da pesquisa.")
@@ -834,7 +873,7 @@ export async function runDiscoverySearch(
 
       const expiresAt = new Date(now.getTime() + getDiscoveryCacheTtlHours() * 60 * 60 * 1000);
 
-      await db.from("provider_cache").upsert(
+      const { error: cacheError } = await db.from("provider_cache").upsert(
         {
           cache_key: cacheKey,
           provider,
@@ -848,6 +887,10 @@ export async function runDiscoverySearch(
           onConflict: "cache_key"
         }
       );
+
+      if (cacheError) {
+        throw cacheError;
+      }
     }
 
     const filteredRows = applyPublicFilters(normalizedRows, {
@@ -920,12 +963,16 @@ export async function runDiscoverySearch(
     }));
 
     if (establishmentsPayload.length > 0) {
-      await db.from("establishments").upsert(establishmentsPayload, {
+      const { error: establishmentsError } = await db.from("establishments").upsert(establishmentsPayload, {
         onConflict: "cnpj"
       });
+
+      if (establishmentsError) {
+        throw establishmentsError;
+      }
     }
 
-    const { data: storedEstablishments } = cleanRows.length
+    const storedEstablishmentsResult = cleanRows.length
       ? await db
           .from("establishments")
           .select("id, cnpj")
@@ -933,7 +980,13 @@ export async function runDiscoverySearch(
             "cnpj",
             cleanRows.map((row) => row.cnpj)
           )
-      : { data: [] as Array<{ id: string; cnpj: string }> };
+      : { data: [] as Array<{ id: string; cnpj: string }>, error: null };
+
+    if (storedEstablishmentsResult.error) {
+      throw storedEstablishmentsResult.error;
+    }
+
+    const storedEstablishments = storedEstablishmentsResult.data;
 
     const establishmentMap = new Map((storedEstablishments ?? []).map((item) => [item.cnpj, item.id]));
 
@@ -1000,9 +1053,10 @@ export async function runDiscoverySearch(
       }
     };
   } catch (error) {
+    logTechnicalDiscoveryError("runDiscoverySearch", error);
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Falha ao consultar provedor."
+      error: formatServiceError(error, "Falha ao consultar provedor.")
     };
   }
 }

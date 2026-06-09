@@ -134,7 +134,11 @@ function extractRecordSources(item: Record<string, unknown>) {
     item.dados_cnpj,
     item.dados,
     item.data,
-    item.resultado
+    item.resultado,
+    item.result,
+    item.payload,
+    item.establishment,
+    item.dados_cadastrais
   ]
     .map((value) => coalesceObject(value))
     .filter((value): value is CasaDosDadosFieldSource => Boolean(value));
@@ -200,6 +204,26 @@ function resolvePhoneFromSources(sources: CasaDosDadosFieldSource[]) {
   return null;
 }
 
+
+function resolveEmailFromSources(sources: CasaDosDadosFieldSource[], contacts: Record<string, unknown> | null) {
+  return pickFirstNonEmpty(
+    firstStringFromSources(sources, "contato_email", "emails", "email", "e_mail", "correio_eletronico", "mail"),
+    extractFirstString(contacts?.email),
+    extractFirstString(contacts?.emails),
+    extractFirstString(contacts?.contato_email),
+    extractFirstString(contacts?.mail)
+  );
+}
+
+function resolveWebsiteFromSources(sources: CasaDosDadosFieldSource[], contacts: Record<string, unknown> | null) {
+  return pickFirstNonEmpty(
+    firstStringFromSources(sources, "website", "site", "url", "contato_site", "homepage"),
+    extractFirstString(contacts?.website),
+    extractFirstString(contacts?.site),
+    extractFirstString(contacts?.url)
+  );
+}
+
 function resolveAddressLine(item: Record<string, unknown>, sources: CasaDosDadosFieldSource[], address: Record<string, unknown> | null) {
   const typeLogradouro = coalesceText(address?.tipo_logradouro, address?.tipo, firstTextFromSources(sources, "tipo_logradouro", "tipo"));
   const logradouro = coalesceText(
@@ -225,6 +249,98 @@ function mergeProviderPayload(searchPayload: unknown, detailPayload?: unknown, d
     casadosdados_detalhe: detailPayload ?? null,
     erro_enriquecimento_casadosdados: detailError ?? null
   };
+}
+
+
+function readNestedValue(value: unknown, path: string[]) {
+  let current = value;
+  for (const key of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return null;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+function extractCasaDosDadosRows(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) {
+    return payload.filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item));
+  }
+
+  if (!payload || typeof payload !== "object") return [];
+
+  const direct = payload as Record<string, unknown>;
+  const candidates = [
+    direct.registros,
+    direct.cnpjs,
+    direct.resultados,
+    direct.results,
+    direct.items,
+    direct.empresas,
+    direct.estabelecimentos,
+    direct.docs,
+    direct.data,
+    readNestedValue(direct, ["data", "registros"]),
+    readNestedValue(direct, ["data", "cnpjs"]),
+    readNestedValue(direct, ["data", "resultados"]),
+    readNestedValue(direct, ["data", "results"]),
+    readNestedValue(direct, ["data", "items"]),
+    readNestedValue(direct, ["data", "empresas"]),
+    readNestedValue(direct, ["data", "estabelecimentos"]),
+    readNestedValue(direct, ["resultado", "registros"]),
+    readNestedValue(direct, ["resultado", "cnpjs"]),
+    readNestedValue(direct, ["resultado", "resultados"])
+  ];
+
+  for (const candidate of candidates) {
+    const rows = coalesceArray(candidate);
+    if (rows && rows.length > 0) {
+      return rows.filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item));
+    }
+  }
+
+  return [];
+}
+
+function extractCasaDosDadosTotal(payload: unknown) {
+  const candidates = [
+    readNestedValue(payload, ["total"]),
+    readNestedValue(payload, ["total_registros"]),
+    readNestedValue(payload, ["total_resultados"]),
+    readNestedValue(payload, ["count"]),
+    readNestedValue(payload, ["data", "total"]),
+    readNestedValue(payload, ["data", "total_registros"]),
+    readNestedValue(payload, ["data", "total_resultados"]),
+    readNestedValue(payload, ["data", "count"]),
+    readNestedValue(payload, ["resultado", "total"]),
+    readNestedValue(payload, ["paginacao", "total"]),
+    readNestedValue(payload, ["pagination", "total"])
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = parseNumber(candidate);
+    if (typeof parsed === "number" && Number.isFinite(parsed)) {
+      return Math.max(0, Math.trunc(parsed));
+    }
+  }
+
+  return null;
+}
+
+
+function extractCasaDosDadosCnpj(item: Record<string, unknown>) {
+  const sources = extractRecordSources(item);
+  return normalizeCnpj(firstTextFromSources(sources, "cnpj", "cnpj_completo", "cnpj_formatado", "documento") ?? "");
+}
+
+async function readCasaDosDadosJsonResponse(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) return {} as Record<string, unknown>;
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("Casa dos Dados retornou uma resposta em formato inválido.");
+  }
 }
 
 function mergeCasaDosDadosEstablishment(
@@ -356,11 +472,7 @@ export function normalizeCasaDosDadosEstablishment(
     simplesOptIn: parseBoolean(firstStringFromSources(sources, "opcao_pelo_simples", "simples_optante", "simples")),
     meiOptIn: parseBoolean(firstStringFromSources(sources, "opcao_pelo_mei", "mei_optante", "mei")),
     capitalSocial: parseNumber(firstStringFromSources(sources, "capital_social")),
-    email: pickFirstNonEmpty(
-      firstStringFromSources(sources, "contato_email", "emails", "email", "e_mail", "correio_eletronico"),
-      extractFirstString(contacts?.email),
-      extractFirstString(contacts?.emails)
-    ),
+    email: resolveEmailFromSources(sources, contacts),
     phone: pickBestPhone(
       resolvePhoneFromSources(sources),
       pickFirstNonEmpty(
@@ -369,11 +481,7 @@ export function normalizeCasaDosDadosEstablishment(
         extractFirstString(contacts?.phone)
       )
     ),
-    website: pickFirstNonEmpty(
-      firstStringFromSources(sources, "website", "site", "url", "contato_site"),
-      extractFirstString(contacts?.website),
-      extractFirstString(contacts?.site)
-    ),
+    website: resolveWebsiteFromSources(sources, contacts),
     country: firstTextFromSources(sources, "pais", "pais_nome"),
     stateCode: coalesceText(firstTextFromSources(sources, "uf", "state_code"), address?.uf)?.toUpperCase() ?? null,
     cityName: coalesceText(firstTextFromSources(sources, "municipio", "cidade", "cidade_nome", "city_name"), address?.municipio),
@@ -420,7 +528,10 @@ export async function fetchCasaDosDadosCompanyByCnpj(cnpj: string): Promise<{
     throw new Error(`Casa dos Dados respondeu ${response.status}: ${message}`);
   }
 
-  const raw = (await response.json()) as Record<string, unknown>;
+  const rawPayload = await readCasaDosDadosJsonResponse(response);
+  const raw = rawPayload && typeof rawPayload === "object" && !Array.isArray(rawPayload)
+    ? rawPayload as Record<string, unknown>
+    : { data: rawPayload };
 
   const normalized = normalizeCasaDosDadosEstablishment(raw);
 
@@ -506,7 +617,7 @@ export async function searchWithCasaDosDados(
     body.data_abertura = openedAtRange;
   }
 
-  const rawPages: Record<string, unknown>[] = [];
+  const rawPages: unknown[] = [];
   const accumulatedRows: unknown[] = [];
   let providerTotalResults: number | null = null;
   let page = 1;
@@ -534,21 +645,15 @@ export async function searchWithCasaDosDados(
       throw new Error(`Casa dos Dados respondeu ${response.status}: ${message}`);
     }
 
-    const rawPage = (await response.json()) as Record<string, unknown>;
+    const rawPage = await readCasaDosDadosJsonResponse(response);
     rawPages.push(rawPage);
     pagesFetched += 1;
 
     if (providerTotalResults === null) {
-      const candidateTotals = [rawPage.total, rawPage.total_registros, rawPage.total_resultados];
-      for (const candidate of candidateTotals) {
-        if (typeof candidate === "number" && Number.isFinite(candidate)) {
-          providerTotalResults = Math.max(0, Math.trunc(candidate));
-          break;
-        }
-      }
+      providerTotalResults = extractCasaDosDadosTotal(rawPage);
     }
 
-    const pageRows = coalesceArray(rawPage.registros, rawPage.cnpjs, rawPage.resultados, rawPage.data, rawPage) ?? [];
+    const pageRows = extractCasaDosDadosRows(rawPage);
     if (pageRows.length === 0) {
       break;
     }
@@ -572,7 +677,7 @@ export async function searchWithCasaDosDados(
     new Map(
       fetchedRows
         .map((item) => {
-          const cnpj = normalizeCnpj(coalesceString(item.cnpj, item.cnpj_completo, item.cnpj_formatado) ?? "");
+          const cnpj = extractCasaDosDadosCnpj(item);
           return cnpj ? [cnpj, item] as const : null;
         })
         .filter((item): item is readonly [string, Record<string, unknown>] => Boolean(item))

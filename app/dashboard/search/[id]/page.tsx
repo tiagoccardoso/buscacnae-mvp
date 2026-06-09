@@ -22,6 +22,7 @@ import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
 import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
 import { getAiFormatPricingTable, getAiFormattingPriceSummary } from "@/lib/ai-format-pricing";
+import { buildAddressSummary } from "@/lib/establishment-detail-sections";
 
 type SearchResultPageProps = {
   params: Promise<{ id: string }>;
@@ -404,6 +405,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
               const cityName = canonical.cityName ?? "-";
               const stateCode = canonical.stateCode ?? "-";
               const status = canonical.registrationStatus ?? "-";
+              const addressSummary = buildAddressSummary(mergedEstablishment);
 
               return (
                 <article key={establishmentId} className="result-card-premium">
@@ -416,9 +418,9 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                     <span><strong>CNPJ:</strong> {formatCnpj(cnpj)}</span>
                     <span><strong>Cidade:</strong> {cityName}/{stateCode}</span>
                     <span><strong>Status:</strong> {status}</span>
-                    <span><strong>Telefone:</strong> {canonical.phone ?? "Não informado"}</span>
-                    <span><strong>E-mail:</strong> {canonical.email ?? "Não informado"}</span>
-                    <span><strong>Endereço:</strong> {canonical.addressLine ?? "Não informado"}</span>
+                    <span><strong>Telefone:</strong> {canonical.phone ?? "Não retornado pela API"}</span>
+                    <span><strong>E-mail:</strong> {canonical.email ?? "Não retornado pela API"}</span>
+                    <span><strong>Endereço:</strong> {addressSummary ?? "Não retornado pela API"}</span>
                   </div>
                   <div className="inline-actions result-card-actions">
                     <Link href={`/dashboard/companies/${encodeURIComponent(cnpj)}`} className="button-ghost">
