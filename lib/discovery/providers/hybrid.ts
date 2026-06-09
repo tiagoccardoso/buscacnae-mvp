@@ -18,23 +18,28 @@ function pickFirstDefined<T>(...values: Array<T | null | undefined>) {
 }
 
 function mergeSecondaryCnaes(base: unknown, detail: unknown) {
-  if (Array.isArray(detail) && detail.length > 0) return detail;
   if (Array.isArray(base) && base.length > 0) return base;
-  return detail ?? base ?? null;
+  if (Array.isArray(detail) && detail.length > 0) return detail;
+  return base ?? detail ?? null;
 }
 
-function isMobileLikePhone(value?: string | null) {
-  const digits = (value ?? "").replace(/\D/g, "");
-  if (digits.length < 10) return false;
-  const subscriber = digits.length >= 9 ? digits.slice(-9) : digits;
-  const first = subscriber.charAt(0);
-  return ["9", "8", "7"].includes(first);
+function sanitizeEnrichmentError(error: unknown) {
+  const message = error instanceof Error ? error.message : "Falha ao enriquecer com a CNPJ.ws.";
+  if (/abort/i.test(message)) return "CNPJ.ws não respondeu dentro do tempo limite.";
+  const status = message.match(/CNPJ\.ws respondeu\s+(\d{3})/i)?.[1];
+  if (status) return `CNPJ.ws respondeu ${status}.`;
+  if (/missing environment variable: cnpjws_api_token/i.test(message)) return "CNPJ.ws sem configuração de token.";
+  if (/x_api_token|token/i.test(message)) return "Falha de autenticação na CNPJ.ws.";
+  return "Falha ao enriquecer com a CNPJ.ws.";
 }
 
-function pickBestPhone(detailPhone?: string | null, searchPhone?: string | null) {
-  if (isMobileLikePhone(detailPhone)) return detailPhone ?? null;
-  if (isMobileLikePhone(searchPhone)) return searchPhone ?? null;
-  return pickFirstNonEmpty(detailPhone, searchPhone);
+function logCnpjWsEnrichmentFailure(cnpj: string, error: unknown) {
+  const status = error instanceof Error ? error.message.match(/CNPJ\.ws respondeu\s+(\d{3})/i)?.[1] : undefined;
+  console.warn("[discovery:hybrid] enriquecimento CNPJ.ws ignorado", {
+    cnpjSuffix: normalizeCnpj(cnpj).slice(-4) || null,
+    status: status ?? null,
+    reason: sanitizeEnrichmentError(error)
+  });
 }
 
 function mergeProviderPayload(searchPayload: unknown, detailPayload?: unknown, detailError?: string | null) {
@@ -47,6 +52,7 @@ function mergeProviderPayload(searchPayload: unknown, detailPayload?: unknown, d
     casadosdados_detalhe: casaPayload?.casadosdados_detalhe ?? null,
     erro_enriquecimento_casadosdados: casaPayload?.erro_enriquecimento_casadosdados ?? null,
     cnpjws_consulta: detailPayload ?? null,
+    enriquecimento_cnpjws_status: detailError ? "falhou" : detailPayload ? "sucesso" : "nao_executado",
     erro_enriquecimento_cnpjws: detailError ?? null
   };
 }
@@ -65,33 +71,33 @@ function mergeNormalizedEstablishment(
   }
 
   return {
-    cnpj: detailRow.cnpj || searchRow.cnpj,
-    cnpjRoot: pickFirstNonEmpty(detailRow.cnpjRoot, searchRow.cnpjRoot),
-    companyName: pickFirstNonEmpty(detailRow.companyName, searchRow.companyName) ?? searchRow.companyName,
-    tradeName: pickFirstNonEmpty(detailRow.tradeName, searchRow.tradeName),
-    registrationStatus: pickFirstNonEmpty(detailRow.registrationStatus, searchRow.registrationStatus),
-    openedAt: pickFirstNonEmpty(detailRow.openedAt, searchRow.openedAt),
-    primaryCnaeCode: pickFirstNonEmpty(detailRow.primaryCnaeCode, searchRow.primaryCnaeCode),
-    primaryCnaeDescription: pickFirstNonEmpty(detailRow.primaryCnaeDescription, searchRow.primaryCnaeDescription),
+    cnpj: normalizeCnpj(searchRow.cnpj) || normalizeCnpj(detailRow.cnpj),
+    cnpjRoot: pickFirstNonEmpty(searchRow.cnpjRoot, detailRow.cnpjRoot),
+    companyName: pickFirstNonEmpty(searchRow.companyName, detailRow.companyName) ?? searchRow.companyName,
+    tradeName: pickFirstNonEmpty(searchRow.tradeName, detailRow.tradeName),
+    registrationStatus: pickFirstNonEmpty(searchRow.registrationStatus, detailRow.registrationStatus),
+    openedAt: pickFirstNonEmpty(searchRow.openedAt, detailRow.openedAt),
+    primaryCnaeCode: pickFirstNonEmpty(searchRow.primaryCnaeCode, detailRow.primaryCnaeCode),
+    primaryCnaeDescription: pickFirstNonEmpty(searchRow.primaryCnaeDescription, detailRow.primaryCnaeDescription),
     secondaryCnaes: mergeSecondaryCnaes(searchRow.secondaryCnaes, detailRow.secondaryCnaes),
-    legalNatureCode: pickFirstNonEmpty(detailRow.legalNatureCode, searchRow.legalNatureCode),
-    legalNatureDescription: pickFirstNonEmpty(detailRow.legalNatureDescription, searchRow.legalNatureDescription),
-    companySize: pickFirstNonEmpty(detailRow.companySize, searchRow.companySize),
-    simplesOptIn: pickFirstDefined(detailRow.simplesOptIn, searchRow.simplesOptIn),
-    meiOptIn: pickFirstDefined(detailRow.meiOptIn, searchRow.meiOptIn),
-    capitalSocial: pickFirstDefined(detailRow.capitalSocial, searchRow.capitalSocial),
-    email: pickFirstNonEmpty(detailRow.email, searchRow.email),
-    phone: pickBestPhone(detailRow.phone, searchRow.phone),
-    website: pickFirstNonEmpty(detailRow.website, searchRow.website),
-    country: pickFirstNonEmpty(detailRow.country, searchRow.country),
-    stateCode: pickFirstNonEmpty(detailRow.stateCode, searchRow.stateCode),
-    cityName: pickFirstNonEmpty(detailRow.cityName, searchRow.cityName),
-    cityIbge: pickFirstNonEmpty(detailRow.cityIbge, searchRow.cityIbge),
-    neighborhood: pickFirstNonEmpty(detailRow.neighborhood, searchRow.neighborhood),
-    cep: pickFirstNonEmpty(detailRow.cep, searchRow.cep),
-    addressLine: pickFirstNonEmpty(detailRow.addressLine, searchRow.addressLine),
-    addressNumber: pickFirstNonEmpty(detailRow.addressNumber, searchRow.addressNumber),
-    complement: pickFirstNonEmpty(detailRow.complement, searchRow.complement),
+    legalNatureCode: pickFirstNonEmpty(searchRow.legalNatureCode, detailRow.legalNatureCode),
+    legalNatureDescription: pickFirstNonEmpty(searchRow.legalNatureDescription, detailRow.legalNatureDescription),
+    companySize: pickFirstNonEmpty(searchRow.companySize, detailRow.companySize),
+    simplesOptIn: pickFirstDefined(searchRow.simplesOptIn, detailRow.simplesOptIn),
+    meiOptIn: pickFirstDefined(searchRow.meiOptIn, detailRow.meiOptIn),
+    capitalSocial: pickFirstDefined(searchRow.capitalSocial, detailRow.capitalSocial),
+    email: pickFirstNonEmpty(searchRow.email, detailRow.email),
+    phone: pickFirstNonEmpty(searchRow.phone, detailRow.phone),
+    website: pickFirstNonEmpty(searchRow.website, detailRow.website),
+    country: pickFirstNonEmpty(searchRow.country, detailRow.country),
+    stateCode: pickFirstNonEmpty(searchRow.stateCode, detailRow.stateCode),
+    cityName: pickFirstNonEmpty(searchRow.cityName, detailRow.cityName),
+    cityIbge: pickFirstNonEmpty(searchRow.cityIbge, detailRow.cityIbge),
+    neighborhood: pickFirstNonEmpty(searchRow.neighborhood, detailRow.neighborhood),
+    cep: pickFirstNonEmpty(searchRow.cep, detailRow.cep),
+    addressLine: pickFirstNonEmpty(searchRow.addressLine, detailRow.addressLine),
+    addressNumber: pickFirstNonEmpty(searchRow.addressNumber, detailRow.addressNumber),
+    complement: pickFirstNonEmpty(searchRow.complement, detailRow.complement),
     providerPayload: mergeProviderPayload(searchRow.providerPayload, detailRaw, detailError)
   };
 }
@@ -106,7 +112,7 @@ async function enrichWithCnpjWs(rows: NormalizedEstablishment[]) {
   const limit = Math.max(1, Math.min(3, normalizedRows.length || 1));
   let cursor = 0;
   let successCount = 0;
-  let authLikeFailure: Error | null = null;
+  let failureCount = 0;
 
   async function worker() {
     while (cursor < normalizedRows.length) {
@@ -121,10 +127,9 @@ async function enrichWithCnpjWs(rows: NormalizedEstablishment[]) {
         }
         enriched[index] = mergeNormalizedEstablishment(current, detail.normalized, detail.raw, null);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Falha ao enriquecer com a CNPJ.ws.";
-        if (/\b(401|403)\b/.test(message) || /x_api_token|token/i.test(message)) {
-          authLikeFailure = error instanceof Error ? error : new Error(message);
-        }
+        failureCount += 1;
+        const message = sanitizeEnrichmentError(error);
+        logCnpjWsEnrichmentFailure(current.cnpj, error);
         enriched[index] = mergeNormalizedEstablishment(current, null, null, message);
       }
     }
@@ -132,18 +137,18 @@ async function enrichWithCnpjWs(rows: NormalizedEstablishment[]) {
 
   await Promise.all(Array.from({ length: limit }, () => worker()));
 
-  if (normalizedRows.length > 0 && successCount === 0 && authLikeFailure) {
-    throw authLikeFailure;
-  }
-
-  return enriched;
+  return {
+    rows: enriched.map((row, index) => row ?? normalizedRows[index]),
+    successCount,
+    failureCount
+  };
 }
 
 export async function searchWithHybrid(input: DiscoverySearchInput): Promise<DiscoverySearchOutput> {
   const casaResponse = await searchWithCasaDosDados(input);
-  const enrichedRows = await enrichWithCnpjWs(casaResponse.normalized);
+  const enrichment = await enrichWithCnpjWs(casaResponse.normalized);
   const mergedByCnpj = new Map<string, NormalizedEstablishment>();
-  for (const row of enrichedRows) {
+  for (const row of enrichment.rows) {
     const cnpj = normalizeCnpj(row.cnpj);
     if (!cnpj) continue;
     mergedByCnpj.set(cnpj, { ...row, cnpj });
@@ -155,6 +160,18 @@ export async function searchWithHybrid(input: DiscoverySearchInput): Promise<Dis
     raw: {
       motor_principal: "casadosdados",
       complemento: "cnpjws",
+      enriquecimento_cnpjws: {
+        status:
+          casaResponse.normalized.length === 0
+            ? "nao_executado"
+            : enrichment.failureCount === 0
+              ? "sucesso"
+              : enrichment.successCount > 0
+                ? "parcial"
+                : "falhou",
+        sucessos: enrichment.successCount,
+        falhas: enrichment.failureCount
+      },
       pesquisa: casaResponse.raw,
       resultados_enriquecidos: mergedResults.map((item) => item.providerPayload),
       provider_total_resultados: casaResponse.providerTotalResults ?? null,

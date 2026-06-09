@@ -78,6 +78,11 @@ export function getCnpjWsToken() {
   return requireEnv("CNPJWS_API_TOKEN");
 }
 
+export function getCnpjWsTimeoutMs() {
+  const value = Number(getEnv("CNPJWS_TIMEOUT_MS") || "5000");
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 5000;
+}
+
 export function getCasaDosDadosKey() {
   return requireEnv("CASA_DOS_DADOS_API_KEY");
 }

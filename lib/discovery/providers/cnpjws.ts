@@ -1,4 +1,4 @@
-import { getCnpjWsToken, getDiscoveryMaxResults } from "@/lib/env";
+import { getCnpjWsTimeoutMs, getCnpjWsToken, getDiscoveryMaxResults } from "@/lib/env";
 import { DiscoverySearchInput, DiscoverySearchOutput, NormalizedEstablishment } from "@/lib/types";
 import {
   coalesceArray,
@@ -278,13 +278,18 @@ export async function fetchCnpjWsCompanyByCnpj(cnpj: string): Promise<{
     throw new Error("CNPJ inválido para consulta detalhada na CNPJ.ws.");
   }
 
+  const token = getCnpjWsToken();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getCnpjWsTimeoutMs());
+
   const response = await fetch(`https://comercial.cnpj.ws/cnpj/${normalizedCnpj}`, {
     headers: {
-      x_api_token: getCnpjWsToken(),
+      x_api_token: token,
       Accept: "application/json"
     },
-    cache: "no-store"
-  });
+    cache: "no-store",
+    signal: controller.signal
+  }).finally(() => clearTimeout(timeout));
 
   if (!response.ok) {
     const message = await response.text();
