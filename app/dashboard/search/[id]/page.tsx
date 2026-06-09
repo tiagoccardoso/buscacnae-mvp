@@ -404,6 +404,9 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
                     <span><strong>CNPJ:</strong> {formatCnpj(cnpj)}</span>
                     <span><strong>Cidade:</strong> {cityName}/{stateCode}</span>
                     <span><strong>Status:</strong> {status}</span>
+                    <span><strong>Telefone:</strong> {canonical.phone ?? "Não informado"}</span>
+                    <span><strong>E-mail:</strong> {canonical.email ?? "Não informado"}</span>
+                    <span><strong>Endereço:</strong> {canonical.addressLine ?? "Não informado"}</span>
                   </div>
                   <div className="inline-actions result-card-actions">
                     <Link href={`/dashboard/companies/${encodeURIComponent(cnpj)}`} className="button-ghost">

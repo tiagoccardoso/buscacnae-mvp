@@ -15,6 +15,7 @@ const WRAPPER_SEGMENTS = new Set([
   "cnpjws_consulta",
   "consulta_cnpj",
   "casadosdados_pesquisa",
+  "casadosdados_detalhe",
   "pesquisa",
   "search_result_payload",
   "normalized",

@@ -19,6 +19,8 @@ type SearchTarget = {
   stateCode: string;
 };
 
+const DISCOVERY_CACHE_SCHEMA_VERSION = "casadosdados-contact-detail-v2";
+
 type PrepareSearchOrderInput = {
   profileId: string | null;
   email: string;
@@ -704,6 +706,7 @@ function buildCacheKey(input: ReturnType<typeof normalizeInput>, provider: strin
   return sha256(
     JSON.stringify({
       provider,
+      normalization: DISCOVERY_CACHE_SCHEMA_VERSION,
       cnae: input.cnae,
       stateCode: input.stateCode,
       cityName: input.cityName,

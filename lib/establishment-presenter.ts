@@ -141,6 +141,10 @@ function collectPayloadSources(establishment: Record<string, unknown>) {
       ? extractSingleObject((payload.cnpjws_consulta as Record<string, unknown>).consulta_cnpj)
       : null,
     payload?.casadosdados_pesquisa,
+    payload?.casadosdados_detalhe,
+    payload?.casadosdados_detalhe && typeof payload.casadosdados_detalhe === "object" && !Array.isArray(payload.casadosdados_detalhe)
+      ? extractSingleObject((payload.casadosdados_detalhe as Record<string, unknown>).estabelecimento)
+      : null,
     payload?.pesquisa
   ];
 

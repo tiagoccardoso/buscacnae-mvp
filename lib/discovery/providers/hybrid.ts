@@ -38,8 +38,14 @@ function pickBestPhone(detailPhone?: string | null, searchPhone?: string | null)
 }
 
 function mergeProviderPayload(searchPayload: unknown, detailPayload?: unknown, detailError?: string | null) {
+  const casaPayload = searchPayload && typeof searchPayload === "object" && !Array.isArray(searchPayload)
+    ? searchPayload as Record<string, unknown>
+    : null;
+
   return {
-    casadosdados_pesquisa: searchPayload ?? null,
+    casadosdados_pesquisa: casaPayload?.casadosdados_pesquisa ?? searchPayload ?? null,
+    casadosdados_detalhe: casaPayload?.casadosdados_detalhe ?? null,
+    erro_enriquecimento_casadosdados: casaPayload?.erro_enriquecimento_casadosdados ?? null,
     cnpjws_consulta: detailPayload ?? null,
     erro_enriquecimento_cnpjws: detailError ?? null
   };
