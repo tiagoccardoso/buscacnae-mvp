@@ -14,7 +14,7 @@ export default function ContactPage() {
         <div className="surface-premium card-lg stack">
           <span className="eyebrow">Contato</span>
           <h1 className="display-title" style={{ fontSize: "clamp(2.2rem, 4vw, 4rem)" }}>
-            Atendimento comercial, suporte e dúvidas sobre dados.
+            Canais oficiais de atendimento da plataforma.
           </h1>
           <p className="lead-copy">
             Use o canal abaixo para falar sobre pedidos, listas, dados, privacidade e questões operacionais da plataforma.

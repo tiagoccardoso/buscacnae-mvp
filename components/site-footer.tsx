@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { footerNavigation, getBusinessShortDescription, publicContactEmail } from "@/lib/site-content";
+import { footerNavigation, getBusinessShortDescription } from "@/lib/site-content";
 
 export function SiteFooter() {
   return (
@@ -47,11 +47,14 @@ export function SiteFooter() {
           </div>
 
           <div className="stack">
-            <span className="footer-heading">Contato</span>
-            <a href={`mailto:${publicContactEmail}`} className="muted">
-              {publicContactEmail}
-            </a>
-            <span className="muted">Atendimento comercial, suporte e dúvidas sobre dados.</span>
+            <span className="footer-heading">Atendimento humanizado</span>
+            <span className="muted">
+              Para registrar tickets de atendimento humanizado, acesse a plataforma{" "}
+              <a href="https://www.selectsaas.com.br" target="_blank" rel="noopener noreferrer" className="muted">
+                SelectSaaS
+              </a>
+              .
+            </span>
           </div>
         </div>
       </div>
