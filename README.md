@@ -6,7 +6,7 @@ Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cid
 - **Neon PostgreSQL** para banco de dados
 - Autenticação própria com tabela `users`, hash de senha e sessão em cookie seguro
 - **Stripe Checkout + Customer Portal + Webhooks**
-- **CNPJ.ws Premium** ou **Casa dos Dados** como provedor de descoberta
+- **Casa dos Dados** como fonte única de descoberta de empresas
 - **Cache próprio + histórico de consultas** no Neon PostgreSQL
 - **Schema orientado a estabelecimento + subclasse CNAE**
 - **CNPJ salvo como string**, preparado para o CNPJ alfanumérico de 2026
@@ -23,16 +23,14 @@ Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cid
 - Integração com Stripe para assinatura
 - Webhook idempotente
 - SQL inicial com tabelas, índices e triggers no Neon PostgreSQL
-- Abstração de provedor para trocar entre CNPJ.ws e Casa dos Dados
+- Integração centralizada com a Casa dos Dados (timeout, retry conservador, cache e deduplicação)
 
 ## Requisitos
 
 - Node.js 22+
 - Projeto Neon com PostgreSQL
 - Conta Stripe com preços criados
-- Conta no provedor de dados:
-  - `CNPJ.ws Premium`, ou
-  - `Casa dos Dados`
+- Conta na Casa dos Dados com chave de API e saldo disponível
 
 ## 1) Banco Neon PostgreSQL
 
@@ -81,19 +79,20 @@ O projeto está configurado para usar a **Casa dos Dados como motor principal de
 Defina:
 
 ```bash
-DISCOVERY_PROVIDER=hybrid
 CASA_DOS_DADOS_API_KEY=sua_api_key
-CNPJWS_API_TOKEN=seu_token_cnpjws
+# opcionais
+CASA_DOS_DADOS_TIMEOUT_MS=15000
+DISCOVERY_PAGE_SIZE=50
+DISCOVERY_MAX_RESULTS=50
+DISCOVERY_CACHE_TTL_HOURS=24
 ```
 
-A integração usa:
-- `codigo_atividade_principal`
-- `uf`
-- `municipio`
+A Casa dos Dados é a **única** fonte externa de consulta de empresas (`lib/discovery/providers/casadosdados.ts`):
+- `POST /v5/cnpj/pesquisa` — pesquisa paginada (`pagina`/`limite`) com `codigo_atividade_principal`, `uf`, `municipio`, `situacao_cadastral`, `mais_filtros`, `porte_empresa`, `simples`, `capital_social` e `data_abertura`
+- `GET /v4/cnpj/{cnpj}` — consulta detalhada (contatos, Simples/MEI), com cache em memória e deduplicação
 
-Observação:
-- o código foi ajustado para priorizar a Casa dos Dados no fluxo principal
-- `DISCOVERY_PROVIDER` pode continuar no `.env`, mas o projeto já nasce com o motor híbrido Casa dos Dados + CNPJ.ws como padrão
+Buscas idênticas são reaproveitadas via tabela `provider_cache` (TTL em `DISCOVERY_CACHE_TTL_HOURS`).
+Erros transitórios têm retry conservador; HTTP 429 não é repetido agressivamente.
 
 ## 5) Variáveis de ambiente
 

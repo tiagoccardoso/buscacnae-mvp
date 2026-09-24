@@ -1,4 +1,5 @@
-export type DiscoveryProvider = "hybrid" | "cnpjws" | "casadosdados";
+/** A Casa dos Dados é a única fonte externa de consulta de empresas. */
+export type DiscoveryProvider = "casadosdados";
 
 export type SubscriptionStatus =
   | "trialing"
@@ -37,6 +38,8 @@ export type DiscoverySearchOutput = {
   fetchedResults?: number | null;
   pagesFetched?: number | null;
   hitFetchLimit?: boolean;
+  /** true quando a consulta detalhada (contatos) não pôde ser concluída para todas as linhas. */
+  detailIncomplete?: boolean;
 };
 
 export type NormalizedEstablishment = {

@@ -130,6 +130,7 @@ function collectPayloadSources(establishment: Record<string, unknown>) {
     payload?.consulta_cnpj && typeof payload.consulta_cnpj === "object" && !Array.isArray(payload.consulta_cnpj)
       ? extractSingleObject((payload.consulta_cnpj as Record<string, unknown>).estabelecimento)
       : null,
+    // Legado (somente leitura): registros salvos antes da remoção da CNPJ.ws continuam exibíveis.
     payload?.cnpjws_consulta,
     payload?.cnpjws_consulta && typeof payload.cnpjws_consulta === "object" && !Array.isArray(payload.cnpjws_consulta)
       ? extractSingleObject((payload.cnpjws_consulta as Record<string, unknown>).estabelecimento)

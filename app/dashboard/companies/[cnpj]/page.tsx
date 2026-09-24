@@ -1,12 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 import { EstablishmentDetails } from "@/components/establishment-details";
-import { fetchCasaDosDadosCompanyByCnpj } from "@/lib/discovery/providers/casadosdados";
-import { fetchCnpjWsCompanyByCnpj } from "@/lib/discovery/providers/cnpjws";
+import { fetchCasaDosDadosCompanyByCnpj, isCasaDosDadosError } from "@/lib/discovery/providers/casadosdados";
 import { formatCnpj } from "@/lib/format";
 import { createDbClient } from "@/lib/db-client";
 import { getCurrentUser } from "@/lib/auth/server";
 import { NormalizedEstablishment } from "@/lib/types";
-import { getDiscoveryProvider } from "@/lib/env";
 
 type CompanyPageProps = {
   params: Promise<{ cnpj: string }>;
@@ -66,8 +64,8 @@ function needsDetailedEnrichment(row: EstablishmentRow) {
   return detailedFields.filter(hasValue).length < 8;
 }
 
-function mergeProviderPayload(existingPayload: unknown, detailedPayload: Record<string, unknown>, source: "casadosdados" | "cnpjws") {
-  const detailKey = source === "casadosdados" ? "casadosdados_detalhe" : "cnpjws_consulta";
+function mergeProviderPayload(existingPayload: unknown, detailedPayload: Record<string, unknown>) {
+  const detailKey = "casadosdados_detalhe";
 
   if (existingPayload && typeof existingPayload === "object" && !Array.isArray(existingPayload)) {
     return {
@@ -88,34 +86,10 @@ function mergeProviderPayload(existingPayload: unknown, detailedPayload: Record<
   };
 }
 
-async function fetchDetailedCompanyByCnpj(cnpj: string) {
-  const preferredProvider = getDiscoveryProvider();
-  const providers = preferredProvider === "casadosdados"
-    ? (["casadosdados", "cnpjws"] as const)
-    : (["cnpjws", "casadosdados"] as const);
-
-  let lastError: unknown = null;
-
-  for (const provider of providers) {
-    try {
-      const detail = provider === "casadosdados"
-        ? await fetchCasaDosDadosCompanyByCnpj(cnpj)
-        : await fetchCnpjWsCompanyByCnpj(cnpj);
-
-      return { ...detail, source: provider };
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("Falha ao enriquecer ficha com dados detalhados.");
-}
-
 function mergeEstablishmentRow(
   current: EstablishmentRow,
   normalized: NormalizedEstablishment,
-  detailedPayload: Record<string, unknown>,
-  detailSource: "casadosdados" | "cnpjws"
+  detailedPayload: Record<string, unknown>
 ): EstablishmentRow {
   return {
     ...current,
@@ -148,7 +122,7 @@ function mergeEstablishmentRow(
     address_line: normalized.addressLine ?? current.address_line ?? null,
     address_number: normalized.addressNumber ?? current.address_number ?? null,
     complement: normalized.complement ?? current.complement ?? null,
-    provider_payload: mergeProviderPayload(current.provider_payload, detailedPayload, detailSource)
+    provider_payload: mergeProviderPayload(current.provider_payload, detailedPayload)
   };
 }
 
@@ -209,9 +183,9 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
 
   if (needsDetailedEnrichment(company)) {
     try {
-      const detail = await fetchDetailedCompanyByCnpj(company.cnpj);
+      const detail = await fetchCasaDosDadosCompanyByCnpj(company.cnpj);
       if (detail.normalized) {
-        company = mergeEstablishmentRow(company, detail.normalized, detail.raw, detail.source);
+        company = mergeEstablishmentRow(company, detail.normalized, detail.raw);
 
         const db = createDbClient();
         const { error } = await db
@@ -224,7 +198,11 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
         }
       }
     } catch (error) {
-      console.error("Falha ao enriquecer ficha com dados detalhados", error);
+      // Detalhes são complementares: a ficha segue com os dados já salvos.
+      console.warn("[company] consulta detalhada indisponível", {
+        kind: isCasaDosDadosError(error) ? error.kind : "unknown",
+        status: isCasaDosDadosError(error) ? error.status : null
+      });
     }
   }
 
@@ -237,7 +215,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
         </h2>
         <p className="footnote numeric">{formatCnpj(company.cnpj)}</p>
         <p className="section-copy">
-          Informações consolidadas da pesquisa e do retorno bruto dos provedores, reunidas em uma leitura única.
+          Informações cadastrais consolidadas da pesquisa, reunidas em uma leitura única.
         </p>
       </div>
 

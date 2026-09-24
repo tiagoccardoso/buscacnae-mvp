@@ -34,9 +34,7 @@ Abra o arquivo `.env` e preencha os valores obrigatórios:
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_PRO_MONTHLY`
 - `STRIPE_PRICE_PRO_ANNUAL`
-- `DISCOVERY_PROVIDER` (use `hybrid`)
 - `CASA_DOS_DADOS_API_KEY`
-- `CNPJWS_API_TOKEN`
 
 ## 4) Gere a imagem
 

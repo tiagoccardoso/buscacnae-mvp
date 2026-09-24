@@ -1,4 +1,4 @@
-import { getCasaDosDadosKey, getDiscoveryMaxResults, getDiscoveryPageSize } from "@/lib/env";
+import { getCasaDosDadosKey, getCasaDosDadosTimeoutMs, getDiscoveryMaxResults, getDiscoveryPageSize } from "@/lib/env";
 import { DiscoverySearchInput, DiscoverySearchOutput, NormalizedEstablishment } from "@/lib/types";
 import {
   coalesceArray,
@@ -6,6 +6,7 @@ import {
   coalesceString,
   normalizeCnpj,
   normalizeCode,
+  normalizeText,
   parseBoolean,
   parseNumber,
   toTitleCase
@@ -13,6 +14,188 @@ import {
 
 
 type CasaDosDadosFieldSource = Record<string, unknown>;
+
+/**
+ * Integração única de consulta de empresas do BuscaCNAE (Casa dos Dados).
+ *
+ * Endpoints oficiais utilizados (https://docs.casadosdados.com.br):
+ * - POST /v5/cnpj/pesquisa  -> pesquisa avançada paginada (pagina/limite)
+ * - GET  /v4/cnpj/{cnpj}    -> consulta detalhada (contatos, simples/MEI etc.)
+ */
+const CASA_DOS_DADOS_BASE_URL = "https://api.casadosdados.com.br";
+const CASA_DOS_DADOS_SEARCH_PATH = "/v5/cnpj/pesquisa";
+const CASA_DOS_DADOS_DETAIL_PATH = "/v4/cnpj";
+
+/** Teto de segurança quando DISCOVERY_MAX_RESULTS não é informado (evita carregar a base inteira). */
+export const CASA_DOS_DADOS_DEFAULT_MAX_RESULTS = 1000;
+const CASA_DOS_DADOS_MAX_PAGE_SIZE = 1000;
+const DETAIL_CONCURRENCY = 4;
+const DETAIL_CACHE_TTL_MS = 30 * 60 * 1000;
+const DETAIL_CACHE_MAX_ENTRIES = 5000;
+const MAX_RETRY_DELAY_MS = 8000;
+const BASE_RETRY_DELAY_MS = 600;
+
+export type CasaDosDadosErrorKind =
+  | "config"
+  | "auth"
+  | "rate_limit"
+  | "unavailable"
+  | "timeout"
+  | "network"
+  | "invalid_request"
+  | "invalid_response";
+
+export class CasaDosDadosError extends Error {
+  readonly kind: CasaDosDadosErrorKind;
+  readonly status: number | null;
+  readonly retryAfterMs: number | null;
+
+  constructor(kind: CasaDosDadosErrorKind, message: string, status: number | null = null, retryAfterMs: number | null = null) {
+    super(message);
+    this.name = "CasaDosDadosError";
+    this.kind = kind;
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+export function isCasaDosDadosError(error: unknown): error is CasaDosDadosError {
+  return error instanceof CasaDosDadosError;
+}
+
+function classifyHttpStatus(status: number): CasaDosDadosErrorKind {
+  if (status === 401 || status === 403) return "auth";
+  if (status === 429) return "rate_limit";
+  if (status >= 500) return "unavailable";
+  return "invalid_request";
+}
+
+function parseRetryAfterMs(value: string | null) {
+  if (!value) return null;
+  const seconds = Number(value.trim());
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.trunc(seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry conservador: somente erros transitórios, no máximo 2 novas tentativas.
+ * - 429: só tenta novamente se a API informar Retry-After curto; caso contrário falha rápido
+ *   (insistir aumentaria o bloqueio).
+ * - 502/503/504, erro de rede e timeout: backoff exponencial com jitter.
+ */
+function computeRetryDelay(error: CasaDosDadosError, attempt: number): number | null {
+  if (error.kind === "rate_limit") {
+    if (attempt >= 1 || error.retryAfterMs === null || error.retryAfterMs > MAX_RETRY_DELAY_MS) return null;
+    return Math.max(250, error.retryAfterMs);
+  }
+
+  const transientStatus = error.status === 502 || error.status === 503 || error.status === 504;
+  const retryable = error.kind === "network" || (error.kind === "unavailable" && transientStatus) || error.kind === "timeout";
+  const maxAttempts = error.kind === "timeout" ? 1 : 2;
+  if (!retryable || attempt >= maxAttempts) return null;
+
+  const backoff = BASE_RETRY_DELAY_MS * 2 ** attempt + Math.floor(Math.random() * 250);
+  const hinted = error.retryAfterMs ?? 0;
+  return Math.min(MAX_RETRY_DELAY_MS, Math.max(backoff, hinted));
+}
+
+function logCasaDosDadosFailure(context: string, error: CasaDosDadosError, attempt: number, willRetry: boolean) {
+  // Somente metadados de diagnóstico: nunca a chave, headers ou corpo da resposta.
+  console.warn("[casadosdados]", {
+    context,
+    kind: error.kind,
+    status: error.status,
+    attempt: attempt + 1,
+    willRetry
+  });
+}
+
+async function readCasaDosDadosJsonResponse(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) {
+    throw new CasaDosDadosError("invalid_response", "Casa dos Dados retornou uma resposta vazia.", response.status);
+  }
+
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("unexpected");
+    }
+    return parsed;
+  } catch {
+    throw new CasaDosDadosError("invalid_response", "Casa dos Dados retornou uma resposta em formato inválido.", response.status);
+  }
+}
+
+async function performCasaDosDadosRequest(path: string, method: "GET" | "POST", body: unknown, apiKey: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getCasaDosDadosTimeoutMs());
+
+  let response: Response;
+  try {
+    response = await fetch(`${CASA_DOS_DADOS_BASE_URL}${path}`, {
+      method,
+      headers: {
+        "api-key": apiKey,
+        Accept: "application/json",
+        ...(method === "POST" ? { "Content-Type": "application/json" } : {})
+      },
+      body: method === "POST" ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+      signal: controller.signal
+    });
+  } catch (error) {
+    const aborted = controller.signal.aborted || (error instanceof Error && error.name === "AbortError");
+    throw aborted
+      ? new CasaDosDadosError("timeout", "Casa dos Dados não respondeu dentro do tempo limite.")
+      : new CasaDosDadosError("network", "Falha de conexão com a Casa dos Dados.");
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    // Descarta o corpo sem propagá-lo (pode conter dados sensíveis/ruído técnico).
+    await response.text().catch(() => "");
+    throw new CasaDosDadosError(
+      classifyHttpStatus(response.status),
+      `Casa dos Dados respondeu ${response.status}.`,
+      response.status,
+      parseRetryAfterMs(response.headers.get("retry-after"))
+    );
+  }
+
+  return readCasaDosDadosJsonResponse(response);
+}
+
+async function requestCasaDosDados(path: string, method: "GET" | "POST", body: unknown, context: string): Promise<unknown> {
+  let apiKey: string;
+  try {
+    apiKey = getCasaDosDadosKey();
+  } catch {
+    const error = new CasaDosDadosError("config", "Chave da Casa dos Dados não configurada.");
+    logCasaDosDadosFailure(context, error, 0, false);
+    throw error;
+  }
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await performCasaDosDadosRequest(path, method, body, apiKey);
+    } catch (error) {
+      const normalized = isCasaDosDadosError(error)
+        ? error
+        : new CasaDosDadosError("network", "Falha inesperada ao consultar a Casa dos Dados.");
+      const delay = computeRetryDelay(normalized, attempt);
+      logCasaDosDadosFailure(context, normalized, attempt, delay !== null);
+      if (delay === null) throw normalized;
+      await sleep(delay);
+    }
+  }
+}
 
 function mapCasaDosDadosCompanySizes(values: string[] | undefined) {
   if (!values || values.length === 0) return [] as string[];
@@ -28,7 +211,8 @@ function mapCasaDosDadosCompanySizes(values: string[] | undefined) {
     if (/(^| )mei( |$)|microempreendedor individual|micro/.test(normalized)) return "01";
     if (/pequeno|epp/.test(normalized)) return "03";
     if (/medio|m[eé]dio|grande|demais/.test(value.toLowerCase()) || /medio|grande|demais/.test(normalized)) return "05";
-    return value.trim().toUpperCase();
+    if (/^0[135]$/.test(value.trim())) return value.trim();
+    return null;
   }).filter((value): value is string => Boolean(value));
 
   return Array.from(new Set(mapped));
@@ -243,11 +427,10 @@ function mergeSecondaryCnaes(base: unknown, detail: unknown) {
   return detail ?? base ?? null;
 }
 
-function mergeProviderPayload(searchPayload: unknown, detailPayload?: unknown, detailError?: string | null) {
+function mergeProviderPayload(searchPayload: unknown, detailPayload?: unknown) {
   return {
     casadosdados_pesquisa: searchPayload ?? null,
-    casadosdados_detalhe: detailPayload ?? null,
-    erro_enriquecimento_casadosdados: detailError ?? null
+    casadosdados_detalhe: detailPayload ?? null
   };
 }
 
@@ -332,27 +515,15 @@ function extractCasaDosDadosCnpj(item: Record<string, unknown>) {
   return normalizeCnpj(firstTextFromSources(sources, "cnpj", "cnpj_completo", "cnpj_formatado", "documento") ?? "");
 }
 
-async function readCasaDosDadosJsonResponse(response: Response) {
-  const text = await response.text();
-  if (!text.trim()) return {} as Record<string, unknown>;
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    throw new Error("Casa dos Dados retornou uma resposta em formato inválido.");
-  }
-}
-
 function mergeCasaDosDadosEstablishment(
   searchRow: NormalizedEstablishment,
   detailRow?: NormalizedEstablishment | null,
-  detailRaw?: unknown,
-  detailError?: string | null
+  detailRaw?: unknown
 ): NormalizedEstablishment {
   if (!detailRow) {
     return {
       ...searchRow,
-      providerPayload: mergeProviderPayload(searchRow.providerPayload, detailRaw, detailError)
+      providerPayload: mergeProviderPayload(searchRow.providerPayload, detailRaw)
     };
   }
 
@@ -384,7 +555,7 @@ function mergeCasaDosDadosEstablishment(
     addressLine: pickFirstNonEmpty(detailRow.addressLine, searchRow.addressLine),
     addressNumber: pickFirstNonEmpty(detailRow.addressNumber, searchRow.addressNumber),
     complement: pickFirstNonEmpty(detailRow.complement, searchRow.complement),
-    providerPayload: mergeProviderPayload(searchRow.providerPayload, detailRaw, detailError)
+    providerPayload: mergeProviderPayload(searchRow.providerPayload, detailRaw)
   };
 }
 
@@ -502,33 +673,35 @@ export function normalizeCasaDosDadosEstablishment(
   };
 }
 
-export async function fetchCasaDosDadosCompanyByCnpj(cnpj: string): Promise<{
+type CasaDosDadosDetail = {
   raw: Record<string, unknown>;
   normalized: NormalizedEstablishment | null;
-}> {
-  const normalizedCnpj = normalizeCnpj(cnpj);
-  if (!normalizedCnpj) {
-    throw new Error("CNPJ inválido para consulta detalhada na Casa dos Dados.");
+};
+
+// Cache em memória (por instância) + deduplicação de consultas detalhadas simultâneas.
+const detailCache = new Map<string, { expiresAt: number; value: CasaDosDadosDetail }>();
+const detailInFlight = new Map<string, Promise<CasaDosDadosDetail>>();
+
+function readDetailCache(cnpj: string) {
+  const entry = detailCache.get(cnpj);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    detailCache.delete(cnpj);
+    return null;
   }
+  return entry.value;
+}
 
-  const response = await fetch(
-    `https://api.casadosdados.com.br/v4/cnpj/${normalizedCnpj}`,
-    {
-      method: "GET",
-      headers: {
-        "api-key": getCasaDosDadosKey(),
-        Accept: "application/json"
-      },
-      cache: "no-store"
-    }
-  );
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`Casa dos Dados respondeu ${response.status}: ${message}`);
+function writeDetailCache(cnpj: string, value: CasaDosDadosDetail) {
+  if (detailCache.size >= DETAIL_CACHE_MAX_ENTRIES) {
+    const oldestKey = detailCache.keys().next().value;
+    if (oldestKey !== undefined) detailCache.delete(oldestKey);
   }
+  detailCache.set(cnpj, { expiresAt: Date.now() + DETAIL_CACHE_TTL_MS, value });
+}
 
-  const rawPayload = await readCasaDosDadosJsonResponse(response);
+async function loadCasaDosDadosCompanyByCnpj(normalizedCnpj: string): Promise<CasaDosDadosDetail> {
+  const rawPayload = await requestCasaDosDados(`${CASA_DOS_DADOS_DETAIL_PATH}/${normalizedCnpj}`, "GET", undefined, "detalhe");
   const raw = rawPayload && typeof rawPayload === "object" && !Array.isArray(rawPayload)
     ? rawPayload as Record<string, unknown>
     : { data: rawPayload };
@@ -546,59 +719,116 @@ export async function fetchCasaDosDadosCompanyByCnpj(cnpj: string): Promise<{
   };
 }
 
-async function enrichWithCasaDosDadosDetails(rows: NormalizedEstablishment[]) {
-  const normalizedRows = rows.map((row) => ({
-    ...row,
-    cnpj: normalizeCnpj(row.cnpj)
-  })).filter((row) => row.cnpj);
+export async function fetchCasaDosDadosCompanyByCnpj(cnpj: string): Promise<CasaDosDadosDetail> {
+  const normalizedCnpj = normalizeCnpj(cnpj);
+  if (normalizedCnpj.length !== 14) {
+    throw new CasaDosDadosError("invalid_request", "CNPJ inválido para consulta detalhada.");
+  }
 
-  const enriched = await mapWithConcurrency(normalizedRows, 4, async (current) => {
+  const cached = readDetailCache(normalizedCnpj);
+  if (cached) return cached;
+
+  const pending = detailInFlight.get(normalizedCnpj);
+  if (pending) return pending;
+
+  const request = loadCasaDosDadosCompanyByCnpj(normalizedCnpj)
+    .then((value) => {
+      writeDetailCache(normalizedCnpj, value);
+      return value;
+    })
+    .finally(() => {
+      detailInFlight.delete(normalizedCnpj);
+    });
+
+  detailInFlight.set(normalizedCnpj, request);
+  return request;
+}
+
+type DetailEnrichmentSummary = {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+};
+
+/**
+ * A pesquisa avançada não devolve contatos (e-mail/telefone) nem Simples/MEI;
+ * esses campos vêm da consulta detalhada por CNPJ da própria Casa dos Dados.
+ * Falhas aqui não invalidam a busca: a linha segue com os dados da pesquisa.
+ * Em erro de autenticação/configuração/rate limit o enriquecimento é interrompido
+ * (circuit breaker) para não agravar o bloqueio nem gastar créditos inutilmente.
+ */
+async function enrichWithCasaDosDadosDetails(rows: NormalizedEstablishment[]) {
+  const summary: DetailEnrichmentSummary = { attempted: 0, succeeded: 0, failed: 0, skipped: 0 };
+  let halted = false;
+
+  const enriched = await mapWithConcurrency(rows, DETAIL_CONCURRENCY, async (current) => {
+    if (halted) {
+      summary.skipped += 1;
+      return mergeCasaDosDadosEstablishment(current, null, null);
+    }
+
+    summary.attempted += 1;
     try {
       const detail = await fetchCasaDosDadosCompanyByCnpj(current.cnpj);
-      return mergeCasaDosDadosEstablishment(current, detail.normalized, detail.raw, null);
+      summary.succeeded += 1;
+      return mergeCasaDosDadosEstablishment(current, detail.normalized, detail.raw);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao enriquecer com a Casa dos Dados.";
-      return mergeCasaDosDadosEstablishment(current, null, null, message);
+      summary.failed += 1;
+      if (isCasaDosDadosError(error) && (error.kind === "rate_limit" || error.kind === "auth" || error.kind === "config")) {
+        halted = true;
+      }
+      return mergeCasaDosDadosEstablishment(current, null, null);
     }
   });
 
-  return enriched;
-}
-
-export async function searchWithCasaDosDados(
-  input: DiscoverySearchInput
-): Promise<DiscoverySearchOutput> {
-  const normalizedStateCode = input.stateCode.trim().toLowerCase();
-  const normalizedCityName = input.cityName.trim().toLowerCase();
-
-  const pageSize = Math.max(1, Math.trunc(getDiscoveryPageSize() || 50));
-  const maxResults = Math.max(0, Math.trunc(getDiscoveryMaxResults() || 0));
-  const body: Record<string, unknown> = {
-    codigo_atividade_principal: [normalizeCode(input.cnae)],
-    incluir_atividade_secundaria: false,
-    situacao_cadastral: ["ATIVA"],
-    pagina: 1,
-    limite: pageSize
-  };
-
-  if (normalizedStateCode) {
-    body.uf = [normalizedStateCode];
+  if (summary.failed > 0 || summary.skipped > 0) {
+    console.warn("[casadosdados] consulta detalhada incompleta", summary);
   }
 
-  if (normalizedCityName) {
-    body.municipio = [normalizedCityName];
+  return { rows: enriched, summary };
+}
+
+function mapCasaDosDadosCompanySizeCodes(values: string[] | undefined) {
+  return mapCasaDosDadosCompanySizes(values).filter((code) => code === "01" || code === "03" || code === "05");
+}
+
+/**
+ * Monta o corpo da pesquisa avançada (POST /v5/cnpj/pesquisa) somente com filtros
+ * suportados pela API e já normalizados. Campos vazios não são enviados.
+ */
+export function buildCasaDosDadosSearchBody(input: DiscoverySearchInput): Record<string, unknown> {
+  const cnae = normalizeCode(input.cnae ?? "");
+  if (!/^\d{7}$/.test(cnae)) {
+    throw new CasaDosDadosError("invalid_request", "CNAE inválido para a pesquisa.");
+  }
+
+  const body: Record<string, unknown> = {
+    codigo_atividade_principal: [cnae],
+    incluir_atividade_secundaria: false,
+    situacao_cadastral: ["ATIVA"]
+  };
+
+  // A API espera UF e município em minúsculas e sem acentos (ex.: "sp", "sao paulo").
+  const stateCode = (input.stateCode ?? "").trim().toLowerCase();
+  if (/^[a-z]{2}$/.test(stateCode)) {
+    body.uf = [stateCode];
+  }
+
+  const cityName = normalizeText(input.cityName ?? "");
+  if (cityName) {
+    body.municipio = [cityName];
   }
 
   const moreFilters: Record<string, boolean> = {};
   if (input.requireEmail) moreFilters.com_email = true;
   if (input.requirePhone || input.mobileOnly) moreFilters.com_telefone = true;
   if (input.mobileOnly) moreFilters.somente_celular = true;
-
   if (Object.keys(moreFilters).length > 0) {
     body.mais_filtros = moreFilters;
   }
 
-  const companySizes = mapCasaDosDadosCompanySizes(input.companySizes);
+  const companySizes = mapCasaDosDadosCompanySizeCodes(input.companySizes);
   if (companySizes.length > 0) {
     body.porte_empresa = { codigos: companySizes };
   }
@@ -617,35 +847,41 @@ export async function searchWithCasaDosDados(
     body.data_abertura = openedAtRange;
   }
 
+  return body;
+}
+
+export function resolveCasaDosDadosPaging() {
+  const configuredPageSize = Math.trunc(getDiscoveryPageSize() || 0);
+  const configuredMax = Math.trunc(getDiscoveryMaxResults() || 0);
+  const maxResults = configuredMax > 0 ? configuredMax : CASA_DOS_DADOS_DEFAULT_MAX_RESULTS;
+  const pageSize = Math.min(
+    Math.max(1, configuredPageSize > 0 ? configuredPageSize : 50),
+    CASA_DOS_DADOS_MAX_PAGE_SIZE,
+    maxResults
+  );
+  return { pageSize, maxResults, maxPages: Math.max(1, Math.ceil(maxResults / pageSize)) };
+}
+
+export async function searchWithCasaDosDados(
+  input: DiscoverySearchInput
+): Promise<DiscoverySearchOutput> {
+  const body = buildCasaDosDadosSearchBody(input);
+  const { pageSize, maxResults, maxPages } = resolveCasaDosDadosPaging();
+
   const rawPages: unknown[] = [];
-  const accumulatedRows: unknown[] = [];
+  const rowsByCnpj = new Map<string, Record<string, unknown>>();
   let providerTotalResults: number | null = null;
-  let page = 1;
   let pagesFetched = 0;
   let hitFetchLimit = false;
 
-  while (true) {
-    const response = await fetch("https://api.casadosdados.com.br/v5/cnpj/pesquisa", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": getCasaDosDadosKey(),
-        Accept: "application/json"
-      },
-      body: JSON.stringify({
-        ...body,
-        pagina: page,
-        limite: pageSize
-      }),
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(`Casa dos Dados respondeu ${response.status}: ${message}`);
-    }
-
-    const rawPage = await readCasaDosDadosJsonResponse(response);
+  // Paginação oficial (pagina/limite) com tamanho de página fixo para não pular nem repetir registros.
+  for (let page = 1; page <= maxPages; page += 1) {
+    const rawPage = await requestCasaDosDados(
+      CASA_DOS_DADOS_SEARCH_PATH,
+      "POST",
+      { ...body, pagina: page, limite: pageSize },
+      "pesquisa"
+    );
     rawPages.push(rawPage);
     pagesFetched += 1;
 
@@ -654,52 +890,49 @@ export async function searchWithCasaDosDados(
     }
 
     const pageRows = extractCasaDosDadosRows(rawPage);
-    if (pageRows.length === 0) {
+    let newRows = 0;
+    for (const item of pageRows) {
+      const cnpj = extractCasaDosDadosCnpj(item);
+      if (!cnpj || rowsByCnpj.has(cnpj)) continue;
+      rowsByCnpj.set(cnpj, item);
+      newRows += 1;
+    }
+
+    if (rowsByCnpj.size >= maxResults) {
+      hitFetchLimit = providerTotalResults === null || providerTotalResults > maxResults;
       break;
     }
 
-    accumulatedRows.push(...pageRows);
+    // Com total conhecido, ele define o fim; sem total, uma página incompleta indica a última.
+    const reachedEnd =
+      pageRows.length === 0 ||
+      newRows === 0 ||
+      (providerTotalResults !== null ? rowsByCnpj.size >= providerTotalResults : pageRows.length < pageSize);
+    if (reachedEnd) break;
 
-    if (maxResults > 0 && accumulatedRows.length >= maxResults) {
+    if (page === maxPages) {
       hitFetchLimit = true;
-      break;
     }
-
-    if (providerTotalResults !== null && accumulatedRows.length >= providerTotalResults) {
-      break;
-    }
-
-    page += 1;
   }
 
-  const fetchedRows = (maxResults > 0 ? accumulatedRows.slice(0, maxResults) : accumulatedRows) as Record<string, unknown>[];
-  const dedupedRows = Array.from(
-    new Map(
-      fetchedRows
-        .map((item) => {
-          const cnpj = extractCasaDosDadosCnpj(item);
-          return cnpj ? [cnpj, item] as const : null;
-        })
-        .filter((item): item is readonly [string, Record<string, unknown>] => Boolean(item))
-    ).values()
-  );
+  const searchNormalized = Array.from(rowsByCnpj.values())
+    .slice(0, maxResults)
+    .map((item) => normalizeCasaDosDadosEstablishment(item))
+    .filter((item): item is NormalizedEstablishment => Boolean(item));
 
-  const searchNormalized = dedupedRows
-    .map((item) => normalizeCasaDosDadosEstablishment(item as Record<string, unknown>))
-    .filter(Boolean) as NormalizedEstablishment[];
-
-  const normalized = await enrichWithCasaDosDadosDetails(searchNormalized);
+  const enrichment = await enrichWithCasaDosDadosDetails(searchNormalized);
 
   return {
     provider: "casadosdados",
     raw: rawPages.length === 1 ? rawPages[0] : { paginas: rawPages },
-    normalized: normalized.map((item) => ({
+    normalized: enrichment.rows.map((item) => ({
       ...item,
       cityName: item.cityName ? toTitleCase(item.cityName) : item.cityName
     })),
     providerTotalResults,
-    fetchedResults: normalized.length,
+    fetchedResults: enrichment.rows.length,
     pagesFetched,
-    hitFetchLimit
+    hitFetchLimit,
+    detailIncomplete: enrichment.summary.failed > 0 || enrichment.summary.skipped > 0
   };
 }

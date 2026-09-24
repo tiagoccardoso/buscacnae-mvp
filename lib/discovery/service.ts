@@ -1,12 +1,10 @@
 import { createDbClient } from "@/lib/db-client";
 import { hydrateNormalizedEstablishment, normalizeCompanySizeInput, canonicalizeEstablishment, normalizedToPresenterSource, mergeNormalizedEstablishments } from "@/lib/establishment-canonical";
 import { getDiscoveryAutoRefinementThreshold, getDiscoveryCacheTtlHours, getDiscoveryProvider, getMinimumCheckoutAmountCents } from "@/lib/env";
-import { DiscoverySearchInput, NormalizedEstablishment, ServiceResult } from "@/lib/types";
+import { DiscoveryProvider, DiscoverySearchInput, DiscoverySearchOutput, NormalizedEstablishment, ServiceResult } from "@/lib/types";
 import { normalizeCode, normalizeCnpj, normalizeText, sha256, toTitleCase } from "@/lib/utils";
 import { buildLeadPricingSummary } from "@/lib/lead-pricing";
-import { searchWithCasaDosDados } from "./providers/casadosdados";
-import { searchWithCnpjWs } from "./providers/cnpjws";
-import { searchWithHybrid } from "./providers/hybrid";
+import { isCasaDosDadosError, resolveCasaDosDadosPaging, searchWithCasaDosDados } from "./providers/casadosdados";
 import { ensureSearchAccessOrderForSearch } from "@/lib/billing";
 
 type PublicCitySelection = {
@@ -19,7 +17,7 @@ type SearchTarget = {
   stateCode: string;
 };
 
-const DISCOVERY_CACHE_SCHEMA_VERSION = "casadosdados-contact-detail-v2";
+const DISCOVERY_CACHE_SCHEMA_VERSION = "casadosdados-only-v3";
 
 type PrepareSearchOrderInput = {
   profileId: string | null;
@@ -81,8 +79,6 @@ function extractActivityStartYearFromPayload(payload: unknown): number | null {
     record.abertura,
     (record.consulta_cnpj as any)?.data_inicio_atividade,
     (record.consulta_cnpj as any)?.data_abertura,
-    (record.cnpjws_consulta as any)?.data_inicio_atividade,
-    (record.cnpjws_consulta as any)?.data_abertura,
     (record.pesquisa as any)?.data_inicio_atividade,
     (record.pesquisa as any)?.data_abertura
   ];
@@ -220,29 +216,34 @@ function logTechnicalDiscoveryError(scope: string, error: unknown) {
 }
 
 function formatServiceError(error: unknown, fallback: string) {
+  if (isCasaDosDadosError(error)) {
+    switch (error.kind) {
+      case "rate_limit":
+        return "Muitas consultas em pouco tempo. Aguarde alguns instantes e tente novamente.";
+      case "timeout":
+        return "A consulta demorou mais que o esperado. Tente novamente ou refine os filtros (cidade, ano de abertura).";
+      case "unavailable":
+      case "network":
+        return "A base de empresas está temporariamente indisponível. Tente novamente em instantes.";
+      case "invalid_request":
+        return "Não foi possível pesquisar com os filtros informados. Revise o CNAE, o estado e a cidade.";
+      case "invalid_response":
+        return "Não foi possível processar o retorno da pesquisa. Tente novamente em instantes.";
+      case "auth":
+      case "config":
+      default:
+        return "Não foi possível consultar a base de empresas no momento. Tente novamente mais tarde.";
+    }
+  }
+
   const message = extractErrorMessage(error);
 
   if (/invalid input syntax for type json/i.test(message) || /json input/i.test(message)) {
     return "Não foi possível salvar os dados retornados pela busca. Tente novamente em instantes.";
   }
 
-  const casaStatus = message.match(/Casa dos Dados respondeu\s+(\d{3})/i);
-  if (casaStatus) {
-    const status = Number(casaStatus[1]);
-    if (status === 401 || status === 403) {
-      return "A integração com a Casa dos Dados não autorizou a consulta. Verifique a configuração da chave no ambiente.";
-    }
-    if (status === 429) {
-      return "A Casa dos Dados limitou temporariamente as consultas. Tente novamente em instantes.";
-    }
-    if (status >= 500) {
-      return "A Casa dos Dados ficou indisponível durante a consulta. Tente novamente em instantes.";
-    }
-    return "A Casa dos Dados não conseguiu concluir a consulta com os filtros informados.";
-  }
-
-  if (/Casa dos Dados retornou uma resposta em formato inválido/i.test(message)) {
-    return "A Casa dos Dados retornou uma resposta fora do formato esperado. Tente novamente em instantes.";
+  if (/missing environment variable/i.test(message)) {
+    return fallback;
   }
 
   return message || fallback;
@@ -276,29 +277,6 @@ function parseCitySelections(value: string): PublicCitySelection[] {
     return [];
   }
 }
-
-async function fetchCitiesByState(stateCode: string): Promise<PublicCitySelection[]> {
-  const response = await fetch(
-    `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${stateCode.toUpperCase()}/municipios`,
-    {
-      headers: { Accept: "application/json" },
-      next: { revalidate: 60 * 60 * 24 * 30 }
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Falha ao carregar cidades do estado ${stateCode}.`);
-  }
-
-  const rows = (await response.json()) as Array<{ nome: string }>;
-  return rows.map((row) => ({
-    cityName: toTitleCase(row.nome),
-    stateCode: stateCode.toUpperCase()
-  }));
-}
-
-
-
 
 async function mergeRowsWithStoredEstablishments(rows: NormalizedEstablishment[]) {
   if (rows.length === 0) return rows;
@@ -343,16 +321,137 @@ function dedupeNormalizedRows(rows: NormalizedEstablishment[]) {
 }
 
 
-function readHybridEnrichmentSummary(raw: unknown) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const value = (raw as Record<string, unknown>).enriquecimento_cnpjws;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  return {
-    status: typeof record.status === "string" ? record.status : "desconhecido",
-    successCount: typeof record.sucessos === "number" ? Math.max(0, Math.trunc(record.sucessos)) : 0,
-    failureCount: typeof record.falhas === "number" ? Math.max(0, Math.trunc(record.falhas)) : 0
-  };
+const SEARCH_PROVIDER: DiscoveryProvider = "casadosdados";
+const INCOMPLETE_RESULT_CACHE_TTL_MS = 10 * 60 * 1000;
+const inFlightProviderSearches = new Map<string, Promise<DiscoverySearchOutput>>();
+
+type ProviderSearchResult = {
+  output: DiscoverySearchOutput;
+  cached: boolean;
+  cacheKey: string;
+};
+
+/** Chave de cache composta somente pelos parâmetros que alteram a consulta externa. */
+export function buildProviderCacheKey(input: DiscoverySearchInput) {
+  const paging = resolveCasaDosDadosPaging();
+  return sha256(
+    JSON.stringify({
+      provider: SEARCH_PROVIDER,
+      normalization: DISCOVERY_CACHE_SCHEMA_VERSION,
+      cnae: normalizeCode(input.cnae),
+      stateCode: input.stateCode.trim().toUpperCase(),
+      cityName: normalizeText(input.cityName),
+      requireEmail: input.requireEmail === true,
+      requirePhone: input.requirePhone === true,
+      mobileOnly: input.mobileOnly === true,
+      companySizes: Array.from(new Set((input.companySizes ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean))).sort(),
+      simplesOnly: input.simplesOnly === true,
+      capitalSocialMin: input.capitalSocialMin ?? null,
+      capitalSocialMax: input.capitalSocialMax ?? null,
+      activityStartYear: input.activityStartYear ?? null,
+      activityStartYearExact: input.activityStartYearExact === true,
+      pageSize: paging.pageSize,
+      maxResults: paging.maxResults
+    })
+  );
+}
+
+function readFiniteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : null;
+}
+
+async function readProviderCache(cacheKey: string): Promise<DiscoverySearchOutput | null> {
+  try {
+    const db = createDbClient();
+    const { data } = await db
+      .from("provider_cache")
+      .select("response_payload, normalized_payload")
+      .eq("cache_key", cacheKey)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+
+    if (!data || !Array.isArray(data.normalized_payload)) return null;
+    const meta = data.response_payload && typeof data.response_payload === "object" && !Array.isArray(data.response_payload)
+      ? data.response_payload as Record<string, unknown>
+      : {};
+
+    const normalized = data.normalized_payload as NormalizedEstablishment[];
+    return {
+      provider: SEARCH_PROVIDER,
+      raw: null,
+      normalized,
+      providerTotalResults: readFiniteNumber(meta.providerTotalResults),
+      fetchedResults: readFiniteNumber(meta.fetchedResults) ?? normalized.length,
+      pagesFetched: readFiniteNumber(meta.pagesFetched),
+      hitFetchLimit: meta.hitFetchLimit === true,
+      detailIncomplete: false
+    };
+  } catch (error) {
+    logTechnicalDiscoveryError("provider_cache:read", error);
+    return null;
+  }
+}
+
+async function writeProviderCache(cacheKey: string, input: DiscoverySearchInput, output: DiscoverySearchOutput) {
+  try {
+    const now = new Date();
+    const ttlHours = getDiscoveryCacheTtlHours();
+    const ttlMs = output.detailIncomplete
+      ? INCOMPLETE_RESULT_CACHE_TTL_MS
+      : (Number.isFinite(ttlHours) && ttlHours > 0 ? ttlHours : 24) * 60 * 60 * 1000;
+    const { profileId: _profileId, ...requestPayload } = input;
+    const db = createDbClient();
+    const { error } = await db.from("provider_cache").upsert(
+      {
+        cache_key: cacheKey,
+        provider: SEARCH_PROVIDER,
+        request_payload: requestPayload,
+        response_payload: {
+          providerTotalResults: output.providerTotalResults ?? null,
+          fetchedResults: output.fetchedResults ?? output.normalized.length,
+          pagesFetched: output.pagesFetched ?? null,
+          hitFetchLimit: output.hitFetchLimit === true
+        },
+        normalized_payload: output.normalized,
+        fetched_at: now.toISOString(),
+        expires_at: new Date(now.getTime() + ttlMs).toISOString()
+      },
+      { onConflict: "cache_key" }
+    );
+    if (error) throw error;
+  } catch (error) {
+    // Falha de cache não deve derrubar uma busca que já foi concluída.
+    logTechnicalDiscoveryError("provider_cache:write", error);
+  }
+}
+
+/**
+ * Consulta a Casa dos Dados reaproveitando o cache persistente (provider_cache) e
+ * deduplicando buscas idênticas simultâneas (ex.: duplo envio do formulário).
+ */
+async function searchCompaniesWithCache(input: DiscoverySearchInput): Promise<ProviderSearchResult> {
+  const cacheKey = buildProviderCacheKey(input);
+
+  const pending = inFlightProviderSearches.get(cacheKey);
+  if (pending) {
+    return { output: await pending, cached: false, cacheKey };
+  }
+
+  const cached = await readProviderCache(cacheKey);
+  if (cached) {
+    return { output: cached, cached: true, cacheKey };
+  }
+
+  const request = (async () => {
+    const output = await searchWithCasaDosDados(input);
+    await writeProviderCache(cacheKey, input, output);
+    return output;
+  })().finally(() => {
+    inFlightProviderSearches.delete(cacheKey);
+  });
+
+  inFlightProviderSearches.set(cacheKey, request);
+  return { output: await request, cached: false, cacheKey };
 }
 
 function resolveTotalFound(providerTotalResults: number | null | undefined, dedupedCount: number) {
@@ -454,6 +553,7 @@ export async function prepareSearchOrder(
       }
     }
     const cnaes = Array.from(new Set(splitMultilineValues(input.cnae).map((item) => normalizeCode(item)).filter(Boolean)));
+    const invalidCnaes = cnaes.filter((item) => !/^\d{7}$/.test(item));
     const stateCodes = Array.from(
       new Set(
         splitMultilineValues(input.stateCode)
@@ -466,20 +566,23 @@ export async function prepareSearchOrder(
     if (cnaes.length === 0) {
       return { ok: false, error: "Selecione ao menos um CNAE." };
     }
+    if (invalidCnaes.length > 0) {
+      return { ok: false, error: "Informe CNAEs válidos com 7 dígitos (ex.: 4781-4/00)." };
+    }
     if (stateCodes.length === 0) {
       return { ok: false, error: "Selecione ao menos um estado." };
     }
 
-    let citySelections = parseCitySelections(input.citySelection);
+    const parsedCitySelections = parseCitySelections(input.citySelection);
+    // Município precisa pertencer a uma das UFs selecionadas.
+    const citySelections = parsedCitySelections.filter((item) => stateCodes.includes(item.stateCode));
     let searchTargets: SearchTarget[] = [];
 
     if (input.stateWide) {
-      if (provider === "casadosdados" || provider === "hybrid") {
-        searchTargets = stateCodes.map((stateCode) => ({ cityName: "", stateCode }));
-      } else {
-        const groups = await Promise.all(stateCodes.map((stateCode) => fetchCitiesByState(stateCode)));
-        citySelections = groups.flat();
-      }
+      // A pesquisa da Casa dos Dados filtra por UF diretamente, sem expandir cidade a cidade.
+      searchTargets = stateCodes.map((stateCode) => ({ cityName: "", stateCode }));
+    } else if (parsedCitySelections.length > 0 && citySelections.length === 0) {
+      return { ok: false, error: "A cidade selecionada não pertence ao estado informado." };
     }
 
     if (searchTargets.length === 0) {
@@ -500,7 +603,8 @@ export async function prepareSearchOrder(
     const aggregatedByCnpj = new Map<string, NormalizedEstablishment>();
     const searchCombos = cnaes.flatMap((cnaeCode) => searchTargets.map((target) => ({ cnaeCode, target })));
 
-    const searchResponses = await mapWithConcurrency(searchCombos, provider === "cnpjws" ? 2 : 4, async ({ cnaeCode, target }) => {
+    // Concorrência baixa: cada combinação ainda faz consultas detalhadas por CNPJ.
+    const searchResponses = await mapWithConcurrency(searchCombos, 2, async ({ cnaeCode, target }) => {
       const providerInput = {
         profileId: input.profileId ?? "public",
         cnae: cnaeCode,
@@ -519,12 +623,7 @@ export async function prepareSearchOrder(
         activityStartYearExact: input.activityStartYearExact
       };
 
-      const providerResponse =
-        provider === "casadosdados"
-          ? await searchWithCasaDosDados(providerInput)
-          : provider === "hybrid"
-            ? await searchWithHybrid(providerInput)
-            : await searchWithCnpjWs(providerInput);
+      const { output: providerResponse, cached } = await searchCompaniesWithCache(providerInput);
 
       const localRows = hasAdvancedPublicFilters(input)
         ? await fetchStoredEstablishmentsForTarget(target, cnaeCode)
@@ -543,26 +642,24 @@ export async function prepareSearchOrder(
         providerTotalResults: providerResponse.providerTotalResults ?? null,
         fetchedResults: providerResponse.fetchedResults ?? providerResponse.normalized.length,
         hitFetchLimit: providerResponse.hitFetchLimit ?? false,
-        cnpjWsEnrichment: provider === "hybrid" ? readHybridEnrichmentSummary(providerResponse.raw) : null
+        cached
       };
     });
 
-    let providerTotalResults: number | null = null;
+    // Combinações CNAE principal x localidade são disjuntas: o total informado pela API é somado.
+    let providerTotalResults: number | null = searchResponses.length > 0 ? 0 : null;
     let fetchedResults = 0;
     let hitFetchLimit = false;
-    let cnpjWsEnrichmentSuccesses = 0;
-    let cnpjWsEnrichmentFailures = 0;
+    const allFromCache = searchResponses.length > 0 && searchResponses.every((response) => response.cached);
 
     for (const response of searchResponses) {
-      if (providerTotalResults === null && typeof response.providerTotalResults === "number") {
-        providerTotalResults = response.providerTotalResults;
+      if (providerTotalResults !== null) {
+        providerTotalResults = typeof response.providerTotalResults === "number"
+          ? providerTotalResults + response.providerTotalResults
+          : null;
       }
       fetchedResults += Math.max(0, Math.trunc(response.fetchedResults ?? 0));
       hitFetchLimit = hitFetchLimit || response.hitFetchLimit;
-      if (response.cnpjWsEnrichment) {
-        cnpjWsEnrichmentSuccesses += response.cnpjWsEnrichment.successCount;
-        cnpjWsEnrichmentFailures += response.cnpjWsEnrichment.failureCount;
-      }
 
       for (const row of response.filteredRows) {
         const normalizedCnpj = normalizeCnpj(row.cnpj);
@@ -607,16 +704,6 @@ export async function prepareSearchOrder(
       fetchedResults,
       mergedResults,
       hitFetchLimit,
-      cnpjWsEnrichmentStatus: provider === "hybrid"
-        ? cnpjWsEnrichmentSuccesses + cnpjWsEnrichmentFailures === 0
-          ? null
-          : cnpjWsEnrichmentFailures === 0
-            ? "sucesso"
-            : cnpjWsEnrichmentSuccesses > 0
-              ? "parcial"
-              : "falhou"
-        : null,
-      cnpjWsEnrichmentFailures: provider === "hybrid" ? cnpjWsEnrichmentFailures : null,
       leadPricingSummary: {
         basic: pricingSummary.tiers.find((tier) => tier.key === "basic")?.count ?? 0,
         phone: pricingSummary.tiers.find((tier) => tier.key === "phone")?.count ?? 0,
@@ -649,7 +736,7 @@ export async function prepareSearchOrder(
         city_ibge: null,
         query_payload: queryPayload,
         total_results: totalFound,
-        cached: false
+        cached: allFromCache
       })
       .select("id")
       .single();
@@ -771,29 +858,6 @@ function normalizeInput(input: DiscoverySearchInput) {
   };
 }
 
-function buildCacheKey(input: ReturnType<typeof normalizeInput>, provider: string) {
-  return sha256(
-    JSON.stringify({
-      provider,
-      normalization: DISCOVERY_CACHE_SCHEMA_VERSION,
-      cnae: input.cnae,
-      stateCode: input.stateCode,
-      cityName: input.cityName,
-      cityIbge: input.cityIbge,
-      requireEmail: input.requireEmail,
-      requireAddress: input.requireAddress,
-      requirePhone: input.requirePhone,
-      mobileOnly: input.mobileOnly,
-      companySizes: input.companySizes,
-      simplesOnly: input.simplesOnly,
-      capitalSocialMin: input.capitalSocialMin,
-      capitalSocialMax: input.capitalSocialMax,
-      activityStartYear: input.activityStartYear,
-      activityStartYearExact: input.activityStartYearExact
-    })
-  );
-}
-
 export async function runDiscoverySearch(
   input: DiscoverySearchInput
 ): Promise<ServiceResult<{ searchId: string }>> {
@@ -809,23 +873,7 @@ export async function runDiscoverySearch(
     }
 
     const db = createDbClient();
-    const cacheKey = buildCacheKey(normalizedInput, provider);
 
-    const now = new Date();
-    const { data: cached } = await db
-      .from("provider_cache")
-      .select("*")
-      .eq("cache_key", cacheKey)
-      .gt("expires_at", now.toISOString())
-      .maybeSingle();
-
-    let raw: unknown;
-    let normalizedRows: NormalizedEstablishment[] = [];
-    let cachedHit = false;
-    let providerTotalResults: number | null = null;
-    let fetchedResults: number | null = null;
-    let hitFetchLimit = false;
-    let cnpjWsEnrichment = null as ReturnType<typeof readHybridEnrichmentSummary>;
     const localRows = hasAdvancedPublicFilters({
       requireEmail: normalizedInput.requireEmail,
       requireAddress: normalizedInput.requireAddress,
@@ -840,58 +888,16 @@ export async function runDiscoverySearch(
       ? await fetchStoredEstablishmentsForTarget({ cityName: normalizedInput.cityName, stateCode: normalizedInput.stateCode }, normalizedInput.cnae)
       : [];
 
-    if (cached?.response_payload) {
-      raw = cached.response_payload;
-      normalizedRows = Array.isArray(cached.normalized_payload)
-        ? await mergeRowsWithStoredEstablishments(
-            dedupeNormalizedRows([
-              ...(cached.normalized_payload as typeof normalizedRows).map((row) => hydrateNormalizedEstablishment(row)),
-              ...localRows
-            ])
-          )
-        : localRows;
-      cachedHit = true;
-    } else {
-      const providerResponse =
-        provider === "casadosdados"
-          ? await searchWithCasaDosDados(normalizedInput)
-          : provider === "hybrid"
-            ? await searchWithHybrid(normalizedInput)
-            : await searchWithCnpjWs(normalizedInput);
-
-      raw = providerResponse.raw;
-      providerTotalResults = providerResponse.providerTotalResults ?? null;
-      fetchedResults = providerResponse.fetchedResults ?? providerResponse.normalized.length;
-      hitFetchLimit = providerResponse.hitFetchLimit ?? false;
-      cnpjWsEnrichment = provider === "hybrid" ? readHybridEnrichmentSummary(providerResponse.raw) : null;
-      normalizedRows = await mergeRowsWithStoredEstablishments(
-        dedupeNormalizedRows([
-          ...providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row)),
-          ...localRows
-        ])
-      );
-
-      const expiresAt = new Date(now.getTime() + getDiscoveryCacheTtlHours() * 60 * 60 * 1000);
-
-      const { error: cacheError } = await db.from("provider_cache").upsert(
-        {
-          cache_key: cacheKey,
-          provider,
-          request_payload: normalizedInput,
-          response_payload: raw,
-          normalized_payload: normalizedRows,
-          fetched_at: now.toISOString(),
-          expires_at: expiresAt.toISOString()
-        },
-        {
-          onConflict: "cache_key"
-        }
-      );
-
-      if (cacheError) {
-        throw cacheError;
-      }
-    }
+    const { output: providerResponse, cached: cachedHit, cacheKey } = await searchCompaniesWithCache(normalizedInput);
+    const providerTotalResults = providerResponse.providerTotalResults ?? null;
+    const fetchedResults: number | null = providerResponse.fetchedResults ?? providerResponse.normalized.length;
+    const hitFetchLimit = providerResponse.hitFetchLimit ?? false;
+    const normalizedRows = await mergeRowsWithStoredEstablishments(
+      dedupeNormalizedRows([
+        ...providerResponse.normalized.map((row) => hydrateNormalizedEstablishment(row)),
+        ...localRows
+      ])
+    );
 
     const filteredRows = applyPublicFilters(normalizedRows, {
       profileId: normalizedInput.profileId ?? null,
@@ -925,9 +931,7 @@ export async function runDiscoverySearch(
       providerTotalResults,
       fetchedResults: fetchedResults ?? mergedResults,
       mergedResults,
-      hitFetchLimit,
-      cnpjWsEnrichmentStatus: provider === "hybrid" ? cnpjWsEnrichment?.status ?? null : null,
-      cnpjWsEnrichmentFailures: provider === "hybrid" ? cnpjWsEnrichment?.failureCount ?? null : null
+      hitFetchLimit
     };
     Object.assign(queryPayload, buildAutoRefinementMetadata(totalFound));
 

@@ -62,29 +62,17 @@ export function getStripeUrls() {
 }
 
 export function getDiscoveryProvider(): DiscoveryProvider {
-  const provider = getEnv("DISCOVERY_PROVIDER").toLowerCase();
-  if (provider === "casadosdados" || provider === "cnpjws" || provider === "hybrid") {
-    return provider;
-  }
-  return "hybrid";
+  return "casadosdados";
 }
 
-export function getProviderLabel(provider: DiscoveryProvider) {
-  if (provider === "hybrid") return "Casa dos Dados + CNPJ.ws";
-  return provider === "casadosdados" ? "Casa dos Dados" : "CNPJ.ws";
-}
-
-export function getCnpjWsToken() {
-  return requireEnv("CNPJWS_API_TOKEN");
-}
-
-export function getCnpjWsTimeoutMs() {
-  const value = Number(getEnv("CNPJWS_TIMEOUT_MS") || "5000");
-  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 5000;
-}
-
+/** Server-side apenas: nunca exponha em componentes client. */
 export function getCasaDosDadosKey() {
   return requireEnv("CASA_DOS_DADOS_API_KEY");
+}
+
+export function getCasaDosDadosTimeoutMs() {
+  const value = Number(getEnv("CASA_DOS_DADOS_TIMEOUT_MS") || "15000");
+  return Number.isFinite(value) && value >= 1000 ? Math.min(Math.trunc(value), 60000) : 15000;
 }
 
 export function getDiscoveryCacheTtlHours() {
