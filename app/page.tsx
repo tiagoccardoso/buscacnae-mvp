@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { SearchFilterBuilder } from "@/components/search-filter-builder";
-import { PremiumHeroStage } from "@/components/premium-hero-stage";
-import { SearchImmersiveStage } from "@/components/search-immersive-stage";
-import { OnboardingCorporate } from "@/components/onboarding-corporate";
-import { PublicSearchSubmitButton } from "@/components/public-search-submit-button";
+import { SearchSubmitButton } from "@/components/search-submit-button";
+import { SectionHeader } from "@/components/ui/section-header";
 import { TrustBlock } from "@/components/trust-block";
 import { DeliveryPreview } from "@/components/delivery-preview";
 import { CommercialFaq } from "@/components/commercial-faq";
@@ -99,128 +97,113 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   }
 
   return (
-    <main className="page">
-      <section className="container hero-premium-stack">
-        <div className="hero-premium-copy surface-premium card-lg stack">
-          <span className="eyebrow">Listas B2B por CNAE e região</span>
-          <h1 className="display-title">
-            <span className="gradient-text">Descubra, filtre e compre listas B2B por CNAE e região com preço transparente antes do pagamento.</span>
-          </h1>
-          <p className="lead-copy">
-            Monte sua pesquisa por CNAE e região e avance para uma prévia com <strong>volume encontrado, composição do lote e valor total</strong> antes do checkout.
-            O dashboard é opcional e entra para histórico, organização e recompra.
-          </p>
+    <main className="page-flush">
+      <section className="hero" aria-labelledby="home-title">
+        <div className="container">
+          <header className="hero-header enter">
+            <span className="eyebrow">Listas B2B por CNAE e região</span>
+            <h1 id="home-title" className="title-hero">
+              Descubra, filtre e compre listas B2B por CNAE e região.
+            </h1>
+            <p className="lead">
+              Monte o recorte, veja o <strong>volume encontrado, a composição do lote e o valor total</strong> antes do checkout. Sem login para pesquisar.
+            </p>
+          </header>
 
-          <div className="inline-list">
-            {homeHighlights.map((item) => (
-              <span key={item} className="pill">{item}</span>
-            ))}
-          </div>
-
-          <div className="hero-signal-grid">
-            {benefitCards.map((item) => (
-              <div key={item.title} className="signal-card">
-                <span className="kicker">{item.kicker}</span>
-                <strong>{item.title}</strong>
-                <span className="muted">{item.copy}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <PremiumHeroStage />
-      </section>
-
-      <section className="container immersive-search-section">
-        <div className="immersive-search-layout surface-premium card-lg">
-          <div className="immersive-search-form-side">
-            <div className="stack immersive-search-copy" style={{ gap: 8 }}>
-              <span className="eyebrow">Comece pela pesquisa</span>
-              <h2 className="section-title immersive-search-title">Pesquise agora e veja se o lote vale a compra.</h2>
-              <p className="section-copy">
-                Combine múltiplos CNAEs, estados e cidades na mesma operação para montar um recorte claro, comparar volume e decidir com mais segurança antes da compra.
-              </p>
-            </div>
-
+          <div className="search-panel enter enter-delay-1">
             {reuseMessage ? <div className="notice success">{reuseMessage}</div> : null}
-            {error ? <div className="notice danger">{error}</div> : null}
+            {error ? <div className="notice danger" role="alert">{error}</div> : null}
 
-            <form action={startPublicSearchAction} className="stack immersive-search-form" data-analytics-event="search_started" data-analytics-label="Home search form">
+            <form
+              action={startPublicSearchAction}
+              className="search-form"
+              data-analytics-event="search_started"
+              data-analytics-label="Home search form"
+              aria-label="Pesquisa de empresas por CNAE e região"
+            >
               <SearchFilterBuilder {...reuseDefaults} />
 
-              <div className="home-form-actions home-form-actions-premium immersive-submit-row">
-                <PublicSearchSubmitButton />
-                <span className="tiny">
+              <div className="search-submit">
+                <SearchSubmitButton idleLabel="Ver volume e valor da lista" pendingLabel="Pesquisando e calculando o valor..." />
+                <p className="footnote">
                   Você pesquisa primeiro. O e-mail só é pedido antes do checkout, junto com o envio do acesso para acompanhar a compra depois.
-                </span>
+                </p>
               </div>
             </form>
           </div>
 
-          <div className="immersive-search-visual-side">
-            <SearchImmersiveStage />
-            <div className="immersive-search-benefits">
-              <div className="signal-card">
-                <span className="kicker">Ajuste o recorte</span>
-                <strong>CNAE, estado e cidade na mesma busca</strong>
-                <span className="muted">Monte um recorte mais claro para prospecção sem complicar a jornada com filtros desnecessários.</span>
-              </div>
-              <div className="signal-card">
-                <span className="kicker">Fluxo direto</span>
-                <strong>Pesquisa, prévia, checkout e download</strong>
-                <span className="muted">Sem pedir login cedo demais e sem esconder o valor do pedido até a etapa final.</span>
-              </div>
-            </div>
-          </div>
+          <ul className="hero-highlights" aria-label="Destaques">
+            {homeHighlights.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </div>
       </section>
 
-      <section className="container stack" style={{ marginTop: 28 }}>
-        <div className="surface-premium card-lg panel-grid two">
-          <div className="stack" style={{ gap: 12 }}>
-            <span className="eyebrow">Como funciona na prática</span>
-            <h2 className="section-title">Pesquise, ajuste o recorte, veja a prévia, pague e baixe a lista.</h2>
-            <div className="journey-grid">
-              {journeySteps.map((step, index) => (
-                <div key={step.title} className="journey-step-card">
-                  <span className="journey-step-index">0{index + 1}</span>
-                  <strong>{step.title}</strong>
-                  <span className="muted">{step.copy}</span>
-                </div>
-              ))}
-            </div>
+      <div className="container">
+        <section className="section section-spaced" aria-labelledby="home-benefits">
+          <SectionHeader
+            id="home-benefits"
+            eyebrow="Por que BuscaCNAE"
+            title="Você sabe o que está comprando antes de pagar."
+            copy="Preço por tipo de lead, prévia real do lote e entrega pronta para uso comercial."
+          />
+          <div className="grid-3">
+            {benefitCards.map((item) => (
+              <article key={item.title} className="feature">
+                <span className="kicker">{item.kicker}</span>
+                <strong>{item.title}</strong>
+                <p>{item.copy}</p>
+              </article>
+            ))}
           </div>
+        </section>
 
-          <div className="stack action-stage">
-            <div className="notice conversion-notice">
-              <strong>Preço alinhado com o produto</strong>
-              <p className="muted" style={{ marginBottom: 0 }}>
+        <section className="section section-spaced" aria-labelledby="home-journey">
+          <SectionHeader
+            id="home-journey"
+            eyebrow="Como funciona"
+            title="Pesquise, ajuste o recorte, veja a prévia, pague e baixe a lista."
+          />
+          <ol className="steps">
+            {journeySteps.map((step) => (
+              <li key={step.title} className="step">
+                <strong>{step.title}</strong>
+                <p>{step.copy}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="section section-spaced tile" aria-labelledby="home-pricing">
+          <div className="split">
+            <SectionHeader
+              id="home-pricing"
+              eyebrow="Preço alinhado com o produto"
+              title="Sem compra no escuro."
+              copy="A prévia mostra volume, composição do lote e amostra da lista antes do checkout para a decisão ser mais previsível."
+            />
+            <div className="stack-lg">
+              <p className="section-copy">
                 A cobrança é por tipo de lead encontrado: {pricingTiers.map((tier) => `${tier.label} ${tier.formattedUnitPrice}`).join(", ")}. Quando houver resultado, o pedido respeita mínimo operacional de {minimumCheckoutAmount}.
               </p>
-            </div>
-            <div className="notice conversion-notice">
-              <strong>Sem compra no escuro</strong>
-              <p className="muted" style={{ marginBottom: 0 }}>
-                A prévia mostra volume, composição do lote e amostra da lista antes do checkout para a decisão ser mais previsível.
-              </p>
-            </div>
-            <div className="inline-actions">
-              <Link href="/pricing" className="button-ghost" data-analytics-event="pricing_viewed" data-analytics-label="Home pricing">
-                Ver preços
-              </Link>
-              <Link href="/dados" className="button-secondary" data-analytics-event="data_page_opened" data-analytics-label="Home dados">
-                Entender os dados
-              </Link>
+              <div className="cluster">
+                <Link href="/pricing" className="button-secondary" data-analytics-event="pricing_viewed" data-analytics-label="Home pricing">
+                  Ver preços
+                </Link>
+                <Link href="/dados" className="button-ghost" data-analytics-event="data_page_opened" data-analytics-label="Home dados">
+                  Entender os dados
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
         <DeliveryPreview />
         <TrustBlock />
         <UseCasesSection />
         <CommercialFaq limit={6} />
-        <OnboardingCorporate />
-      </section>
+      </div>
     </main>
   );
 }

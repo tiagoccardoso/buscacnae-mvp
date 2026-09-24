@@ -1,35 +1,38 @@
 import Link from "next/link";
 import { commercialFaqItems } from "@/lib/site-content";
+import { SectionHeader } from "@/components/ui/section-header";
 
 type CommercialFaqProps = {
   compact?: boolean;
   limit?: number;
+  showHeader?: boolean;
 };
 
-export function CommercialFaq({ compact = false, limit }: CommercialFaqProps) {
+export function CommercialFaq({ compact = false, limit, showHeader = true }: CommercialFaqProps) {
   const items = typeof limit === "number" ? commercialFaqItems.slice(0, limit) : commercialFaqItems;
 
   return (
-    <section className="surface-premium card-lg stack faq-shell">
-      <div className="stack" style={{ gap: 8 }}>
-        <span className="eyebrow">FAQ comercial</span>
-        <h2 className="section-title">Perguntas que reduzem dúvida antes da compra</h2>
-        <p className="section-copy">
-          Preço, entrega, dados, login e recompra explicados em linguagem direta.
-        </p>
-      </div>
+    <section className={`section${compact ? "" : " section-spaced"}`} aria-labelledby={showHeader ? "faq-title" : undefined} aria-label={showHeader ? undefined : "Perguntas frequentes"}>
+      {showHeader ? (
+        <SectionHeader
+          id="faq-title"
+          eyebrow="FAQ comercial"
+          title="Perguntas que reduzem dúvida antes da compra"
+          copy="Preço, entrega, dados, login e recompra explicados em linguagem direta."
+        />
+      ) : null}
 
-      <div className={compact ? "grid-2 faq-grid" : "grid-3 faq-grid"}>
+      <div className="disclosure-list">
         {items.map((item) => (
-          <article key={item.question} className="signal-card faq-card">
-            <strong>{item.question}</strong>
-            <span className="muted">{item.answer}</span>
-          </article>
+          <details key={item.question} className="disclosure">
+            <summary>{item.question}</summary>
+            <p className="disclosure-body">{item.answer}</p>
+          </details>
         ))}
       </div>
 
       {limit ? (
-        <div className="inline-actions">
+        <div className="cluster">
           <Link href="/faq" className="button-ghost">
             Ver FAQ completo
           </Link>

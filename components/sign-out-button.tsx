@@ -16,7 +16,7 @@ export function SignOutButton() {
   }
 
   return (
-    <button type="button" onClick={handleSignOut} className="button-ghost" disabled={pending}>
+    <button type="button" onClick={handleSignOut} className="button-ghost is-neutral" disabled={pending} aria-busy={pending}>
       {pending ? "Saindo..." : "Sair"}
     </button>
   );

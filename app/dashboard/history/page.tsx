@@ -76,16 +76,17 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     }
   }
 
-  const feedback = (
-    <>
-      {statusMessage ? <div className="notice success">{statusMessage}</div> : null}
-      {errorMessage ? <div className="notice danger">{errorMessage}</div> : null}
-    </>
-  );
+  const feedback =
+    statusMessage || errorMessage ? (
+      <div className="stack-sm">
+        {statusMessage ? <div className="notice success" role="status">{statusMessage}</div> : null}
+        {errorMessage ? <div className="notice danger" role="alert">{errorMessage}</div> : null}
+      </div>
+    ) : null;
 
   if (!searches || searches.length === 0) {
     return (
-      <div className="stack">
+      <>
         {feedback}
         <EmptyState
           title="Nenhuma busca registrada"
@@ -93,96 +94,107 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           ctaHref="/dashboard/search"
           ctaLabel="Fazer primeira busca"
         />
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="surface-premium card-lg stack">
+    <>
       {feedback}
 
-      <div className="history-toolbar">
-        <div className="stack" style={{ gap: 8 }}>
-          <span className="eyebrow">Histórico</span>
-          <h2 className="section-title">Buscas recentes e atalhos de recompra</h2>
-          <p className="section-copy">
-            Reabra resultados, repita o mesmo recorte e compre várias listas em grupo quando fizer sentido.
-          </p>
-          <span className="muted">
-            {searches.length} registro(s) exibidos. Marque uma ou mais linhas para excluir ou comprar várias listas de uma só vez.
-          </span>
+      <section className="section" aria-labelledby="history-title">
+        <div className="section-header-row">
+          <div className="section-header">
+            <span className="eyebrow">Histórico</span>
+            <h2 id="history-title" className="title-1">Buscas recentes e atalhos de recompra</h2>
+            <p className="section-copy">
+              Reabra resultados, repita o mesmo recorte e compre várias listas em grupo quando fizer sentido. {searches.length} registro(s) exibidos.
+            </p>
+          </div>
+
+          <div className="bulk-bar">
+            <form id="history-bulk-selection-form" action={deleteSelectedSearchHistoryAction}>
+              <button
+                type="submit"
+                formAction="/api/stripe/history-bulk-checkout"
+                formMethod="post"
+                className="button"
+                data-analytics-event="bulk_checkout_started"
+              >
+                Comprar selecionadas
+              </button>
+              <button type="submit" className="button-danger">
+                Excluir selecionadas
+              </button>
+            </form>
+            <form action={deleteAllSearchHistoryAction}>
+              <button type="submit" className="button-ghost is-destructive">
+                Excluir todo o histórico
+              </button>
+            </form>
+          </div>
         </div>
 
-        <div className="history-toolbar-actions">
-          <form id="history-bulk-selection-form" action={deleteSelectedSearchHistoryAction}>
-            <button type="submit" className="button-danger">
-              Excluir selecionadas
-            </button>
-            <button type="submit" formAction="/api/stripe/history-bulk-checkout" formMethod="post" className="button" data-analytics-event="bulk_checkout_started">
-              Comprar selecionadas
-            </button>
-          </form>
-          <form action={deleteAllSearchHistoryAction}>
-            <button type="submit" className="button-danger">
-              Excluir todo o histórico
-            </button>
-          </form>
-        </div>
-      </div>
-
-      <div className="table-wrap">
-        <table className="table table-premium table-glow">
-          <thead>
-            <tr>
-              <th className="history-select-col">Selecionar</th>
-              <th>Quando</th>
-              <th>CNAE</th>
-              <th>Localidade</th>
-              <th>Resultados</th>
-              <th>Status</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {searches.map((search) => (
-              <tr key={search.id}>
-                <td className="history-select-cell">
-                  <input
-                    type="checkbox"
-                    name="searchIds"
-                    value={search.id}
-                    form="history-bulk-selection-form"
-                    aria-label={`Selecionar busca ${search.cnae_code} em ${search.city_name}/${search.state_code}`}
-                    className="history-checkbox"
-                  />
-                </td>
-                <td>{formatDateTime(search.created_at)}</td>
-                <td>{search.cnae_code}</td>
-                <td>
-                  {search.city_name}/{search.state_code}
-                </td>
-                <td>{orderResultCountBySearchId.get(search.id) ?? search.total_results}</td>
-                <td>{search.cached ? "cache" : "consulta"}</td>
-                <td>
-                  <div className="history-row-actions">
-                    <Link href={`/dashboard/search/${search.id}`} className="button-ghost history-action-button">
-                      Abrir
-                    </Link>
-                    <Link href={`/dashboard/search?reuse=${search.id}`} className="button-ghost history-action-button">
-                      Repetir
-                    </Link>
-                    <form action={deleteSearchHistoryItemAction.bind(null, search.id)}>
-                      <button type="submit" className="button-danger history-action-button">
-                        Excluir
-                      </button>
-                    </form>
-                  </div>
-                </td>
+        <div className="table-wrap">
+          <table className="table table-responsive">
+            <caption className="sr-only">Buscas realizadas. Marque as linhas para excluir ou comprar em grupo.</caption>
+            <thead>
+              <tr>
+                <th scope="col">
+                  <span className="sr-only">Selecionar</span>
+                </th>
+                <th scope="col">Quando</th>
+                <th scope="col">CNAE</th>
+                <th scope="col">Localidade</th>
+                <th scope="col" className="cell-num">Resultados</th>
+                <th scope="col">Origem</th>
+                <th scope="col" className="cell-actions">
+                  <span className="sr-only">Ações</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+            </thead>
+            <tbody>
+              {searches.map((search) => (
+                <tr key={search.id}>
+                  <td data-label="Selecionar">
+                    <input
+                      type="checkbox"
+                      name="searchIds"
+                      value={search.id}
+                      form="history-bulk-selection-form"
+                      aria-label={`Selecionar busca ${search.cnae_code} em ${search.city_name}/${search.state_code}`}
+                    />
+                  </td>
+                  <td data-label="Quando" className="cell-nowrap">{formatDateTime(search.created_at)}</td>
+                  <td data-label="CNAE" className="cell-strong">{search.cnae_code}</td>
+                  <td data-label="Localidade">
+                    {search.city_name}/{search.state_code}
+                  </td>
+                  <td data-label="Resultados" className="cell-num">{orderResultCountBySearchId.get(search.id) ?? search.total_results}</td>
+                  <td data-label="Origem">
+                    <span className="pill">{search.cached ? "cache" : "consulta"}</span>
+                  </td>
+                  <td data-label="" className="cell-actions">
+                    <div className="table-actions">
+                      <Link href={`/dashboard/search/${search.id}`} className="button-secondary button-sm">
+                        Abrir
+                      </Link>
+                      <Link href={`/dashboard/search?reuse=${search.id}`} className="button-ghost button-sm">
+                        Repetir
+                      </Link>
+                      <form action={deleteSearchHistoryItemAction.bind(null, search.id)}>
+                        <button type="submit" className="button-ghost is-destructive button-sm" aria-label={`Excluir busca ${search.cnae_code} de ${formatDateTime(search.created_at)}`}>
+                          Excluir
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
   );
 }

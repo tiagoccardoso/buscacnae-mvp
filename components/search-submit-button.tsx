@@ -2,8 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { ProgressBar } from "@/components/ui/progress-bar";
 
-export function PublicSearchSubmitButton() {
+type SearchSubmitButtonProps = {
+  idleLabel: string;
+  pendingLabel: string;
+};
+
+/**
+ * Botão de envio da busca (home e dashboard). Mostra estado de carregamento,
+ * tempo decorrido e progresso estimado enquanto o server action executa.
+ */
+export function SearchSubmitButton({ idleLabel, pendingLabel }: SearchSubmitButtonProps) {
   const { pending } = useFormStatus();
   const [progress, setProgress] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -34,25 +44,17 @@ export function PublicSearchSubmitButton() {
   }, [pending]);
 
   return (
-    <div className="stack" style={{ gap: 10 }}>
-      <button type="submit" className="button button-lg" disabled={pending} aria-disabled={pending}>
-        {pending ? "Pesquisando e calculando o valor da lista..." : "Ver volume e valor da lista"}
+    <div className="search-submit-main">
+      <button type="submit" className="button button-lg" disabled={pending} aria-busy={pending}>
+        {pending ? pendingLabel : idleLabel}
       </button>
 
       {pending ? (
-        <div className="stack" style={{ gap: 6 }}>
-          <div className="muted" style={{ fontSize: 13 }}>
-            Processando sua busca ({elapsedSeconds}s). Isso pode levar alguns instantes.
-          </div>
-          <div
-            role="progressbar"
-            aria-label="Progresso da busca"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress}
-            style={{ height: 8, borderRadius: 999, background: "rgba(255,255,255,0.12)", overflow: "hidden" }}
-          >
-            <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(90deg, #9f7aea, #22d3ee)", transition: "width 300ms ease" }} />
+        <div className="stack-xs" aria-live="polite">
+          <ProgressBar value={progress} label="Progresso da busca" />
+          <div className="progress-meta">
+            <span>Processando sua busca</span>
+            <span>{elapsedSeconds}s</span>
           </div>
         </div>
       ) : null}

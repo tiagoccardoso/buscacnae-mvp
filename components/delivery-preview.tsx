@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { deliveryPreviewColumns } from "@/lib/site-content";
+import { SectionHeader } from "@/components/ui/section-header";
 
 const previewRows = [
   {
@@ -30,60 +31,66 @@ const previewRows = [
 
 export function DeliveryPreview() {
   return (
-    <section className="surface-premium card-lg stack">
-      <div className="stack" style={{ gap: 8 }}>
-        <span className="eyebrow">O que você recebe</span>
-        <h2 className="section-title">Exemplo visual da lista liberada</h2>
-        <p className="section-copy">
-          A composição exata depende do que foi encontrado na busca, mas a entrega segue a mesma lógica mostrada abaixo.
-        </p>
-      </div>
+    <section className="section section-spaced" aria-labelledby="delivery-preview-title">
+      <SectionHeader
+        id="delivery-preview-title"
+        eyebrow="O que você recebe"
+        title="Exemplo visual da lista liberada"
+        copy="A composição exata depende do que foi encontrado na busca, mas a entrega segue a mesma lógica mostrada abaixo."
+      />
 
-      <div className="panel-grid two delivery-preview-grid">
+      <div className="tile">
         <div className="table-wrap">
-          <table className="table table-premium table-glow">
+          <table className="table table-in-tile">
+            <caption className="sr-only">Exemplo ilustrativo de registros da lista</caption>
             <thead>
               <tr>
-                <th>Empresa</th>
-                <th>CNPJ</th>
-                <th>Cidade</th>
-                <th>Status</th>
-                <th>Telefone</th>
-                <th>E-mail</th>
+                <th scope="col">Empresa</th>
+                <th scope="col">CNPJ</th>
+                <th scope="col">Cidade</th>
+                <th scope="col">Status</th>
+                <th scope="col">Telefone</th>
+                <th scope="col">E-mail</th>
               </tr>
             </thead>
             <tbody>
               {previewRows.map((row) => (
                 <tr key={row.cnpj}>
-                  <td>{row.company}</td>
-                  <td>{row.cnpj}</td>
-                  <td>{row.city}</td>
-                  <td>{row.status}</td>
-                  <td>{row.phone}</td>
+                  <td className="cell-strong">{row.company}</td>
+                  <td className="cell-nowrap">{row.cnpj}</td>
+                  <td className="cell-nowrap">{row.city}</td>
+                  <td>
+                    <span className="pill success">{row.status}</span>
+                  </td>
+                  <td className="cell-nowrap">{row.phone}</td>
                   <td>{row.email}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      </div>
 
-        <div className="stack">
-          <div className="inline-list">
+      <div className="split">
+        <div className="stack-sm">
+          <span className="kicker">Campos da entrega</span>
+          <ul className="check-list">
             {deliveryPreviewColumns.map((item) => (
-              <span key={item} className="pill">{item}</span>
+              <li key={item}>{item}</li>
             ))}
-          </div>
-          <div className="signal-card">
-            <span className="kicker">Prévia antes do checkout</span>
+          </ul>
+        </div>
+
+        <div className="stack-lg">
+          <div className="feature">
             <strong>Amostra, composição do lote e valor total</strong>
-            <span className="muted">Você não compra no escuro. A tela de checkout mostra a amostra da lista, a composição por tipo de lead e o total do pedido.</span>
+            <p>Você não compra no escuro. A tela de checkout mostra a amostra da lista, a composição por tipo de lead e o total do pedido.</p>
           </div>
-          <div className="signal-card">
-            <span className="kicker">Entrega</span>
+          <div className="feature">
             <strong>Liberação online e download em XLSX</strong>
-            <span className="muted">Depois do pagamento, a lista fica disponível na tela e no arquivo de download dentro da mesma jornada.</span>
+            <p>Depois do pagamento, a lista fica disponível na tela e no arquivo de download dentro da mesma jornada.</p>
           </div>
-          <div className="inline-actions">
+          <div className="cluster">
             <Link href="/pricing" className="button-secondary">
               Ver preços
             </Link>

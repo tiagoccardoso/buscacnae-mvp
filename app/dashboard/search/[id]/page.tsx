@@ -158,217 +158,235 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const hiddenResultsCount = Math.max(0, (rows?.length ?? 0) - unlockedRows.length);
 
   return (
-    <div className="stack">
-      {aiFormatMessage ? <div className={`notice ${aiFormatMessage.type}`}>{aiFormatMessage.text}</div> : null}
-      {cnpjWsEnrichmentStatus === "falhou" || cnpjWsEnrichmentStatus === "parcial" ? (
-        <div className="notice warning">
-          A busca principal na Casa dos Dados foi concluída. O enriquecimento complementar da CNPJ.ws
-          {cnpjWsEnrichmentStatus === "parcial" ? " falhou para parte dos CNPJs" : " não pôde ser concluído"}
-          {cnpjWsEnrichmentFailures !== null ? ` (${cnpjWsEnrichmentFailures} falhas)` : ""}; os dados disponíveis foram exibidos normalmente.
+    <>
+      {aiFormatMessage || cnpjWsEnrichmentStatus === "falhou" || cnpjWsEnrichmentStatus === "parcial" ? (
+        <div className="stack-sm">
+          {aiFormatMessage ? (
+            <div className={`notice ${aiFormatMessage.type}`} role={aiFormatMessage.type === "danger" ? "alert" : "status"}>
+              {aiFormatMessage.text}
+            </div>
+          ) : null}
+          {cnpjWsEnrichmentStatus === "falhou" || cnpjWsEnrichmentStatus === "parcial" ? (
+            <div className="notice warning">
+              A busca principal na Casa dos Dados foi concluída. O enriquecimento complementar da CNPJ.ws
+              {cnpjWsEnrichmentStatus === "parcial" ? " falhou para parte dos CNPJs" : " não pôde ser concluído"}
+              {cnpjWsEnrichmentFailures !== null ? ` (${cnpjWsEnrichmentFailures} falhas)` : ""}; os dados disponíveis foram exibidos normalmente.
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      <div className="panel-grid two">
-        <div className="surface-premium card-lg stack">
-          <div className="inline-actions" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div className="stack" style={{ gap: 6 }}>
-              <span className="eyebrow">Resultado da busca</span>
-              <h2 className="section-title" style={{ marginBottom: 0 }}>
-                {summary.headline}
-              </h2>
-              <span className="muted">
-                {effectiveResultCount} resultados · {search.data.cached ? "cache" : "consulta nova"} · {formatDateTime(search.data.created_at)}
-              </span>
-              {hitFetchLimit && fetchedResults !== null ? (
-                <span className="muted">{fetchedResults} carregados para esta operação.</span>
-              ) : null}
-            </div>
-            <div className="inline-actions">
-              <Link href={`/dashboard/search?reuse=${id}`} className="button-ghost">
-                Repetir busca
-              </Link>
-              <Link href="/dashboard/search" className="button-ghost">
-                Nova busca
-              </Link>
-            </div>
+      <section className="section" aria-labelledby="search-result-title">
+        <div className="section-header-row">
+          <div className="section-header">
+            <span className="eyebrow">Resultado da busca</span>
+            <h2 id="search-result-title" className="title-1">
+              {summary.headline}
+            </h2>
+            <p className="footnote">
+              {effectiveResultCount} resultados · {search.data.cached ? "cache" : "consulta nova"} · {formatDateTime(search.data.created_at)}
+              {hitFetchLimit && fetchedResults !== null ? ` · ${fetchedResults} carregados para esta operação` : ""}
+            </p>
           </div>
-
-          <div className="stat-grid stat-grid-premium">
-            <div className="stat-box stat-box-premium">
-              <strong>{effectiveResultCount}</strong>
-              <span className="muted">Empresas retornadas</span>
-            </div>
-            {hitFetchLimit && fetchedResults !== null ? (
-              <div className="stat-box stat-box-premium">
-                <strong>{fetchedResults}</strong>
-                <span className="muted">Carregadas nesta operação</span>
-              </div>
-            ) : null}
-            <div className="stat-box stat-box-premium">
-              <strong>{summary.cnaeText}</strong>
-              <span className="muted">CNAEs do recorte</span>
-            </div>
-            <div className="stat-box stat-box-premium">
-              <strong>{summary.locationText}</strong>
-              <span className="muted">Abrangência geográfica</span>
-            </div>
+          <div className="cluster">
+            <Link href={`/dashboard/search?reuse=${id}`} className="button-secondary">
+              Repetir busca
+            </Link>
+            <Link href="/dashboard/search" className="button-ghost">
+              Nova busca
+            </Link>
           </div>
+        </div>
 
-          {summary.filterLabels.length > 0 ? (
-            <div className="inline-list">
-              {summary.filterLabels.map((label) => (
-                <span key={label} className="pill">
-                  {label}
-                </span>
-              ))}
+        <div className="stat-group">
+          <div className="stat">
+            <span className="stat-value">{effectiveResultCount}</span>
+            <span className="stat-label">Empresas retornadas</span>
+          </div>
+          {hitFetchLimit && fetchedResults !== null ? (
+            <div className="stat">
+              <span className="stat-value">{fetchedResults}</span>
+              <span className="stat-label">Carregadas nesta operação</span>
             </div>
           ) : null}
+          <div className="stat">
+            <span className="stat-value stat-value-sm">{summary.cnaeText}</span>
+            <span className="stat-label">CNAEs do recorte</span>
+          </div>
+          <div className="stat">
+            <span className="stat-value stat-value-sm">{summary.locationText}</span>
+            <span className="stat-label">Abrangência geográfica</span>
+          </div>
+        </div>
 
-          {autoRefinementSuggested && suggestedActivityStartYear ? (
-            <div className="notice warning">
-              <div className="stack" style={{ gap: 8 }}>
-                <span>{autoRefinementReason || "Essa busca ficou ampla. Recomendamos aplicar recorte temporal por ano."}</span>
+        {summary.filterLabels.length > 0 ? (
+          <div className="inline-list" aria-label="Filtros aplicados">
+            {summary.filterLabels.map((label) => (
+              <span key={label} className="pill">
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {autoRefinementSuggested && suggestedActivityStartYear ? (
+          <div className="notice warning">
+            <div className="stack-xs">
+              <span>{autoRefinementReason || "Essa busca ficou ampla. Recomendamos aplicar recorte temporal por ano."}</span>
+              <div>
                 <Link
                   href={`/dashboard/search?reuse=${id}&suggestedYear=${suggestedActivityStartYear}&suggestedExact=${suggestedActivityStartYearExact ? "1" : "0"}`}
-                  className="button-ghost"
+                  className="button-secondary button-sm"
                 >
                   Refazer com recorte temporal sugerido
                 </Link>
               </div>
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
+      </section>
 
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Compra da lista</span>
-
-          {order ? (
-            <>
-              <div className="grid-2">
-                <div className="surface-soft card stack">
-                  <span className="kicker">Leads encontrados</span>
-                  <strong style={{ fontSize: "2rem" }}>{order.result_count}</strong>
-                  <span className="muted">Quantidade pronta para liberação.</span>
-                </div>
-                <div className="surface-soft card stack">
-                  <span className="kicker">Total do pedido</span>
-                  <strong style={{ fontSize: "2rem" }}>{formatMoney(order.total_amount_cents / 100)}</strong>
-                  <span className="muted">Cobrança automática pela composição real do lote.</span>
-                </div>
+      {order ? (
+        <section className="order-layout" aria-label="Compra da lista">
+          <div className="stack-xl">
+            {pricingSummary ? (
+              <LeadPricingBreakdown summary={pricingSummary} />
+            ) : (
+              <div className="section-header">
+                <span className="eyebrow">Compra da lista</span>
+                <h2 className="title-2">Resumo do pedido</h2>
+                <p className="section-copy">Cobrança automática pela composição real do lote.</p>
               </div>
+            )}
 
-              {pricingSummary ? <LeadPricingBreakdown summary={pricingSummary} /> : null}
-
-              <div className="notice">
-                {orderUnlocked
-                  ? "Esta lista já está liberada. Você pode abrir a versão completa, baixar o XLSX ou ativar a lista pronta para prospecção com IA."
-                  : order.result_count === 0
-                    ? "Nenhum CNPJ foi encontrado nesta busca. O resultado fica disponível sem cobrança."
-                    : "A lista completa pode ser comprada agora a partir desta pesquisa já salva no dashboard."}
-              </div>
-
-              <div className="inline-actions">
-                {orderUnlocked ? (
-                  <>
-                    <Link href={`/orders/${order.access_token}`} className="button">
-                      Abrir lista liberada
-                    </Link>
-                    <a href={`/orders/${order.access_token}/download`} className="button-ghost">
-                      Baixar XLSX
-                    </a>
-                  </>
-                ) : order.result_count === 0 ? (
-                  <Link href={`/orders/${order.access_token}`} className="button">
-                    Ver resultado vazio
-                  </Link>
-                ) : (
-                  <Link href={`/checkout/${order.id}`} className="button" data-analytics-event="preview_viewed" data-analytics-label="Dashboard search checkout">
-                    Ir para a prévia de compra
-                  </Link>
-                )}
-              </div>
-
-              {orderUnlocked && (rows?.length ?? 0) > 0 ? (
-                <div className="surface-soft card stack" style={{ marginTop: 12 }}>
+            {orderUnlocked && (rows?.length ?? 0) > 0 ? (
+              <div className="tile stack-lg">
+                <div className="section-header">
                   <span className="eyebrow">Lista pronta para prospecção com IA</span>
-                  <div className="grid-2">
-                    <div className="stack" style={{ gap: 6 }}>
-                      <span className="kicker">Upgrade da lista</span>
-                      <strong style={{ fontSize: "1.8rem" }}>{aiFormatPriceSummary.formattedAmount}</strong>
-                      <span className="muted">
-                        O valor do upgrade com IA varia conforme a quantidade de leads da sua lista.
-                      </span>
-                    </div>
-                    <div className="stack" style={{ gap: 6 }}>
-                      <span className="kicker">Entrega comercial</span>
-                      <strong style={{ fontSize: "1.1rem" }}>{aiFormatUnlocked ? "Upgrade liberado" : "Aguardando ativação"}</strong>
-                      <span className="muted">
-                        Receba XLSX organizado, aba "Contatos WhatsApp" com link direto para WhatsApp Web e PDF legível por registro.
-                      </span>
-                    </div>
-                  </div>
+                  <h2 className="title-2">{aiFormatUnlocked ? "Upgrade com IA ativo" : "Transforme a lista em material de prospecção"}</h2>
+                  <p className="section-copy">
+                    Receba XLSX organizado, aba &quot;Contatos WhatsApp&quot; com link direto para WhatsApp Web e PDF legível por registro.
+                  </p>
+                </div>
 
-                  <div className="surface card stack" style={{ gap: 10 }}>
-                    <span className="kicker">Tabela de cobrança do upgrade com IA</span>
-                    <div className="stack" style={{ gap: 6 }}>
-                      {aiFormatPricingTable.map((tier) => (
-                        <div key={tier.id} className="inline-actions" style={{ justifyContent: "space-between", gap: 8 }}>
-                          <span className="muted">{tier.label}</span>
-                          <strong style={{ fontSize: "0.95rem" }}>
-                            {tier.id === "above_1000"
-                              ? `${formatMoney(tier.baseAmountCents / 100)} + ${formatMoney(tier.extraLeadUnitAmountCents / 100)} por lead adicional`
-                              : formatMoney(tier.baseAmountCents / 100)}
-                          </strong>
-                        </div>
-                      ))}
-                    </div>
+                <div className="stat-group">
+                  <div className="stat">
+                    <span className="stat-value">{aiFormatPriceSummary.formattedAmount}</span>
+                    <span className="stat-label">Valor do upgrade para {aiFormatPriceSummary.totalLeads} leads</span>
                   </div>
-
-                  <div className="notice">
-                    {aiFormatUnlocked
-                      ? "Upgrade com IA ativo."
-                      : "Você recebe XLSX organizado, aba Contatos WhatsApp e PDF legível por registro."}
-                    {!aiFormatUnlocked ? (
-                      <>
-                        <br />
-                        {`Sua lista tem ${aiFormatPriceSummary.totalLeads} leads. Valor do upgrade com IA: ${aiFormatPriceSummary.formattedAmount}.`}
-                        {aiFormatPriceSummary.hasAdditionalLeadCharge ? (
-                          <>
-                            <br />
-                            {`${formatMoney(aiFormatPriceSummary.baseAmountCents / 100)} base + ${aiFormatPriceSummary.extraLeadCount} leads adicionais x ${formatMoney(aiFormatPriceSummary.extraLeadUnitAmountCents / 100)}.`}
-                          </>
-                        ) : null}
-                      </>
-                    ) : null}
-                  </div>
-
-                  <div className="inline-actions">
-                    {!aiFormatUnlocked ? (
-                      <form action="/api/stripe/ai-format-checkout" method="POST" data-analytics-event="ai_format_checkout_started">
-                        <input type="hidden" name="searchId" value={id} />
-                        <button type="submit" className="button">
-                          Quero minha lista pronta para prospecção por {aiFormatPriceSummary.formattedAmount}
-                        </button>
-                      </form>
-                    ) : aiFormatProcessingStatus === "ready" ? (
-                      <FormattedDownloadButtons searchId={id} />
-                    ) : (
-                      <AiFormatProcessingPanel
-                        searchId={id}
-                        initialStatus={aiFormatProcessingStatus}
-                        initialError={aiFormatInitialError}
-                        autoStart={autoStartAiProcessing}
-                      />
-                    )}
+                  <div className="stat">
+                    <span className="stat-value stat-value-sm">{aiFormatUnlocked ? "Upgrade liberado" : "Aguardando ativação"}</span>
+                    <span className="stat-label">Entrega comercial</span>
                   </div>
                 </div>
-              ) : null}
-            </>
-          ) : (
-            <div className="notice warning">{orderErrorMessage || "Não foi possível preparar o pedido comercial desta busca."}</div>
-          )}
+
+                <details className="disclosure-inline">
+                  <summary>Tabela de cobrança do upgrade com IA</summary>
+                  <dl className="price-rows">
+                    {aiFormatPricingTable.map((tier) => (
+                      <div key={tier.id}>
+                        <dt>{tier.label}</dt>
+                        <dd>
+                          {tier.id === "above_1000"
+                            ? `${formatMoney(tier.baseAmountCents / 100)} + ${formatMoney(tier.extraLeadUnitAmountCents / 100)} por lead adicional`
+                            : formatMoney(tier.baseAmountCents / 100)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </details>
+
+                {!aiFormatUnlocked && aiFormatPriceSummary.hasAdditionalLeadCharge ? (
+                  <p className="footnote">
+                    {`${formatMoney(aiFormatPriceSummary.baseAmountCents / 100)} base + ${aiFormatPriceSummary.extraLeadCount} leads adicionais x ${formatMoney(aiFormatPriceSummary.extraLeadUnitAmountCents / 100)}.`}
+                  </p>
+                ) : null}
+
+                <div>
+                  {!aiFormatUnlocked ? (
+                    <form action="/api/stripe/ai-format-checkout" method="POST" data-analytics-event="ai_format_checkout_started">
+                      <input type="hidden" name="searchId" value={id} />
+                      <button type="submit" className="button">
+                        Quero minha lista pronta para prospecção por {aiFormatPriceSummary.formattedAmount}
+                      </button>
+                    </form>
+                  ) : aiFormatProcessingStatus === "ready" ? (
+                    <FormattedDownloadButtons searchId={id} />
+                  ) : (
+                    <AiFormatProcessingPanel
+                      searchId={id}
+                      initialStatus={aiFormatProcessingStatus}
+                      initialError={aiFormatInitialError}
+                      autoStart={autoStartAiProcessing}
+                    />
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <aside className="order-summary" aria-label="Resumo do pedido">
+            <div className="order-total">
+              <span className="kicker">Total do pedido</span>
+              <span className="order-total-value">{formatMoney(order.total_amount_cents / 100)}</span>
+              <span className="footnote">Cobrança automática pela composição real do lote.</span>
+            </div>
+
+            <dl className="order-lines">
+              <div>
+                <dt>Leads encontrados</dt>
+                <dd>{order.result_count}</dd>
+              </div>
+              <div>
+                <dt>Situação</dt>
+                <dd>
+                  <span className={`pill ${orderUnlocked ? "success" : "warning"}`}>
+                    {orderUnlocked ? "Lista liberada" : order.result_count === 0 ? "Sem cobrança" : "Aguardando compra"}
+                  </span>
+                </dd>
+              </div>
+            </dl>
+
+            <p className="footnote">
+              {orderUnlocked
+                ? "Esta lista já está liberada. Você pode abrir a versão completa, baixar o XLSX ou ativar a lista pronta para prospecção com IA."
+                : order.result_count === 0
+                  ? "Nenhum CNPJ foi encontrado nesta busca. O resultado fica disponível sem cobrança."
+                  : "A lista completa pode ser comprada agora a partir desta pesquisa já salva no dashboard."}
+            </p>
+
+            <div className="stack-xs">
+              {orderUnlocked ? (
+                <>
+                  <Link href={`/orders/${order.access_token}`} className="button button-lg full">
+                    Abrir lista liberada
+                  </Link>
+                  <a href={`/orders/${order.access_token}/download`} className="button-secondary full">
+                    Baixar XLSX
+                  </a>
+                </>
+              ) : order.result_count === 0 ? (
+                <Link href={`/orders/${order.access_token}`} className="button button-lg full">
+                  Ver resultado vazio
+                </Link>
+              ) : (
+                <Link
+                  href={`/checkout/${order.id}`}
+                  className="button button-lg full"
+                  data-analytics-event="preview_viewed"
+                  data-analytics-label="Dashboard search checkout"
+                >
+                  Ir para a prévia de compra
+                </Link>
+              )}
+            </div>
+          </aside>
+        </section>
+      ) : (
+        <div className="notice warning" role="alert">
+          {orderErrorMessage || "Não foi possível preparar o pedido comercial desta busca."}
         </div>
-      </div>
+      )}
 
       {!rows || rows.length === 0 ? (
         <EmptyState
@@ -378,21 +396,26 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
           ctaLabel="Voltar ao formulário"
         />
       ) : (
-        <div className="surface-premium card-lg stack">
-          <div className="stack" style={{ gap: 8 }}>
-            <span className="eyebrow">Amostra da lista</span>
+        <section className="section" aria-labelledby="sample-title">
+          <div className="section-header">
+            <span className="eyebrow">{orderUnlocked ? "Estabelecimentos" : "Amostra da lista"}</span>
+            <h2 id="sample-title" className="title-2">
+              {orderUnlocked ? `${unlockedRows.length} empresas liberadas` : "Uma prévia do que você recebe"}
+            </h2>
             <p className="section-copy">
               {orderUnlocked
                 ? "Navegue pelos estabelecimentos encontrados, abra a ficha completa, salve os melhores na carteira e siga para exportação."
                 : "No dashboard exibimos apenas 1 estabelecimento como amostra antes da compra. A lista completa é liberada após o pagamento."}
             </p>
-            {!orderUnlocked && hiddenResultsCount > 0 ? (
-              <div className="notice warning">
-                Você está vendo 1 estabelecimento de amostra. Os outros {hiddenResultsCount} registro(s) serão liberados após o pagamento da lista.
-              </div>
-            ) : null}
           </div>
-          <div className="result-card-grid">
+
+          {!orderUnlocked && hiddenResultsCount > 0 ? (
+            <div className="notice info">
+              Você está vendo 1 estabelecimento de amostra. Os outros {hiddenResultsCount} registro(s) serão liberados após o pagamento da lista.
+            </div>
+          ) : null}
+
+          <div className="result-list">
             {unlockedRows.map((row) => {
               const establishment = extractSingleObject(row.establishments);
               if (!establishment) return null;
@@ -406,34 +429,55 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
               const stateCode = canonical.stateCode ?? "-";
               const status = canonical.registrationStatus ?? "-";
               const addressSummary = buildAddressSummary(mergedEstablishment);
+              const missing = "Não retornado pela API";
 
               return (
-                <article key={establishmentId} className="result-card-premium">
-                  <div className="result-card-index">#{row.position}</div>
-                  <div className="stack" style={{ gap: 6 }}>
-                    <strong className="result-card-title">{companyName}</strong>
-                    <span className="muted">{canonical.tradeName || "Nome fantasia não informado"}</span>
+                <article key={establishmentId} className="result-item">
+                  <div className="result-item-head">
+                    <span className="result-item-index">#{row.position}</span>
+                    <div className="result-item-title">
+                      <strong>{companyName}</strong>
+                      <span>{canonical.tradeName || "Nome fantasia não informado"}</span>
+                    </div>
                   </div>
-                  <div className="result-card-meta">
-                    <span><strong>CNPJ:</strong> {formatCnpj(cnpj)}</span>
-                    <span><strong>Cidade:</strong> {cityName}/{stateCode}</span>
-                    <span><strong>Status:</strong> {status}</span>
-                    <span><strong>Telefone:</strong> {canonical.phone ?? "Não retornado pela API"}</span>
-                    <span><strong>E-mail:</strong> {canonical.email ?? "Não retornado pela API"}</span>
-                    <span><strong>Endereço:</strong> {addressSummary ?? "Não retornado pela API"}</span>
-                  </div>
-                  <div className="inline-actions result-card-actions">
-                    <Link href={`/dashboard/companies/${encodeURIComponent(cnpj)}`} className="button-ghost">
+                  <dl className="result-meta">
+                    <div>
+                      <dt>CNPJ</dt>
+                      <dd className="numeric">{formatCnpj(cnpj)}</dd>
+                    </div>
+                    <div>
+                      <dt>Cidade</dt>
+                      <dd>{cityName}/{stateCode}</dd>
+                    </div>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>{status}</dd>
+                    </div>
+                    <div>
+                      <dt>Telefone</dt>
+                      <dd className={canonical.phone ? undefined : "is-missing"}>{canonical.phone ?? missing}</dd>
+                    </div>
+                    <div>
+                      <dt>E-mail</dt>
+                      <dd className={canonical.email ? undefined : "is-missing"}>{canonical.email ?? missing}</dd>
+                    </div>
+                    <div>
+                      <dt>Endereço</dt>
+                      <dd className={addressSummary ? undefined : "is-missing"}>{addressSummary ?? missing}</dd>
+                    </div>
+                  </dl>
+                  <div className="result-item-actions">
+                    <Link href={`/dashboard/companies/${encodeURIComponent(cnpj)}`} className="button-ghost button-sm">
                       Ver ficha
                     </Link>
-                    <LeadToggleForm establishmentId={establishmentId} isSaved={savedSet.has(establishmentId)} />
+                    <LeadToggleForm establishmentId={establishmentId} isSaved={savedSet.has(establishmentId)} size="sm" />
                   </div>
                 </article>
               );
             })}
           </div>
-        </div>
+        </section>
       )}
-    </div>
+    </>
   );
 }

@@ -9,7 +9,12 @@ import { getBusinessShortDescription } from "@/lib/site-content";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  viewportFit: "cover"
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FFFFFF" },
+    { media: "(prefers-color-scheme: dark)", color: "#000000" }
+  ],
+  colorScheme: "light dark"
 };
 
 export const metadata: Metadata = {
@@ -41,8 +46,12 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body>
+        <a href="#conteudo" className="skip-link">
+          Pular para o conteúdo
+        </a>
         <AnalyticsIntentListener />
         <SiteHeader />
+        <span id="conteudo" tabIndex={-1} className="sr-only" />
         {children}
         <SiteFooter />
       </body>

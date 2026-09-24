@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { minimumCheckoutAmount, pricingTiers } from "@/lib/site-content";
+import { SectionHeader } from "@/components/ui/section-header";
 
 const onboardingSteps = [
   {
@@ -30,39 +31,38 @@ const onboardingSteps = [
 
 export function OnboardingCorporate() {
   return (
-    <section className="surface-premium card-lg stack onboarding-shell">
-      <div className="stack" style={{ gap: 8 }}>
-        <span className="eyebrow">Passo a passo</span>
-        <h2 className="section-title">Uma jornada direta para pesquisar, validar e comprar a lista.</h2>
-        <p className="section-copy">
-          O fluxo foi organizado para deixar a compra mais previsível: você pesquisa primeiro, vê a prévia, entende o preço e só então decide se vai seguir para o checkout.
-        </p>
-      </div>
+    <section className="section section-spaced" aria-labelledby="onboarding-title">
+      <SectionHeader
+        id="onboarding-title"
+        eyebrow="Passo a passo"
+        title="Uma jornada direta para pesquisar, validar e comprar a lista."
+        copy="O fluxo foi organizado para deixar a compra mais previsível: você pesquisa primeiro, vê a prévia, entende o preço e só então decide se vai seguir para o checkout."
+      />
 
-      <div className="onboarding-grid">
-        {onboardingSteps.map((step, index) => (
-          <div className="onboarding-step" key={step.title}>
-            <span className="onboarding-index">0{index + 1}</span>
+      <ol className="steps">
+        {onboardingSteps.map((step) => (
+          <li className="step" key={step.title}>
             <strong>{step.title}</strong>
-            <span className="muted">{step.copy}</span>
-          </div>
+            <p>{step.copy}</p>
+          </li>
         ))}
-      </div>
+      </ol>
 
-      <div className="surface-soft card stack">
-        <span className="eyebrow">Regra de preço</span>
-        <p className="section-copy" style={{ marginBottom: 0 }}>
-          {pricingTiers.map((tier) => `${tier.label}: ${tier.formattedUnitPrice}`).join(" · ")}. O dashboard é opcional e existe para histórico, listas salvas e recompra.
-        </p>
-      </div>
-
-      <div className="inline-actions">
-        <Link href="/" className="button" data-analytics-event="search_entry_clicked" data-analytics-label="Onboarding search">
-          Fazer uma pesquisa agora
-        </Link>
-        <Link href="/dashboard" className="button-ghost">
-          Ver dashboard
-        </Link>
+      <div className="tile stack-lg">
+        <div className="stack-xs">
+          <span className="kicker">Regra de preço</span>
+          <p className="section-copy">
+            {pricingTiers.map((tier) => `${tier.label}: ${tier.formattedUnitPrice}`).join(" · ")}. O dashboard é opcional e existe para histórico, listas salvas e recompra.
+          </p>
+        </div>
+        <div className="cluster">
+          <Link href="/" className="button" data-analytics-event="search_entry_clicked" data-analytics-label="Onboarding search">
+            Fazer uma pesquisa agora
+          </Link>
+          <Link href="/dashboard" className="button-ghost">
+            Ver dashboard
+          </Link>
+        </div>
       </div>
     </section>
   );

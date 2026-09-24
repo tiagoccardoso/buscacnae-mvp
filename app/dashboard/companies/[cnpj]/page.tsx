@@ -229,18 +229,19 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
   }
 
   return (
-    <div className="stack">
-      <div className="surface-premium card-lg stack">
+    <section className="section" aria-labelledby="company-title">
+      <div className="section-header">
         <span className="eyebrow">Ficha do estabelecimento</span>
-        <h2 className="section-title" style={{ fontSize: "2.1rem", marginBottom: 0 }}>
+        <h2 id="company-title" className="title-1">
           {company.company_name}
         </h2>
-        <span className="muted">{formatCnpj(company.cnpj)}</span>
+        <p className="footnote numeric">{formatCnpj(company.cnpj)}</p>
+        <p className="section-copy">
+          Informações consolidadas da pesquisa e do retorno bruto dos provedores, reunidas em uma leitura única.
+        </p>
       </div>
 
-      <div className="surface-premium card-lg stack">
-        <EstablishmentDetails establishment={company as unknown as Record<string, unknown>} />
-      </div>
-    </div>
+      <EstablishmentDetails establishment={company as unknown as Record<string, unknown>} />
+    </section>
   );
 }

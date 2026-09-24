@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { formatCnaeCode, normalizeCnaeCode } from "@/lib/cnae-utils";
 import { type PickerOption } from "@/lib/filter-options";
 import { CnaeAssistantChat } from "@/components/cnae-assistant-chat";
+import { SearchIcon, SparkleIcon } from "@/components/ui/icons";
 
 type CityOption = {
   cityName: string;
@@ -142,6 +143,9 @@ function PickerField({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const listboxId = useId();
+  const helperId = useId();
+  const optionIdPrefix = useId();
 
   const activeOption = useMemo(() => {
     if (suggestions.length === 0) return null;
@@ -225,18 +229,67 @@ function PickerField({
     }
   }
 
+  function moveActive(step: number) {
+    if (suggestions.length === 0) return;
+    const currentIndex = activeOption ? suggestions.findIndex((item) => item.value === activeOption.value) : -1;
+    const nextIndex = (currentIndex + step + suggestions.length) % suggestions.length;
+    const nextValue = suggestions[nextIndex]?.value ?? "";
+    setActiveOptionValue(nextValue);
+    requestAnimationFrame(() => {
+      document.getElementById(`${optionIdPrefix}-${nextIndex}`)?.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (!open) {
+        handleOpen();
+        return;
+      }
+      moveActive(1);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (open) moveActive(-1);
+      return;
+    }
+
+    if (event.key === "Enter" && open && !loading && activeOption) {
+      event.preventDefault();
+      addOption(activeOption);
+      return;
+    }
+
+    if (event.key === "Escape" && open) {
+      event.preventDefault();
+      setOpen(false);
+      return;
+    }
+
+    if (event.key === "Backspace" && !query && selected.length > 0) {
+      onRemove(selected[selected.length - 1].value);
+    }
+  }
+
+  const activeIndex = activeOption ? suggestions.findIndex((item) => item.value === activeOption.value) : -1;
+
   const popover = open && !disabled ? createPortal(
     <div
       ref={popoverRef}
-      className={`picker-popover picker-popover-portal${showDetailPreview ? " picker-popover-detailed" : ""}`}
+      className={`picker-popover picker-popover-portal glass-thick${showDetailPreview ? " picker-popover-detailed" : ""}`}
       style={popoverStyle}
     >
       {loading ? (
-        <div className="picker-empty">Carregando opções...</div>
+        <div className="picker-empty" role="status">
+          <span className="spinner" aria-hidden="true" /> <span className="sr-only">Carregando opções...</span>
+        </div>
       ) : suggestions.length > 0 ? (
         <>
-          <div className="picker-list" role="listbox" aria-label={`Sugestões para ${label}`}>
-            {suggestions.map((option) => {
+          <div className="picker-list" role="listbox" id={listboxId} aria-label={`Sugestões para ${label}`}>
+            {suggestions.map((option, index) => {
               const optionParts = splitOptionLabel(option.label);
               const isActive = activeOption?.value === option.value;
 
@@ -244,6 +297,10 @@ function PickerField({
                 <button
                   type="button"
                   key={option.value}
+                  id={`${optionIdPrefix}-${index}`}
+                  role="option"
+                  aria-selected={isActive}
+                  tabIndex={-1}
                   className={`picker-option${isActive ? " is-active" : ""}`}
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setActiveOptionValue(option.value)}
@@ -266,7 +323,7 @@ function PickerField({
           ) : null}
         </>
       ) : (
-        <div className="picker-empty">{emptyMessage}</div>
+        <div className="picker-empty" role="status">{emptyMessage}</div>
       )}
       {extraAction}
     </div>,
@@ -277,36 +334,45 @@ function PickerField({
     <div ref={wrapperRef} className={`field picker-column${open ? " is-open" : ""}`}>
       <label htmlFor={id}>{label}</label>
       <div className="picker-field">
+        <SearchIcon className="picker-search-icon" />
         <input
           ref={inputRef}
           id={id}
           type="text"
-          className="input input-premium"
+          className="input"
           placeholder={placeholder}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            if (!open) setOpen(true);
+          }}
           onFocus={handleOpen}
           onClick={handleOpen}
+          onKeyDown={handleKeyDown}
           disabled={disabled}
           autoComplete="off"
+          role="combobox"
+          aria-expanded={open && !disabled}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={open && activeIndex >= 0 ? `${optionIdPrefix}-${activeIndex}` : undefined}
+          aria-describedby={helper ? helperId : undefined}
         />
         {popover}
       </div>
-      {helper ? <span className="picker-helper">{helper}</span> : null}
+      {helper ? <span id={helperId} className="field-help">{helper}</span> : null}
       {selected.length > 0 ? (
-        <div className="chip-list">
+        <div className="chip-list" aria-label={`${label}: itens selecionados`}>
           {selected.map((item) => (
             <span className="chip" key={item.value}>
-              <span>{item.label}</span>
+              <span title={item.label}>{item.label}</span>
               <button type="button" onClick={() => onRemove(item.value)} aria-label={`Remover ${item.label}`}>
-                ×
+                <span aria-hidden="true">×</span>
               </button>
             </span>
           ))}
         </div>
-      ) : (
-        <span className="tiny">Nenhum item selecionado.</span>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -548,50 +614,26 @@ export function SearchFilterBuilder({
   const stateValue = selectedStates.map((item) => item.value).join("\n");
   const importedCnaes = splitMultiValue(cnaeQuery).map((item) => normalizeCode(item)).filter(Boolean);
 
+  const selectionSummary = [
+    `${selectedCnaes.length} ${selectedCnaes.length === 1 ? "CNAE" : "CNAEs"}`,
+    `${selectedStates.length} ${selectedStates.length === 1 ? "estado" : "estados"}`,
+    `${selectedCities.length} ${selectedCities.length === 1 ? "cidade" : "cidades"}`
+  ].join(" · ");
+
   return (
-    <div className="search-builder-stack search-builder-stack-premium">
-      <div className="search-builder-headline">
-        <div className="search-builder-headline-copy">
-          <span className="eyebrow">Pesquisa imersiva</span>
-          <strong>Combine múltiplos CNAEs, estados e cidades em uma mesma operação.</strong>
-          <span className="muted">
-            Cada bloco aceita múltiplas seleções e foi desenhado para manter leitura clara mesmo com vários filtros ao mesmo tempo.
-          </span>
-        </div>
-
-        <div className="search-selection-stats">
-          <div className="selection-stat-pill">
-            <span>CNAEs</span>
-            <strong>{selectedCnaes.length}</strong>
-          </div>
-          <div className="selection-stat-pill">
-            <span>Estados</span>
-            <strong>{selectedStates.length}</strong>
-          </div>
-          <div className="selection-stat-pill">
-            <span>Cidades</span>
-            <strong>{selectedCities.length}</strong>
-          </div>
-        </div>
-      </div>
-
-      <CnaeAssistantChat
-        selectedCodes={selectedCnaes.map((item) => item.value)}
-        onAddSuggestion={addSuggestionFromChat}
-      />
-
+    <div className="search-builder">
       <input type="hidden" name="cnae" value={cnaeValue} />
       <input type="hidden" name="stateCode" value={stateValue} />
       <input type="hidden" name="citySelection" value={citySelectionsValue} />
 
-      <div className="search-builder-grid search-builder-grid-immersive">
+      <div className="search-fields">
         <PickerField
           id="cnaePicker"
           label="CNAE"
           showDetailPreview
           detailPreviewLabel="Descrição do CNAE selecionado"
-          helper="Clique no campo para abrir a lista. Ao passar o mouse sobre um item, a descrição completa aparece logo abaixo para facilitar a leitura."
-          placeholder="Digite o código ou a descrição"
+          helper="Busque por código ou descrição. Aceita vários CNAEs."
+          placeholder="Código ou descrição da atividade"
           query={cnaeQuery}
           setQuery={setCnaeQuery}
           suggestions={filteredCnaes}
@@ -606,7 +648,7 @@ export function SearchFilterBuilder({
                 {importedCnaes.length > 1 ? (
                   <button
                     type="button"
-                    className="button-secondary picker-footer-button"
+                    className="button-secondary button-sm"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
                       const options = importedCnaes.map((item) => fallbackCnaeOption(item));
@@ -620,7 +662,7 @@ export function SearchFilterBuilder({
                 {canAddManualCnae ? (
                   <button
                     type="button"
-                    className="button-secondary picker-footer-button"
+                    className="button-secondary button-sm"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={addManualCnae}
                   >
@@ -635,8 +677,8 @@ export function SearchFilterBuilder({
         <PickerField
           id="statePicker"
           label="Estado"
-          helper="Escolha uma ou várias UFs para expandir o recorte territorial."
-          placeholder="Digite a UF ou o nome do estado"
+          helper="Uma ou várias UFs."
+          placeholder="UF ou nome do estado"
           query={stateQuery}
           setQuery={setStateQuery}
           suggestions={filteredStates}
@@ -650,8 +692,8 @@ export function SearchFilterBuilder({
         <PickerField
           id="cityPicker"
           label="Cidade"
-          helper="Inclua múltiplas cidades dentro dos estados escolhidos."
-          placeholder={selectedStates.length > 0 ? "Digite o nome da cidade" : "Selecione primeiro ao menos um estado"}
+          helper={selectedStates.length > 0 ? "Cidades dentro dos estados escolhidos." : "Escolha um estado para liberar as cidades."}
+          placeholder={selectedStates.length > 0 ? "Nome da cidade" : "Selecione um estado antes"}
           query={cityQuery}
           setQuery={setCityQuery}
           suggestions={cityOptions}
@@ -668,50 +710,63 @@ export function SearchFilterBuilder({
         />
       </div>
 
-      <div className="search-builder-footer">
-        <div className="field" style={{ marginTop: 0 }}>
-          <label htmlFor="activityStartYear">Ano mínimo da empresa ativa</label>
-          <div className="year-filter-card">
-            <div className="year-filter-copy">
-              <strong>Filtre empresas a partir de um ano específico</strong>
-              <span>
-                {!activityStartYear
-                  ? "Se não informar ano, a pesquisa considera empresas de todos os períodos."
-                  : activityStartYearExact
-                    ? "A pesquisa considera apenas empresas ativas no ano informado."
-                    : "A pesquisa considera empresas ativas a partir do ano informado."}
-              </span>
-            </div>
-            <div className="year-filter-input-wrap">
-              <input
-                id="activityStartYear"
-                name="activityStartYear"
-                type="number"
-                inputMode="numeric"
-                className="input input-premium year-filter-input"
-                min="1900"
-                max={new Date().getFullYear()}
-                value={activityStartYear}
-                onChange={(event) => setActivityStartYear(event.target.value)}
-              />
-            </div>
-            <label className="checkbox-inline" style={{ marginTop: 10 }}>
-              <input
-                type="checkbox"
-                name="activityStartYearExact"
-                checked={activityStartYearExact}
-                onChange={(event) => setActivityStartYearExact(event.target.checked)}
-                disabled={!activityStartYear}
-              />
-              Buscar somente no ano informado
-            </label>
-          </div>
-
-          <span className="tiny">
-            {"Use o assistente para encontrar CNAEs relacionados à atividade da empresa ou escolha manualmente pela lista. Se não informar o ano, a pesquisa considera empresas de todos os períodos."}
+      <details className="assistant">
+        <summary>
+          <span className="assistant-badge" aria-hidden="true">
+            <SparkleIcon />
           </span>
+          <span className="assistant-summary-copy">
+            <strong>Não sabe qual CNAE usar?</strong>
+            <span>Descreva o negócio e o assistente sugere CNAEs para adicionar com um clique.</span>
+          </span>
+        </summary>
+        <div className="assistant-body">
+          <CnaeAssistantChat
+            selectedCodes={selectedCnaes.map((item) => item.value)}
+            onAddSuggestion={addSuggestionFromChat}
+          />
         </div>
+      </details>
+
+      <div className="search-options">
+        <div className="field">
+          <label htmlFor="activityStartYear">Ano mínimo da empresa ativa</label>
+          <input
+            id="activityStartYear"
+            name="activityStartYear"
+            type="number"
+            inputMode="numeric"
+            className="input"
+            placeholder="Todos os anos"
+            min="1900"
+            max={new Date().getFullYear()}
+            value={activityStartYear}
+            onChange={(event) => setActivityStartYear(event.target.value)}
+            aria-describedby="activityStartYearHelp"
+          />
+        </div>
+        <label className="checkbox-inline">
+          <input
+            type="checkbox"
+            name="activityStartYearExact"
+            checked={activityStartYearExact}
+            onChange={(event) => setActivityStartYearExact(event.target.checked)}
+            disabled={!activityStartYear}
+          />
+          Buscar somente no ano informado
+        </label>
+        <p id="activityStartYearHelp" className="field-help">
+          {!activityStartYear
+            ? "Sem ano informado, a pesquisa considera empresas de todos os períodos."
+            : activityStartYearExact
+              ? "A pesquisa considera apenas empresas ativas no ano informado."
+              : "A pesquisa considera empresas ativas a partir do ano informado."}
+        </p>
       </div>
+
+      <p className="search-summary" aria-live="polite">
+        Seleção atual: <strong>{selectionSummary}</strong>
+      </p>
     </div>
   );
 }

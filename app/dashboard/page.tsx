@@ -2,7 +2,6 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth/server";
 import { createDbClient } from "@/lib/db-client";
 import { formatDateTime } from "@/lib/format";
-import { DashboardImpactVisuals } from "@/components/dashboard-impact-visuals";
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -40,43 +39,81 @@ export default async function DashboardPage() {
   const leadTotal = leadCount ?? 0;
   const orderTotal = orderCount ?? 0;
   const latestResults = latestOrder.data?.result_count ?? latestSearch.data?.total_results ?? 0;
-  const latestCity = latestSearch.data?.city_name ?? "Sem buscas";
 
   return (
-    <div className="stack dashboard-premium-stack">
-      <div className="grid-3 metric-surface-grid dashboard-connected-grid">
-        <div className="surface-premium card metric metric-card metric-card-premium">
-          <span className="kicker">Modelo de compra</span>
-          <strong>Uma lista por vez</strong>
-          <span className="muted">Pesquise, veja a prévia, pague e reabra a lista quando quiser pelo histórico.</span>
+    <>
+      <section className="section" aria-labelledby="dashboard-overview">
+        <h2 id="dashboard-overview" className="sr-only">Visão geral</h2>
+        <div className="stat-group">
+          <div className="stat">
+            <span className="stat-value">{searchTotal}</span>
+            <span className="stat-label">Buscas realizadas</span>
+          </div>
+          <div className="stat">
+            <span className="stat-value">{orderTotal}</span>
+            <span className="stat-label">Pedidos gerados</span>
+          </div>
+          <div className="stat">
+            <span className="stat-value">{leadTotal}</span>
+            <span className="stat-label">Leads salvos</span>
+          </div>
+          <div className="stat">
+            <span className="stat-value">{latestResults}</span>
+            <span className="stat-label">Resultados na última busca</span>
+          </div>
         </div>
-        <div className="surface-premium card metric metric-card metric-card-premium">
-          <span className="kicker">Buscas realizadas</span>
-          <strong>{searchTotal}</strong>
-          <span className="muted">Pesquisas registradas para reuso de filtros, comparação e recompra.</span>
-        </div>
-        <div className="surface-premium card metric metric-card metric-card-premium">
-          <span className="kicker">Pedidos gerados</span>
-          <strong>{orderTotal}</strong>
-          <span className="muted">Listas criadas a partir das pesquisas feitas na plataforma.</span>
-        </div>
-      </div>
+        <p className="footnote">
+          Modelo de compra: uma lista por vez. Pesquise, veja a prévia, pague e reabra a lista quando quiser pelo histórico.
+        </p>
+      </section>
 
-      <DashboardImpactVisuals
-        searchCount={searchTotal}
-        leadCount={leadTotal}
-        latestResults={latestResults}
-        latestCity={latestCity}
-      />
+      <section className="grid-2" aria-label="Atalhos">
+        <div className="tile stack-lg">
+          <div className="section-header">
+            <span className="eyebrow">Última busca</span>
+            {latestSearch.data ? (
+              <>
+                <h2 className="title-2">
+                  {latestSearch.data.cnae_code} · {latestSearch.data.city_name}/{latestSearch.data.state_code}
+                </h2>
+                <p className="section-copy">
+                  {latestResults} resultados encontrados em {formatDateTime(latestSearch.data.created_at)}.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="title-2">Nenhuma busca ainda</h2>
+                <p className="section-copy">Você ainda não executou nenhuma busca no dashboard.</p>
+              </>
+            )}
+          </div>
+          <div className="cluster">
+            {latestSearch.data ? (
+              <>
+                <Link href={`/dashboard/search/${latestSearch.data.id}`} className="button-secondary">
+                  Abrir resultado
+                </Link>
+                <Link href={`/dashboard/search?reuse=${latestSearch.data.id}`} className="button-ghost">
+                  Repetir busca
+                </Link>
+              </>
+            ) : (
+              <Link href="/dashboard/search" className="button-secondary">
+                Fazer primeira busca
+              </Link>
+            )}
+          </div>
+        </div>
 
-      <div className="panel-grid two">
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Próxima ação</span>
-          <h2 className="section-title">Rode uma nova busca ou reaproveite o que já funcionou.</h2>
-          <p className="section-copy">
-            O dashboard serve para produtividade comercial: repetir recortes, comparar buscas, salvar empresas e continuar a operação sem refazer tudo do zero.
-          </p>
-          <div className="inline-actions">
+        <div className="tile stack-lg">
+          <div className="section-header">
+            <span className="eyebrow">Próxima ação</span>
+            <h2 className="title-2">Rode uma nova busca ou reaproveite o que já funcionou.</h2>
+            <p className="section-copy">
+              Repita recortes, compare buscas, salve empresas e continue a operação sem refazer tudo do zero.
+            </p>
+          </div>
+          <div className="cluster">
             <Link href="/dashboard/search" className="button" data-analytics-event="search_started" data-analytics-label="Dashboard nova busca">
               Nova busca
             </Link>
@@ -85,50 +122,7 @@ export default async function DashboardPage() {
             </Link>
           </div>
         </div>
-
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Última busca</span>
-          {latestSearch.data ? (
-            <>
-              <h2 className="section-title" style={{ marginBottom: 0 }}>
-                {latestSearch.data.cnae_code} · {latestSearch.data.city_name}/{latestSearch.data.state_code}
-              </h2>
-              <p className="section-copy">
-                {latestResults} resultados encontrados em {formatDateTime(latestSearch.data.created_at)}.
-              </p>
-              <div className="stat-grid stat-grid-premium">
-                <div className="stat-box stat-box-premium">
-                  <strong>{latestResults}</strong>
-                  <span className="muted">Empresas retornadas</span>
-                </div>
-                <div className="stat-box stat-box-premium">
-                  <strong>{latestSearch.data.city_name}</strong>
-                  <span className="muted">Município da busca</span>
-                </div>
-                <div className="stat-box stat-box-premium">
-                  <strong>{latestSearch.data.cnae_code}</strong>
-                  <span className="muted">CNAE principal</span>
-                </div>
-              </div>
-              <div className="inline-actions">
-                <Link href={`/dashboard/search/${latestSearch.data.id}`} className="button-secondary">
-                  Abrir resultado
-                </Link>
-                <Link href={`/dashboard/search?reuse=${latestSearch.data.id}`} className="button-ghost">
-                  Repetir busca
-                </Link>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="section-copy">Você ainda não executou nenhuma busca no dashboard.</p>
-              <Link href="/dashboard/search" className="button-ghost">
-                Fazer primeira busca
-              </Link>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+      </section>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 import { buildPageMetadata } from "@/lib/seo";
 import { publicContactEmail } from "@/lib/site-content";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata = buildPageMetadata({
   title: "Contato",
@@ -10,27 +11,23 @@ export const metadata = buildPageMetadata({
 export default function ContactPage() {
   return (
     <main className="page">
-      <section className="container stack">
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Contato</span>
-          <h1 className="display-title" style={{ fontSize: "clamp(2.2rem, 4vw, 4rem)" }}>
-            Canais oficiais de atendimento da plataforma.
-          </h1>
-          <p className="lead-copy">
-            Use o canal abaixo para falar sobre pedidos, listas, dados, privacidade e questões operacionais da plataforma.
-          </p>
-        </div>
+      <div className="container container-narrow">
+        <PageHeader
+          eyebrow="Contato"
+          title="Canais oficiais de atendimento da plataforma."
+          lead="Use o canal abaixo para falar sobre pedidos, listas, dados, privacidade e questões operacionais da plataforma."
+        />
 
-        <div className="surface-premium card-lg stack contact-card">
+        <section className="section section-spaced tile stack-sm" aria-label="E-mail de contato">
           <span className="kicker">E-mail principal</span>
-          <a href={`mailto:${publicContactEmail}`} className="contact-email-link">
+          <a href={`mailto:${publicContactEmail}`} className="contact-email">
             {publicContactEmail}
           </a>
           <p className="section-copy">
             Ao entrar em contato, informe o e-mail usado na compra ou no dashboard para agilizar o atendimento.
           </p>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

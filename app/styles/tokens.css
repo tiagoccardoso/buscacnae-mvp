@@ -1,0 +1,293 @@
+/* ============================================================================
+   BuscaCNAE — Design Tokens
+   ----------------------------------------------------------------------------
+   Fonte única de verdade para cor, tipografia, espaçamento, raios, elevação,
+   materiais, movimento e camadas. Baseado na skill Apple Design (tokens.css),
+   adaptado à identidade do BuscaCNAE:
+
+   - Acento próprio ("Azul BuscaCNAE"), mais profundo que o azul de sistema,
+     para transmitir precisão e confiança em um produto de dados B2B.
+   - Hierarquia de texto por papel (label / secondary / tertiary), nunca por
+     cinzas arbitrários.
+   - Modo claro por padrão, modo escuro automático via prefers-color-scheme e
+     forçável com [data-theme="dark" | "light"].
+
+   Regra: componentes referenciam SOMENTE tokens semânticos (var(--label),
+   var(--accent), var(--space-5)...). Nada de hex solto em componentes.
+
+   Breakpoints (media queries não aceitam custom properties, então ficam
+   documentados aqui e são usados de forma consistente em todos os arquivos):
+     --bp-sm: 640px   celular grande / phablet
+     --bp-md: 820px   tablet retrato
+     --bp-lg: 1080px  tablet paisagem / notebook pequeno
+     --bp-xl: 1280px  desktop
+   ============================================================================ */
+
+:root {
+  /* ---- Tipografia: pilhas de fonte -------------------------------------
+     -apple-system/BlinkMacSystemFont entregam SF Pro em dispositivos Apple;
+     no Windows, Segoe UI Variable é a melhor equivalente de sistema. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Roboto, system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Segoe UI Variable Display", "Segoe UI", "Helvetica Neue", Roboto, system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  /* ---- Escala tipográfica (rem, respeita o tamanho de fonte do usuário) --
+     Cada estilo é um conjunto: tamanho + peso + tracking + leading.
+     Tracking aperta conforme o tamanho cresce; leading afrouxa conforme
+     o tamanho diminui. */
+  --text-hero:        clamp(2.375rem, 3vw + 1.3rem, 4rem);      /* 38 → 64 */
+  --text-large-title: clamp(2rem, 1.8vw + 1.3rem, 3rem);        /* 32 → 48 */
+  --text-title-1:     clamp(1.625rem, 1vw + 1.2rem, 2.125rem);  /* 26 → 34 */
+  --text-title-2:     1.375rem;  /* 22 */
+  --text-title-3:     1.1875rem; /* 19 */
+  --text-headline:    1.0625rem; /* 17, semibold */
+  --text-lead:        clamp(1.0625rem, 0.4vw + 0.95rem, 1.3125rem); /* 17 → 21 */
+  --text-body:        1rem;      /* 16 */
+  --text-callout:     0.9375rem; /* 15 */
+  --text-subhead:     0.875rem;  /* 14 */
+  --text-footnote:    0.8125rem; /* 13 */
+  --text-caption:     0.75rem;   /* 12 */
+
+  --tracking-display: -0.028em;  /* hero */
+  --tracking-tight:   -0.022em;  /* títulos grandes */
+  --tracking-snug:    -0.014em;  /* títulos */
+  --tracking-normal:   0em;      /* corpo */
+  --tracking-wide:     0.01em;   /* textos pequenos */
+  --tracking-caps:     0.06em;   /* eyebrow em caixa alta */
+
+  --leading-tight:   1.06;
+  --leading-snug:    1.2;
+  --leading-normal:  1.45;
+  --leading-relaxed: 1.6;
+
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* ---- Espaçamento: grade 4/8pt ---------------------------------------- */
+  --space-1:  0.125rem; /* 2   */
+  --space-2:  0.25rem;  /* 4   */
+  --space-3:  0.5rem;   /* 8   */
+  --space-4:  0.75rem;  /* 12  */
+  --space-5:  1rem;     /* 16  */
+  --space-6:  1.25rem;  /* 20  */
+  --space-7:  1.5rem;   /* 24  */
+  --space-8:  2rem;     /* 32  */
+  --space-9:  2.5rem;   /* 40  */
+  --space-10: 3rem;     /* 48  */
+  --space-12: 4rem;     /* 64  */
+  --space-14: 5rem;     /* 80  */
+  --space-16: 6rem;     /* 96  */
+  --space-20: 8rem;     /* 128 */
+
+  /* Ritmo de página */
+  --gutter: clamp(1rem, 3vw, 2rem);
+  --section-gap: clamp(4rem, 7vw, 7rem);
+  --content-width: 1120px;
+  --content-wide: 1240px;
+  --content-narrow: 720px;
+  --measure: 62ch;
+  --nav-height: 3.5rem;       /* 56 */
+  --control-height: 2.75rem;  /* 44 — alvo de toque mínimo */
+  --control-height-sm: 2.25rem;
+  --control-height-lg: 3.25rem;
+
+  /* ---- Raios (curvatura contínua aproximada) --------------------------- */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 28px;
+  --radius-capsule: 999px;
+
+  /* ---- Bordas ---------------------------------------------------------- */
+  --border-hairline: 0.5px;
+  --border-thin: 1px;
+  --border-focus: 2px;
+
+  /* ---- Movimento -------------------------------------------------------
+     Nunca ease-in em UI. Molas (JS) para o que o usuário arrasta; CSS com
+     curvas de saída para entradas, hover e troca de estado. */
+  --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-ios:    cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-snappy: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --duration-instant: 100ms;  /* feedback de toque */
+  --duration-fast:    180ms;  /* hover, popovers pequenos */
+  --duration-base:    260ms;  /* dropdowns, troca de estado */
+  --duration-slow:    420ms;  /* entrada de página, modais */
+
+  /* ---- Camadas (z-index) ------------------------------------------------ */
+  --z-base: 0;
+  --z-raised: 1;
+  --z-sticky: 100;
+  --z-nav: 200;
+  --z-dropdown: 300;
+  --z-overlay: 400;
+  --z-modal: 500;
+  --z-toast: 600;
+
+  /* ---- Materiais (glass) ----------------------------------------------- */
+  --material-blur: 20px;
+  --material-blur-thin: 12px;
+  --material-blur-thick: 32px;
+  --material-saturate: 180%;
+
+  /* =====================================================================
+     CORES — MODO CLARO (padrão)
+     ===================================================================== */
+  --accent:          #0A5CE6;  /* Azul BuscaCNAE — 5.7:1 sobre branco */
+  --accent-hover:    #0850C9;
+  --accent-pressed:  #0746B0;
+  --accent-contrast: #FFFFFF;
+  --accent-soft:     rgba(10, 92, 230, 0.10);
+  --accent-soft-hover: rgba(10, 92, 230, 0.16);
+  --focus-ring:      rgba(10, 92, 230, 0.32);
+
+  --success:      #157A3A;
+  --success-soft: rgba(52, 199, 89, 0.14);
+  --warning:      #9A5B00;
+  --warning-soft: rgba(255, 159, 10, 0.16);
+  --danger:       #C4210D;
+  --danger-soft:  rgba(255, 59, 48, 0.11);
+  --danger-soft-hover: rgba(255, 59, 48, 0.18);
+
+  /* Fundos: base → agrupado → elevado */
+  --bg:            #FFFFFF;
+  --bg-secondary:  #F5F5F7;  /* tiles e seções agrupadas */
+  --bg-tertiary:   #FBFBFD;
+  --bg-elevated:   #FFFFFF;  /* cards e popovers sobre qualquer fundo */
+  --bg-inset:      #F5F5F7;  /* campos, trilhas */
+
+  /* Texto — hierarquia por papel */
+  --label:            #1D1D1F;
+  --label-secondary:  #6E6E73;  /* 5.07:1 */
+  --label-tertiary:   #86868B;  /* placeholders e metadados não essenciais */
+  --label-quaternary: #C7C7CC;
+
+  /* Separadores e preenchimentos */
+  --separator:        rgba(0, 0, 0, 0.10);
+  --separator-strong: rgba(0, 0, 0, 0.16);
+  --fill-1: rgba(120, 120, 128, 0.20);
+  --fill-2: rgba(120, 120, 128, 0.16);
+  --fill-3: rgba(120, 120, 128, 0.12);
+  --fill-4: rgba(120, 120, 128, 0.07);
+
+  /* Elevação: sombra de contato + sombra ambiente, sempre suaves */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.03);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.05);
+  --shadow-4: 0 24px 64px rgba(0, 0, 0, 0.14), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.08);
+
+  /* Material glass */
+  --material-thin-tint:    rgba(255, 255, 255, 0.62);
+  --material-regular-tint: rgba(255, 255, 255, 0.74);
+  --material-thick-tint:   rgba(255, 255, 255, 0.92);
+  --glass-specular: rgba(255, 255, 255, 0.60);
+  --glass-rim:      rgba(0, 0, 0, 0.06);
+
+  /* Polegar de switches (material físico, igual nos dois modos) */
+  --thumb: #FFFFFF;
+  --thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+
+  /* Superfície de destaque (tile escuro no modo claro) */
+  --inverse-bg:    #1D1D1F;
+  --inverse-label: #F5F5F7;
+  --inverse-label-secondary: #A1A1A6;
+  --inverse-accent: #4C9BFF;
+
+  color-scheme: light;
+}
+
+/* =====================================================================
+   CORES — MODO ESCURO (automático e forçado)
+   Base preta, superfícies elevadas sobem em luminosidade.
+   ===================================================================== */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --accent:          #4C9BFF;
+    --accent-hover:    #6AADFF;
+    --accent-pressed:  #3A86EB;
+    --accent-contrast: #000000;
+    --accent-soft:     rgba(76, 155, 255, 0.16);
+    --accent-soft-hover: rgba(76, 155, 255, 0.24);
+    --focus-ring:      rgba(76, 155, 255, 0.45);
+
+    --success:      #30D158;
+    --success-soft: rgba(48, 209, 88, 0.16);
+    --warning:      #FFB340;
+    --warning-soft: rgba(255, 159, 10, 0.18);
+    --danger:       #FF6961;
+    --danger-soft:  rgba(255, 69, 58, 0.16);
+    --danger-soft-hover: rgba(255, 69, 58, 0.24);
+
+    --bg:            #000000;
+    --bg-secondary:  #161618;
+    --bg-tertiary:   #0B0B0C;
+    --bg-elevated:   #1C1C1E;
+    --bg-inset:      #1C1C1E;
+
+    --label:            #F5F5F7;
+    --label-secondary:  #A1A1A6;
+    --label-tertiary:   #8A8A8F;
+    --label-quaternary: #48484A;
+
+    --separator:        rgba(255, 255, 255, 0.12);
+    --separator-strong: rgba(255, 255, 255, 0.20);
+    --fill-1: rgba(120, 120, 128, 0.36);
+    --fill-2: rgba(120, 120, 128, 0.32);
+    --fill-3: rgba(120, 120, 128, 0.24);
+    --fill-4: rgba(120, 120, 128, 0.16);
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40);
+    --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.45);
+    --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.55);
+    --shadow-4: 0 24px 64px rgba(0, 0, 0, 0.65);
+    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.50);
+
+    --material-thin-tint:    rgba(28, 28, 30, 0.62);
+    --material-regular-tint: rgba(22, 22, 24, 0.74);
+    --material-thick-tint:   rgba(28, 28, 30, 0.92);
+    --glass-specular: rgba(255, 255, 255, 0.10);
+    --glass-rim:      rgba(255, 255, 255, 0.08);
+
+    --inverse-bg:    #F5F5F7;
+    --inverse-label: #1D1D1F;
+    --inverse-label-secondary: #6E6E73;
+    --inverse-accent: #0A5CE6;
+
+    color-scheme: dark;
+  }
+}
+
+[data-theme="dark"] {
+  --accent: #4C9BFF; --accent-hover: #6AADFF; --accent-pressed: #3A86EB; --accent-contrast: #000000;
+  --accent-soft: rgba(76, 155, 255, 0.16); --accent-soft-hover: rgba(76, 155, 255, 0.24);
+  --focus-ring: rgba(76, 155, 255, 0.45);
+  --success: #30D158; --success-soft: rgba(48, 209, 88, 0.16);
+  --warning: #FFB340; --warning-soft: rgba(255, 159, 10, 0.18);
+  --danger: #FF6961; --danger-soft: rgba(255, 69, 58, 0.16); --danger-soft-hover: rgba(255, 69, 58, 0.24);
+  --bg: #000000; --bg-secondary: #161618; --bg-tertiary: #0B0B0C; --bg-elevated: #1C1C1E; --bg-inset: #1C1C1E;
+  --label: #F5F5F7; --label-secondary: #A1A1A6; --label-tertiary: #8A8A8F; --label-quaternary: #48484A;
+  --separator: rgba(255, 255, 255, 0.12); --separator-strong: rgba(255, 255, 255, 0.20);
+  --fill-1: rgba(120, 120, 128, 0.36); --fill-2: rgba(120, 120, 128, 0.32);
+  --fill-3: rgba(120, 120, 128, 0.24); --fill-4: rgba(120, 120, 128, 0.16);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.40); --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.55); --shadow-4: 0 24px 64px rgba(0, 0, 0, 0.65);
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.50);
+  --material-thin-tint: rgba(28, 28, 30, 0.62); --material-regular-tint: rgba(22, 22, 24, 0.74);
+  --material-thick-tint: rgba(28, 28, 30, 0.92);
+  --glass-specular: rgba(255, 255, 255, 0.10); --glass-rim: rgba(255, 255, 255, 0.08);
+  --inverse-bg: #F5F5F7; --inverse-label: #1D1D1F; --inverse-label-secondary: #6E6E73; --inverse-accent: #0A5CE6;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}

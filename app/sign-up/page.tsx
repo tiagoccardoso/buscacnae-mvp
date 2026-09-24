@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { signUpWithPasswordAction } from "@/app/sign-in/server-actions";
 import { buildPageMetadata } from "@/lib/seo";
+import { AuthCard } from "@/components/ui/auth-card";
+import { SubmitButton } from "@/components/ui/submit-button";
 
 export const metadata = buildPageMetadata({
   title: "Criar conta",
@@ -23,71 +25,43 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
 
   return (
     <main className="page">
-      <section className="container auth-grid auth-grid-premium">
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Nova conta</span>
-          <h1 className="display-title" style={{ fontSize: "clamp(2.4rem, 4vw, 4rem)" }}>
-            Cadastre-se para acessar o dashboard do BuscaCNAE.
-          </h1>
-          <p className="lead-copy">Informe seus dados para criar uma conta com e-mail e senha. Depois você poderá consultar histórico, leads salvos e listas liberadas.</p>
+      <div className="container">
+        <AuthCard
+          title="Criar conta"
+          subtitle="Com uma conta você consulta histórico, leads salvos e listas liberadas no dashboard."
+          footer={
+            <>
+              <Link href="/sign-in">Já tenho conta</Link>
+              <Link href="/">Voltar para a pesquisa</Link>
+            </>
+          }
+        >
+          {error ? <div className="notice danger" role="alert">{error}</div> : null}
 
-          <div className="hero-signal-grid compact-two">
-            <div className="signal-card">
-              <span className="kicker">Perfil</span>
-              <strong>Dados na tabela profiles</strong>
-              <span className="muted">O cadastro cria o usuário na tabela users e sincroniza os dados operacionais em profiles.</span>
-            </div>
-            <div className="signal-card">
-              <span className="kicker">Segurança</span>
-              <strong>Senha protegida por hash seguro</strong>
-              <span className="muted">A senha é salva apenas como hash seguro na tabela users, nunca em texto puro.</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="surface-premium card-lg stack auth-form-shell">
-          <span className="eyebrow">Cadastro</span>
-          <h2 className="section-title" style={{ fontSize: "2rem", marginBottom: 0 }}>
-            Criar novo cadastro
-          </h2>
-          <p className="section-copy">Preencha nome, e-mail, senha e confirmação de senha.</p>
-
-          {error ? <div className="notice danger">{error}</div> : null}
-
-          <form action={signUpWithPasswordAction} className="stack" data-analytics-event="signup_started" data-analytics-label="Sign up form">
+          <form action={signUpWithPasswordAction} className="auth-form" data-analytics-event="signup_started" data-analytics-label="Sign up form">
             <input type="hidden" name="next" value={next} />
             <input type="hidden" name="orderId" value={orderId} />
             <div className="field">
               <label htmlFor="name">Nome</label>
-              <input id="name" name="name" className="input input-premium" placeholder="Seu nome" defaultValue={name} autoComplete="name" required />
+              <input id="name" name="name" className="input" placeholder="Seu nome" defaultValue={name} autoComplete="name" required />
             </div>
             <div className="field">
               <label htmlFor="email">E-mail</label>
-              <input id="email" name="email" type="email" className="input input-premium" placeholder="voce@empresa.com" defaultValue={email} autoComplete="email" required />
+              <input id="email" name="email" type="email" className="input" placeholder="voce@empresa.com" defaultValue={email} autoComplete="email" required />
             </div>
             <div className="field">
               <label htmlFor="password">Senha</label>
-              <input id="password" name="password" type="password" className="input input-premium" placeholder="Mínimo de 8 caracteres" autoComplete="new-password" minLength={8} required />
+              <input id="password" name="password" type="password" className="input" placeholder="Mínimo de 8 caracteres" autoComplete="new-password" minLength={8} aria-describedby="password-help" required />
+              <span id="password-help" className="field-help">Use pelo menos 8 caracteres. A senha é salva apenas como hash seguro.</span>
             </div>
             <div className="field">
               <label htmlFor="confirmPassword">Confirmar senha</label>
-              <input id="confirmPassword" name="confirmPassword" type="password" className="input input-premium" placeholder="Repita a senha" autoComplete="new-password" minLength={8} required />
+              <input id="confirmPassword" name="confirmPassword" type="password" className="input" placeholder="Repita a senha" autoComplete="new-password" minLength={8} required />
             </div>
-            <button className="button full button-lg" type="submit">
-              Criar conta
-            </button>
+            <SubmitButton pendingLabel="Criando conta...">Criar conta</SubmitButton>
           </form>
-
-          <div className="inline-actions" style={{ justifyContent: "space-between" }}>
-            <Link href="/sign-in" className="button-ghost">
-              Já tenho conta
-            </Link>
-            <Link href="/" className="button-ghost">
-              Voltar para a pesquisa
-            </Link>
-          </div>
-        </div>
-      </section>
+        </AuthCard>
+      </div>
     </main>
   );
 }

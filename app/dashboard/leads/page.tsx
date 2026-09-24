@@ -171,150 +171,168 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
     .sort((a, b) => (Number(Boolean(b.email)) + Number(Boolean(b.phone)) + Number(Boolean(b.website))) - (Number(Boolean(a.email)) + Number(Boolean(a.phone)) + Number(Boolean(a.website))))
     .slice(0, 3);
 
-  return (
-    <div className="stack">
-      {statusMessage ? <div className="notice success">{statusMessage}</div> : null}
-      {errorMessage ? <div className="notice danger">{errorMessage}</div> : null}
+  const rankingGroups = [
+    { type: "promising" as const, items: topPromising },
+    { type: "capital" as const, items: topCapital },
+    { type: "contact" as const, items: topContact }
+  ];
 
-      <div className="surface-premium card-lg stack">
-        <div className="lead-lists-toolbar">
-          <div className="stack" style={{ gap: 8 }}>
+  return (
+    <>
+      {statusMessage || errorMessage ? (
+        <div className="stack-sm">
+          {statusMessage ? <div className="notice success" role="status">{statusMessage}</div> : null}
+          {errorMessage ? <div className="notice danger" role="alert">{errorMessage}</div> : null}
+        </div>
+      ) : null}
+
+      <section className="section" aria-labelledby="leads-title">
+        <div className="section-header-row">
+          <div className="section-header">
             <span className="eyebrow">Leads salvos</span>
-            <h2 className="section-title">Carteira comercial e listas internas</h2>
+            <h2 id="leads-title" className="title-1">Carteira comercial e listas internas</h2>
             <p className="section-copy">
-              Organize leads em listas como “Indústrias SP” ou “Contabilidade PR”, mantenha atalhos de prospecção e separe carteiras por campanha.
+              Organize leads em listas como “Indústrias SP” ou “Contabilidade PR” e separe carteiras por campanha.
             </p>
           </div>
 
-          <form action={createSavedLeadListAction} className="lead-list-create-form" data-analytics-event="saved_list_created">
-            <input name="name" className="input input-premium" placeholder="Ex.: Indústrias SP" />
-            <button type="submit" className="button">Criar lista</button>
+          <form action={createSavedLeadListAction} className="inline-form" data-analytics-event="saved_list_created">
+            <label htmlFor="new-lead-list" className="sr-only">Nome da nova lista</label>
+            <input id="new-lead-list" name="name" className="input" placeholder="Nova lista, ex.: Indústrias SP" />
+            <button type="submit" className="button-secondary">Criar lista</button>
           </form>
         </div>
 
-        <div className="lead-list-pills">
-          <Link href="/dashboard/leads" className={`pill${selectedListId ? "" : " pill-active"}`}>
+        <nav className="list-filter" aria-label="Filtrar por lista salva">
+          <Link href="/dashboard/leads" className={`pill${selectedListId ? "" : " pill-active"}`} aria-current={selectedListId ? undefined : "page"}>
             Todas ({leads.length})
           </Link>
           {savedLists.map((list) => {
             const count = leads.filter((item) => item.listId === list.id).length;
+            const active = selectedListId === list.id;
             return (
-              <div key={list.id} className="lead-list-pill-item">
-                <Link href={`/dashboard/leads?list=${encodeURIComponent(list.id)}`} className={`pill${selectedListId === list.id ? " pill-active" : ""}`}>
+              <div key={list.id} className="list-filter-item">
+                <Link
+                  href={`/dashboard/leads?list=${encodeURIComponent(list.id)}`}
+                  className={`pill${active ? " pill-active" : ""}`}
+                  aria-current={active ? "page" : undefined}
+                >
                   {list.name} ({count})
                 </Link>
                 <form action={deleteSavedLeadListAction}>
                   <input type="hidden" name="listId" value={list.id} />
-                  <button type="submit" className="button-ghost lead-list-delete-button">Excluir</button>
+                  <button type="submit" className="button-icon list-filter-remove" aria-label={`Excluir lista ${list.name}`} title="Excluir lista">
+                    <span aria-hidden="true">×</span>
+                  </button>
                 </form>
               </div>
             );
           })}
-        </div>
-      </div>
+        </nav>
+      </section>
 
-      <div className="ranking-grid">
-        {[
-          { type: "promising" as const, items: topPromising },
-          { type: "capital" as const, items: topCapital },
-          { type: "contact" as const, items: topContact }
-        ].map((group) => (
-          <div key={group.type} className="surface-premium card-lg stack">
-            <span className="eyebrow">Ranking</span>
-            <h3 className="section-title" style={{ fontSize: "1.15rem" }}>{rankingLabel(group.type)}</h3>
-            <p className="section-copy">{rankingDescription(group.type)}</p>
-            <div className="stack" style={{ gap: 10 }}>
-              {group.items.length > 0 ? (
-                group.items.map((item, index) => (
-                  <div key={`${group.type}-${item.establishmentId}`} className="signal-card">
-                    <span className="kicker">#{index + 1}</span>
-                    <strong>{item.companyName}</strong>
-                    <span className="muted">{item.cityName}/{item.stateCode}</span>
-                    {group.type === "promising" ? <span className="pill">Score {item.score}</span> : null}
-                    {group.type === "capital" ? <span className="pill">{formatMoney(item.capitalSocial)}</span> : null}
-                    {group.type === "contact" ? <span className="pill">{[item.email, item.phone, item.website].filter(Boolean).length} canais</span> : null}
-                  </div>
-                ))
-              ) : (
-                <span className="muted">Sem leads suficientes para este ranking.</span>
-              )}
+      <section className="rank-grid" aria-label="Rankings da carteira">
+        {rankingGroups.map((group) => (
+          <div key={group.type} className="stack-sm">
+            <div className="section-header">
+              <h3 className="title-3">{rankingLabel(group.type)}</h3>
+              <p className="footnote">{rankingDescription(group.type)}</p>
             </div>
+            {group.items.length > 0 ? (
+              <ol className="rank-list">
+                {group.items.map((item) => (
+                  <li key={`${group.type}-${item.establishmentId}`}>
+                    <span className="rank-name">
+                      <strong title={item.companyName}>{item.companyName}</strong>
+                      <span>{item.cityName}/{item.stateCode}</span>
+                    </span>
+                    <span className="rank-value">
+                      {group.type === "promising" ? `Score ${item.score}` : null}
+                      {group.type === "capital" ? formatMoney(item.capitalSocial) : null}
+                      {group.type === "contact" ? `${[item.email, item.phone, item.website].filter(Boolean).length} canais` : null}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="footnote">Sem leads suficientes para este ranking.</p>
+            )}
           </div>
         ))}
-      </div>
+      </section>
 
-      <div className="surface-premium card-lg stack">
-        <div className="stack" style={{ gap: 8 }}>
+      <section className="section" aria-labelledby="leads-table-title">
+        <div className="section-header">
           <span className="eyebrow">Carteira filtrada</span>
-          <h2 className="section-title">Leads prontos para organização e próxima ação</h2>
+          <h2 id="leads-table-title" className="title-2">Leads prontos para organização e próxima ação</h2>
           <p className="section-copy">
             Filtre por lista salva, reclassifique leads e mantenha uma carteira operacional de prospecção dentro do dashboard.
           </p>
         </div>
 
         <div className="table-wrap">
-          <table className="table table-premium table-glow">
+          <table className="table table-responsive">
+            <caption className="sr-only">Leads salvos na carteira</caption>
             <thead>
               <tr>
-                <th>Empresa</th>
-                <th>CNPJ</th>
-                <th>Localidade</th>
-                <th>Ranking</th>
-                <th>Lista salva</th>
-                <th>Contato</th>
-                <th>Capital</th>
-                <th>Quando salvou</th>
-                <th></th>
+                <th scope="col">Empresa</th>
+                <th scope="col">CNPJ</th>
+                <th scope="col">Localidade</th>
+                <th scope="col">Ranking</th>
+                <th scope="col">Lista salva</th>
+                <th scope="col">Contato</th>
+                <th scope="col" className="cell-num">Capital</th>
+                <th scope="col">Salvo em</th>
+                <th scope="col" className="cell-actions">
+                  <span className="sr-only">Ações</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {filteredLeads.map((lead) => (
                 <tr key={lead.establishmentId}>
-                  <td>
-                    <div className="stack" style={{ gap: 6 }}>
+                  <td data-label="Empresa">
+                    <div className="cell-stack">
                       <strong>{lead.companyName}</strong>
                       <span className="muted">{lead.tradeName || "Nome fantasia não informado"}</span>
                     </div>
                   </td>
-                  <td>{formatCnpj(lead.cnpj)}</td>
-                  <td>{lead.cityName}/{lead.stateCode}</td>
-                  <td>
-                    <div className="stack" style={{ gap: 6 }}>
-                      <span className="pill">Score {lead.score}</span>
+                  <td data-label="CNPJ" className="cell-nowrap">{formatCnpj(lead.cnpj)}</td>
+                  <td data-label="Localidade" className="cell-nowrap">{lead.cityName}/{lead.stateCode}</td>
+                  <td data-label="Ranking">
+                    <div className="cell-stack">
+                      <span className="cell-strong">Score {lead.score}</span>
                       <span className="muted">{lead.companySize || "Porte não informado"}</span>
                     </div>
                   </td>
-                  <td>
-                    <div className="stack" style={{ gap: 8 }}>
-                      <span className="muted">{lead.listName || "Sem lista"}</span>
-                      <form action={assignSavedLeadListAction} className="lead-list-assign-form" data-analytics-event="saved_lead_list_updated">
-                        <input type="hidden" name="establishmentId" value={lead.establishmentId} />
-                        <select name="listId" defaultValue={lead.listId} className="input input-premium" aria-label="Escolher lista salva">
-                          <option value="">Sem lista</option>
-                          {savedLists.map((list) => (
-                            <option key={list.id} value={list.id}>{list.name}</option>
-                          ))}
-                        </select>
-                        <input name="newListName" className="input input-premium" placeholder="Nova lista (opcional)" />
-                        <button type="submit" className="button-secondary">Salvar</button>
-                      </form>
+                  <td data-label="Lista salva">
+                    <form action={assignSavedLeadListAction} className="cell-form" data-analytics-event="saved_lead_list_updated">
+                      <input type="hidden" name="establishmentId" value={lead.establishmentId} />
+                      <select name="listId" defaultValue={lead.listId} className="input" aria-label={`Lista salva de ${lead.companyName}`}>
+                        <option value="">Sem lista</option>
+                        {savedLists.map((list) => (
+                          <option key={list.id} value={list.id}>{list.name}</option>
+                        ))}
+                      </select>
+                      <input name="newListName" className="input" placeholder="Nova lista (opcional)" aria-label={`Criar nova lista para ${lead.companyName}`} />
+                      <button type="submit" className="button-secondary button-sm">Salvar</button>
+                    </form>
+                  </td>
+                  <td data-label="Contato">
+                    <div className="cell-stack">
+                      <span className={lead.email ? undefined : "subtle"}>{lead.email || "Sem e-mail"}</span>
+                      <span className={lead.phone ? undefined : "subtle"}>{lead.phone || "Sem telefone"}</span>
+                      <span className={lead.website ? undefined : "subtle"}>{lead.website || "Sem site"}</span>
                     </div>
                   </td>
-                  <td>
-                    <div className="stack" style={{ gap: 4 }}>
-                      <span className="muted">{lead.email || "Sem e-mail"}</span>
-                      <span className="muted">{lead.phone || "Sem telefone"}</span>
-                      <span className="muted">{lead.website || "Sem site"}</span>
-                    </div>
-                  </td>
-                  <td>{lead.capitalSocial > 0 ? formatMoney(lead.capitalSocial) : "-"}</td>
-                  <td>{formatDateTime(lead.savedAt)}</td>
-                  <td>
-                    <div className="inline-actions">
-                      <Link href={`/dashboard/companies/${encodeURIComponent(lead.cnpj)}`} className="button-ghost">
+                  <td data-label="Capital" className="cell-num">{lead.capitalSocial > 0 ? formatMoney(lead.capitalSocial) : "—"}</td>
+                  <td data-label="Salvo em" className="cell-nowrap">{formatDateTime(lead.savedAt)}</td>
+                  <td data-label="" className="cell-actions">
+                    <div className="table-actions">
+                      <Link href={`/dashboard/companies/${encodeURIComponent(lead.cnpj)}`} className="button-ghost button-sm">
                         Ver ficha
                       </Link>
-                      <LeadToggleForm establishmentId={lead.establishmentId} isSaved />
+                      <LeadToggleForm establishmentId={lead.establishmentId} isSaved size="sm" />
                     </div>
                   </td>
                 </tr>
@@ -322,7 +340,7 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
             </tbody>
           </table>
         </div>
-      </div>
-    </div>
+      </section>
+    </>
   );
 }

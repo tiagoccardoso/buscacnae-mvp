@@ -120,8 +120,8 @@ export function FormattedDownloadButtons({ searchId }: FormattedDownloadButtonsP
   const isProcessing = activeKind !== null;
 
   return (
-    <div className="stack" style={{ gap: 10 }}>
-      <div className="inline-actions">
+    <div className="stack-sm">
+      <div className="cluster">
         <button
           type="button"
           className="button"
@@ -133,7 +133,7 @@ export function FormattedDownloadButtons({ searchId }: FormattedDownloadButtonsP
         </button>
         <button
           type="button"
-          className="button-ghost"
+          className="button-secondary"
           disabled={isProcessing}
           onClick={() => handleDownload("pdf")}
           aria-busy={activeKind === "pdf"}
@@ -143,7 +143,10 @@ export function FormattedDownloadButtons({ searchId }: FormattedDownloadButtonsP
       </div>
 
       {status.type !== "idle" ? (
-        <div className={`notice ${status.type === "error" ? "danger" : status.type === "success" ? "success" : "warning"}`}>
+        <div
+          className={`notice ${status.type === "error" ? "danger" : status.type === "success" ? "success" : "info"}`}
+          role={status.type === "error" ? "alert" : "status"}
+        >
           {status.text}
         </div>
       ) : null}

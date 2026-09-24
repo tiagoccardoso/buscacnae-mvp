@@ -1,6 +1,6 @@
 import { SearchFilterBuilder } from "@/components/search-filter-builder";
-import { SearchImmersiveStage } from "@/components/search-immersive-stage";
-import { DashboardSearchSubmitButton } from "@/components/dashboard-search-submit-button";
+import { SearchSubmitButton } from "@/components/search-submit-button";
+import { SectionHeader } from "@/components/ui/section-header";
 import { getCurrentUser } from "@/lib/auth/server";
 import { createDbClient } from "@/lib/db-client";
 import { getSearchFilterDefaults } from "@/lib/search-filter-defaults";
@@ -47,46 +47,35 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   }
 
   return (
-    <div className="immersive-search-layout surface-premium card-lg">
-      <div className="immersive-search-form-side">
-        <div className="stack immersive-search-copy" style={{ gap: 8 }}>
-          <span className="eyebrow">Nova busca</span>
-          <h2 className="section-title immersive-search-title">Monte uma nova lista ou repita um recorte já validado.</h2>
-          <p className="section-copy">
-            Use o assistente de CNAE, reaproveite filtros antigos e envie a busca para uma nova prévia sem sair do dashboard.
-          </p>
-        </div>
+    <section className="section" aria-labelledby="dashboard-search-title">
+      <SectionHeader
+        id="dashboard-search-title"
+        eyebrow="Nova busca"
+        title="Monte uma nova lista ou repita um recorte já validado."
+        copy="Reaproveite filtros antigos e envie a busca para uma nova prévia sem sair do dashboard. O resultado fica salvo no histórico."
+      />
 
+      <div className="search-panel search-panel-plain">
         {reuseMessage ? <div className="notice success">{reuseMessage}</div> : null}
-        {error ? <div className="notice danger">{error}</div> : null}
+        {error ? <div className="notice danger" role="alert">{error}</div> : null}
 
-        <form action={runSearchAction} className="stack immersive-search-form" data-analytics-event="search_started" data-analytics-label="Dashboard search form">
+        <form
+          action={runSearchAction}
+          className="search-form"
+          data-analytics-event="search_started"
+          data-analytics-label="Dashboard search form"
+          aria-label="Nova busca por CNAE e região"
+        >
           <SearchFilterBuilder {...reuseDefaults} />
 
-          <div className="home-form-actions home-form-actions-premium immersive-submit-row">
-            <DashboardSearchSubmitButton />
-            <span className="tiny">
+          <div className="search-submit">
+            <SearchSubmitButton idleLabel="Ver volume e preço da busca" pendingLabel="Buscando volume e preço..." />
+            <p className="footnote">
               O resultado fica salvo no dashboard e já mostra a rota de compra da lista para avançar sem sair do fluxo.
-            </span>
+            </p>
           </div>
         </form>
       </div>
-
-      <div className="immersive-search-visual-side">
-        <SearchImmersiveStage />
-        <div className="immersive-search-benefits">
-          <div className="signal-card">
-            <span className="kicker">Recompra</span>
-            <strong>Repita filtros que já deram certo</strong>
-            <span className="muted">Abra uma busca anterior, carregue o mesmo recorte e ajuste só o que mudou para a próxima rodada.</span>
-          </div>
-          <div className="signal-card">
-            <span className="kicker">Prévia operacional</span>
-            <strong>Volume, composição e preço antes do checkout</strong>
-            <span className="muted">A mesma lógica da página pública continua aqui, com mais conveniência para quem usa o dashboard no dia a dia.</span>
-          </div>
-        </div>
-      </div>
-    </div>
+    </section>
   );
 }

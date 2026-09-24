@@ -97,143 +97,177 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     { withEmail: 0, withPhone: 0, withAddress: 0 }
   );
 
+  const isUnlocked = currentOrder.status === "paid" || currentOrder.status === "free";
+
   return (
     <main className="page">
-      <section className="container stack" style={{ maxWidth: 980 }}>
-        <div className="surface card stack">
+      <div className="container">
+        <header className="page-header enter">
           <span className="eyebrow">Prévia de compra</span>
-          <h1 className="section-title" style={{ fontSize: "2.1rem", marginBottom: 0 }}>
-            {summary.headline}
-          </h1>
-          <p className="section-copy">
+          <h1 className="title-large">{summary.headline}</h1>
+          <p className="lead">
             Confirme o volume encontrado, a composição do lote e o valor total antes de liberar a lista completa.
           </p>
           {hitFetchLimit && fetchedResults !== null ? (
-            <p className="muted" style={{ marginTop: -6 }}>
+            <p className="footnote">
               {search?.total_results ?? 0} encontrados · {fetchedResults} carregados para esta operação.
             </p>
           ) : null}
+        </header>
 
-          {reason ? <div className="notice danger">{reason}</div> : null}
-          {checkoutState === "cancelled" ? (
-            <div className="notice warning">Checkout cancelado. Você pode revisar a prévia e tentar novamente.</div>
-          ) : null}
-          {identityState === "sent" ? (
-            <div className="notice success">Enviamos o acesso para o seu e-mail. Agora você já pode seguir para o checkout e acompanhar a lista depois.</div>
-          ) : null}
+        {reason || checkoutState === "cancelled" || identityState === "sent" ? (
+          <div className="stack-sm page-notices">
+            {reason ? <div className="notice danger" role="alert">{reason}</div> : null}
+            {checkoutState === "cancelled" ? (
+              <div className="notice warning">Checkout cancelado. Você pode revisar a prévia e tentar novamente.</div>
+            ) : null}
+            {identityState === "sent" ? (
+              <div className="notice success" role="status">
+                Enviamos o acesso para o seu e-mail. Agora você já pode seguir para o checkout e acompanhar a lista depois.
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
-          <div className="grid-2">
-            <div className="surface-soft card stack">
-              <span className="kicker">Volume encontrado</span>
-              <strong style={{ fontSize: "2rem" }}>{currentOrder.result_count}</strong>
-              <span className="muted">Quantidade pronta para liberação.</span>
-            </div>
-            <div className="surface-soft card stack">
+        <div className="order-layout section-spaced">
+          <div className="stack-xl">
+            {pricingSummary ? <LeadPricingBreakdown summary={pricingSummary} /> : null}
+
+            {previewItems.length > 0 ? (
+              <section className="stack-lg" aria-labelledby="checkout-sample-title">
+                <div className="section-header">
+                  <span className="eyebrow">Amostra da lista</span>
+                  <h2 id="checkout-sample-title" className="title-2">
+                    {previewItems.length} registros iniciais
+                  </h2>
+                  <p className="section-copy">
+                    A amostra usa a mesma consolidação aplicada à lista completa liberada após o pagamento. Os dados disponíveis podem variar de empresa para empresa.
+                  </p>
+                  <p className="footnote">
+                    Na amostra: {previewSummary.withEmail} com e-mail · {previewSummary.withPhone} com telefone · {previewSummary.withAddress} com endereço.
+                  </p>
+                </div>
+
+                <div className="result-list">
+                  {previewItems.map(({ position, canonical, contactSignals }) => {
+                    const hasEmail = contactSignals.hasEmail || canonical.hasEmail;
+                    const hasPhone = contactSignals.hasPhone || canonical.hasPhone;
+
+                    return (
+                      <article key={`${canonical.cnpj ?? position}`} className="result-item">
+                        <div className="result-item-head">
+                          <span className="result-item-index">#{position}</span>
+                          <div className="result-item-title">
+                            <strong>{canonical.companyName ?? "-"}</strong>
+                            <span>{canonical.tradeName ?? "Nome fantasia não informado"}</span>
+                          </div>
+                        </div>
+                        <dl className="result-meta">
+                          <div>
+                            <dt>CNPJ</dt>
+                            <dd className="numeric">{formatCnpj(canonical.cnpj ?? "")}</dd>
+                          </div>
+                          <div>
+                            <dt>Cidade</dt>
+                            <dd>{(canonical.cityName ?? "-")}/{(canonical.stateCode ?? "-")}</dd>
+                          </div>
+                          <div>
+                            <dt>Status</dt>
+                            <dd>{canonical.registrationStatus ?? "-"}</dd>
+                          </div>
+                        </dl>
+                        <div className="inline-list">
+                          <span className={`pill ${hasEmail ? "success" : "warning"}`}>{hasEmail ? "E-mail disponível" : "Sem e-mail"}</span>
+                          <span className={`pill ${hasPhone ? "success" : "warning"}`}>{hasPhone ? "Telefone disponível" : "Sem telefone"}</span>
+                          <span className={`pill ${canonical.hasAddress ? "success" : "warning"}`}>{canonical.hasAddress ? "Endereço disponível" : "Sem endereço"}</span>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+
+            <section className="grid-2" aria-label="Condições">
+              <div className="feature feature-rule">
+                <strong>O que está incluso</strong>
+                <p>Lista online liberada logo após o pagamento, download em XLSX e acesso pelo mesmo e-mail usado no checkout.</p>
+              </div>
+              <div className="feature feature-rule">
+                <strong>Pagamento</strong>
+                <p>Checkout seguro com Stripe. O pedido só é cobrado depois que você confirmar a compra.</p>
+              </div>
+            </section>
+          </div>
+
+          <aside className="order-summary" aria-label="Resumo do pedido">
+            <div className="order-total">
               <span className="kicker">Total do pedido</span>
-              <strong style={{ fontSize: "2rem" }}>{formatMoney(currentOrder.total_amount_cents / 100)}</strong>
-              <span className="muted">Cobrança conforme o tipo de lead encontrado, mostrada antes do pagamento.</span>
+              <span className="order-total-value">{formatMoney(currentOrder.total_amount_cents / 100)}</span>
+              <span className="footnote">Cobrança conforme o tipo de lead encontrado, mostrada antes do pagamento.</span>
             </div>
-          </div>
 
-          {pricingSummary ? <LeadPricingBreakdown summary={pricingSummary} /> : null}
-
-          <div className="grid-2 trust-grid">
-            <div className="surface-soft card stack">
-              <span className="eyebrow">O que está incluso</span>
-              <span className="muted">Lista online liberada logo após o pagamento, download em XLSX e acesso pelo mesmo e-mail usado no checkout.</span>
-            </div>
-            <div className="surface-soft card stack">
-              <span className="eyebrow">Pagamento</span>
-              <span className="muted">Checkout seguro com Stripe. O pedido só é cobrado depois que você confirmar a compra.</span>
-            </div>
-          </div>
-
-          {previewItems.length > 0 ? (
-            <div className="surface-soft card stack">
-              <span className="eyebrow">Amostra da lista</span>
-              <div className="grid-2">
-                <div className="stack" style={{ gap: 6 }}>
-                  <span className="kicker">Leitura da amostra</span>
-                  <span className="muted">A amostra mostra {previewItems.length} registros iniciais. Os dados disponíveis podem variar de empresa para empresa.</span>
-                </div>
-                <div className="stack" style={{ gap: 6 }}>
-                  <span className="kicker">Leitura consolidada</span>
-                  <span className="muted">A amostra abaixo usa a mesma consolidação aplicada à lista completa liberada após o pagamento.</span>
-                </div>
+            <dl className="order-lines">
+              <div>
+                <dt>Volume encontrado</dt>
+                <dd>{currentOrder.result_count}</dd>
               </div>
-              <div className="result-card-grid">
-                {previewItems.map(({ position, canonical, contactSignals }) => {
-                  const hasEmail = contactSignals.hasEmail || canonical.hasEmail;
-                  const hasPhone = contactSignals.hasPhone || canonical.hasPhone;
-
-                  return (
-                    <article key={`${canonical.cnpj ?? position}`} className="result-card-premium">
-                      <div className="result-card-index">#{position}</div>
-                      <div className="stack" style={{ gap: 6 }}>
-                        <strong className="result-card-title">{canonical.companyName ?? "-"}</strong>
-                        <span className="muted">{canonical.tradeName ?? "Nome fantasia não informado"}</span>
-                      </div>
-                      <div className="result-card-meta">
-                        <span><strong>CNPJ:</strong> {formatCnpj(canonical.cnpj ?? "")}</span>
-                        <span><strong>Cidade:</strong> {(canonical.cityName ?? "-")}/{(canonical.stateCode ?? "-")}</span>
-                        <span><strong>Status:</strong> {canonical.registrationStatus ?? "-"}</span>
-                      </div>
-                      <div className="inline-list">
-                        <span className={`pill ${hasEmail ? "success" : "warning"}`}>{hasEmail ? "E-mail disponível" : "Sem e-mail"}</span>
-                        <span className={`pill ${hasPhone ? "success" : "warning"}`}>{hasPhone ? "Telefone disponível" : "Sem telefone"}</span>
-                        <span className={`pill ${canonical.hasAddress ? "success" : "warning"}`}>{canonical.hasAddress ? "Endereço disponível" : "Sem endereço"}</span>
-                      </div>
-                    </article>
-                  );
-                })}
+              <div>
+                <dt>Entrega</dt>
+                <dd>Online + XLSX</dd>
               </div>
-            </div>
-          ) : null}
+            </dl>
 
-          {currentOrder.status === "paid" || currentOrder.status === "free" ? (
-            <div className="inline-actions">
-              <Link href={`/orders/${currentOrder.access_token}`} className="button">
+            {isUnlocked ? (
+              <Link href={`/orders/${currentOrder.access_token}`} className="button button-lg full">
                 Abrir lista liberada
               </Link>
-            </div>
-          ) : currentOrder.result_count === 0 ? (
-            <div className="stack">
-              <div className="notice success">
-                Nenhum CNPJ foi encontrado nessa pesquisa, então a lista foi liberada sem cobrança.
+            ) : currentOrder.result_count === 0 ? (
+              <div className="stack-sm">
+                <div className="notice success">
+                  Nenhum CNPJ foi encontrado nessa pesquisa, então a lista foi liberada sem cobrança.
+                </div>
+                <Link href={`/orders/${currentOrder.access_token}`} className="button button-lg full">
+                  Ver resultado vazio
+                </Link>
               </div>
-              <Link href={`/orders/${currentOrder.access_token}`} className="button">
-                Ver resultado vazio
-              </Link>
-            </div>
-          ) : needsEmailBeforeCheckout ? (
-            <div className="surface-soft card stack">
-              <div className="stack" style={{ gap: 6 }}>
-                <span className="kicker">Antes do checkout</span>
-                <strong>Informe seu e-mail para continuar</strong>
-                <span className="muted">Vamos enviar o acesso para você acompanhar a compra, o histórico e a lista liberada depois do pagamento.</span>
-              </div>
-              <form action={prepareCheckoutIdentityAction} className="stack" data-analytics-event="checkout_identity_started">
+            ) : needsEmailBeforeCheckout ? (
+              <form action={prepareCheckoutIdentityAction} className="stack-sm" data-analytics-event="checkout_identity_started">
                 <input type="hidden" name="orderId" value={currentOrder.id} />
                 <div className="field">
                   <label htmlFor="checkout-email">E-mail para acesso e pagamento</label>
-                  <input id="checkout-email" name="email" type="email" className="input input-premium" placeholder="voce@empresa.com" required />
+                  <input
+                    id="checkout-email"
+                    name="email"
+                    type="email"
+                    className="input"
+                    placeholder="voce@empresa.com"
+                    autoComplete="email"
+                    aria-describedby="checkout-email-help"
+                    required
+                  />
+                  <span id="checkout-email-help" className="field-help">
+                    Enviamos o acesso para você acompanhar a compra, o histórico e a lista liberada depois do pagamento.
+                  </span>
                 </div>
-                <button className="button full" type="submit">
+                <button className="button button-lg full" type="submit">
                   Receber acesso e continuar
                 </button>
               </form>
-            </div>
-          ) : (
-            <form action="/api/stripe/checkout" method="POST" className="stack" data-analytics-event="checkout_cta_clicked" data-analytics-label="Checkout form">
-              <input type="hidden" name="orderId" value={currentOrder.id} />
-              {resolvedEmail ? <input type="hidden" name="email" value={resolvedEmail} /> : null}
-              <button className="button full" type="submit">
-                Ir para o checkout
-              </button>
-            </form>
-          )}
+            ) : (
+              <form action="/api/stripe/checkout" method="POST" data-analytics-event="checkout_cta_clicked" data-analytics-label="Checkout form">
+                <input type="hidden" name="orderId" value={currentOrder.id} />
+                {resolvedEmail ? <input type="hidden" name="email" value={resolvedEmail} /> : null}
+                <button className="button button-lg full" type="submit">
+                  Ir para o checkout
+                </button>
+              </form>
+            )}
+
+            <p className="caption">Pagamento processado com segurança pela Stripe.</p>
+          </aside>
         </div>
-      </section>
+      </div>
     </main>
   );
 }

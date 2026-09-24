@@ -58,53 +58,50 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
 
   return (
     <main className="page">
-      <section className="container stack">
-        <div className="surface card stack">
-          <div className="inline-actions" style={{ justifyContent: "space-between" }}>
-            <div className="stack" style={{ gap: 6 }}>
-              <span className="eyebrow">Lista liberada</span>
-              <h1 className="section-title" style={{ marginBottom: 0 }}>
-                {summary.headline}
-              </h1>
-              <span className="muted">
-                {search.total_results} resultado(s) · pedido criado em {formatDateTime(currentOrder.created_at)}
-              </span>
-            </div>
-            <div className="stack" style={{ justifyItems: "end", gap: 8 }}>
-              <span className={`pill ${unlocked ? "success" : "warning"}`}>
-                {unlocked ? "Lista liberada" : "Aguardando pagamento"}
-              </span>
-              <span className="muted">Valor: {formatMoney(currentOrder.total_amount_cents / 100)}</span>
-            </div>
+      <div className="container">
+        <header className="section-header-row enter">
+          <div className="page-header">
+            <span className="eyebrow">{unlocked ? "Lista liberada" : "Pedido"}</span>
+            <h1 className="title-large">{summary.headline}</h1>
+            <p className="footnote">
+              {search.total_results} resultado(s) · pedido criado em {formatDateTime(currentOrder.created_at)} · {formatMoney(currentOrder.total_amount_cents / 100)}
+            </p>
           </div>
+          <span className={`pill ${unlocked ? "success" : "warning"}`}>
+            {unlocked ? "Lista liberada" : "Aguardando pagamento"}
+          </span>
+        </header>
 
-          {pricingSummary ? <LeadPricingBreakdown summary={pricingSummary} /> : null}
-
-          {!unlocked ? (
-            <>
+        {!unlocked ? (
+          <section className="section section-spaced" aria-label="Pagamento pendente">
+            <div className="stack-sm">
               {checkoutState === "success" ? (
-                <div className="notice warning">
+                <div className="notice info" role="status">
                   O checkout retornou com sucesso, mas o webhook ainda pode estar confirmando o pagamento. Atualize esta página em alguns segundos.
                 </div>
               ) : null}
               <div className="notice warning">
                 A lista só fica visível depois que o pagamento do checkout for confirmado.
               </div>
-              <div className="inline-actions">
-                <Link href={`/checkout/${currentOrder.id}`} className="button">
-                  Voltar ao pagamento
-                </Link>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="inline-actions" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                <div className="stack" style={{ gap: 6 }}>
-                  <span className="kicker">Entrega liberada</span>
-                  <span className="muted">Formato disponível para download: XLSX.</span>
+            </div>
+            <div className="cluster">
+              <Link href={`/checkout/${currentOrder.id}`} className="button">
+                Voltar ao pagamento
+              </Link>
+            </div>
+            {pricingSummary ? <LeadPricingBreakdown summary={pricingSummary} /> : null}
+          </section>
+        ) : (
+          <>
+            <section className="section section-spaced tile" aria-labelledby="delivery-title">
+              <div className="cta-band">
+                <div className="section-header">
+                  <span className="eyebrow">Entrega liberada</span>
+                  <h2 id="delivery-title" className="title-2">Sua lista está pronta.</h2>
+                  <p className="section-copy">Formato disponível para download: XLSX.</p>
                 </div>
-                <div className="inline-actions">
-                  <a href={`/orders/${token}/download`} className="button" data-analytics-event="payment_completed" data-analytics-label="Order XLSX">
+                <div className="cluster">
+                  <a href={`/orders/${token}/download`} className="button button-lg" data-analytics-event="payment_completed" data-analytics-label="Order XLSX">
                     Baixar XLSX
                   </a>
                   <Link href={`/?reuse=${currentOrder.search_query_id}`} className="button-ghost" data-analytics-event="search_reused" data-analytics-label="Order repeat search">
@@ -112,97 +109,116 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
                   </Link>
                 </div>
               </div>
+            </section>
+
+            {pricingSummary ? (
+              <section className="section section-spaced" aria-label="Composição do pedido">
+                <LeadPricingBreakdown summary={pricingSummary} />
+              </section>
+            ) : null}
+
+            <section className="section section-spaced" aria-labelledby="order-rows-title">
+              <div className="section-header">
+                <span className="eyebrow">Estabelecimentos</span>
+                <h2 id="order-rows-title" className="title-2">
+                  {rows && rows.length > 0 ? `${rows.length} empresas na lista` : "Nenhuma empresa na lista"}
+                </h2>
+              </div>
 
               {rows && rows.length > 0 ? (
-                <div className="stack">
-                  <div className="table-wrap">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>#</th>
-                          <th>Empresa</th>
-                          <th>CNPJ</th>
-                          <th>Cidade</th>
-                          <th>Contato</th>
-                          <th>Endereço</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((row) => {
-                          const establishment = extractSingleObject(row.establishments);
-                          if (!establishment) return null;
+                <div className="table-wrap">
+                  <table className="table table-responsive">
+                    <caption className="sr-only">Estabelecimentos da lista liberada</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Empresa</th>
+                        <th scope="col">CNPJ</th>
+                        <th scope="col">Cidade</th>
+                        <th scope="col">Contato</th>
+                        <th scope="col">Endereço</th>
+                        <th scope="col">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row) => {
+                        const establishment = extractSingleObject(row.establishments);
+                        if (!establishment) return null;
 
-                          const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
-                          const canonical = canonicalizeEstablishment(mergedEstablishment);
+                        const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
+                        const canonical = canonicalizeEstablishment(mergedEstablishment);
 
-                          return (
-                            <Fragment key={String(row.establishment_id)}>
-                              <tr key={String(row.establishment_id)}>
-                                <td>{row.position}</td>
-                                <td>
-                                  <div className="stack" style={{ gap: 6 }}>
-                                    <strong>{canonical.companyName ?? "-"}</strong>
-                                    <span className="muted">{canonical.tradeName ?? "-"}</span>
+                        return (
+                          <Fragment key={String(row.establishment_id)}>
+                            <tr>
+                              <td data-label="#" className="subtle numeric">{row.position}</td>
+                              <td data-label="Empresa">
+                                <div className="cell-stack">
+                                  <strong>{canonical.companyName ?? "-"}</strong>
+                                  <span className="muted">{canonical.tradeName ?? "-"}</span>
+                                </div>
+                              </td>
+                              <td data-label="CNPJ" className="cell-nowrap">{formatCnpj(canonical.cnpj ?? "")}</td>
+                              <td data-label="Cidade" className="cell-nowrap">
+                                {(canonical.cityName ?? "-")}/{(canonical.stateCode ?? "-")}
+                              </td>
+                              <td data-label="Contato">
+                                <div className="cell-stack">
+                                  <span>{canonical.phone ?? "-"}</span>
+                                  <span className="muted">{canonical.email ?? "-"}</span>
+                                </div>
+                              </td>
+                              <td data-label="Endereço">
+                                <div className="cell-stack">
+                                  <span>{canonical.addressLine ?? "-"}</span>
+                                  <span className="muted">{canonical.neighborhood ?? "-"}</span>
+                                </div>
+                              </td>
+                              <td data-label="Status">{canonical.registrationStatus ?? "-"}</td>
+                            </tr>
+                            <tr className="row-details-row">
+                              <td colSpan={7} data-label="">
+                                <details className="row-details">
+                                  <summary>Ver todos os campos consolidados</summary>
+                                  <div className="row-details-body">
+                                    <EstablishmentDetails establishment={mergedEstablishment} />
                                   </div>
-                                </td>
-                                <td>{formatCnpj(canonical.cnpj ?? "")}</td>
-                                <td>
-                                  {(canonical.cityName ?? "-")}/{(canonical.stateCode ?? "-")}
-                                </td>
-                                <td>
-                                  <div className="stack" style={{ gap: 6 }}>
-                                    <span className="muted">{canonical.phone ?? "-"}</span>
-                                    <span className="muted">{canonical.email ?? "-"}</span>
-                                  </div>
-                                </td>
-                                <td>
-                                  <div className="stack" style={{ gap: 6 }}>
-                                    <span className="muted">{canonical.addressLine ?? "-"}</span>
-                                    <span className="muted">{canonical.neighborhood ?? "-"}</span>
-                                  </div>
-                                </td>
-                                <td>{canonical.registrationStatus ?? "-"}</td>
-                              </tr>
-                              <tr key={`${String(row.establishment_id)}-details`}>
-                                <td colSpan={7}>
-                                  <details>
-                                    <summary>Ver todos os campos consolidados</summary>
-                                    <div style={{ marginTop: 16 }}>
-                                      <EstablishmentDetails establishment={mergedEstablishment} />
-                                    </div>
-                                  </details>
-                                </td>
-                              </tr>
-                            </Fragment>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                                </details>
+                              </td>
+                            </tr>
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div className="notice success">Nenhum estabelecimento foi encontrado para esse filtro.</div>
               )}
-            </>
-          )}
-        </div>
+            </section>
+          </>
+        )}
 
-        <div className="surface card stack">
-          <span className="eyebrow">Próxima ação</span>
-          <p className="section-copy">
-            Quer guardar histórico, reabrir listas anteriores, salvar leads e repetir filtros? Use o dashboard para manter a operação organizada.
-          </p>
-          <div className="inline-actions">
-            <Link href="/dashboard" className="button-secondary" data-analytics-event="dashboard_opened" data-analytics-label="Order dashboard">
-              Abrir dashboard
-            </Link>
-            <Link href="/" className="button-ghost">
-              Fazer nova pesquisa
-            </Link>
+        <section className="section section-spaced tile" aria-labelledby="order-next-title">
+          <div className="cta-band">
+            <div className="section-header">
+              <span className="eyebrow">Próxima ação</span>
+              <h2 id="order-next-title" className="title-2">Organize e repita o que funcionou.</h2>
+              <p className="section-copy">
+                Quer guardar histórico, reabrir listas anteriores, salvar leads e repetir filtros? Use o dashboard para manter a operação organizada.
+              </p>
+            </div>
+            <div className="cluster">
+              <Link href="/dashboard" className="button-secondary" data-analytics-event="dashboard_opened" data-analytics-label="Order dashboard">
+                Abrir dashboard
+              </Link>
+              <Link href="/" className="button-ghost">
+                Fazer nova pesquisa
+              </Link>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

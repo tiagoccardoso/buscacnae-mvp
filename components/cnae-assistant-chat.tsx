@@ -71,34 +71,34 @@ export function CnaeAssistantChat({
   }
 
   return (
-    <section className="cnae-chat-shell surface-soft">
-      <div className="cnae-chat-header">
-        <div className="stack" style={{ gap: 6 }}>
-          <span className="eyebrow">Assistente de CNAEs</span>
-          <strong className="cnae-chat-title">Descreva o negócio e receba sugestões prontas para adicionar.</strong>
-          <span className="muted">
-            O chat ajuda a encontrar CNAEs aderentes ao contexto e você pode incluir qualquer sugestão com um clique.
-          </span>
-        </div>
-      </div>
-
-      <div className="cnae-chat-form">
+    <section className="stack-lg" aria-label="Assistente de CNAEs">
+      <div className="assistant-form">
+        <label htmlFor="cnae-assistant-message" className="sr-only">
+          Descreva a atividade da empresa
+        </label>
         <textarea
-          className="textarea input-premium cnae-chat-input"
+          id="cnae-assistant-message"
+          className="textarea"
           placeholder="Ex.: empresa de software sob demanda, implantação de ERP e suporte técnico..."
           value={message}
           onChange={(event) => setMessage(event.target.value)}
         />
-        <div className="cnae-chat-actions">
-          <button type="button" className="button button-lg" onClick={() => askAssistant()} disabled={loading || !message.trim()}>
+        <div className="assistant-actions">
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => askAssistant()}
+            disabled={loading || !message.trim()}
+            aria-busy={loading}
+          >
             {loading ? "Consultando..." : "Pedir sugestões"}
           </button>
-          <div className="cnae-chat-prompts">
+          <div className="assistant-prompts" aria-label="Exemplos rápidos">
             {QUICK_PROMPTS.map((prompt) => (
               <button
                 type="button"
                 key={prompt}
-                className="button-ghost cnae-chat-prompt"
+                className="assistant-prompt"
                 onClick={() => {
                   setMessage(prompt);
                   void askAssistant(prompt);
@@ -112,26 +112,26 @@ export function CnaeAssistantChat({
         </div>
       </div>
 
-      {error ? <div className="notice danger">{error}</div> : null}
+      {error ? <div className="notice danger" role="alert">{error}</div> : null}
 
-      {answer ? <div className="cnae-chat-answer">{answer}</div> : null}
+      {answer ? <p className="assistant-answer" aria-live="polite">{answer}</p> : null}
 
       {suggestions.length > 0 ? (
-        <div className="cnae-chat-suggestions">
+        <div className="assistant-suggestions">
           {suggestions.map((suggestion) => {
             const alreadySelected = selectedCodes.includes(suggestion.code);
             return (
               <button
                 type="button"
                 key={`${suggestion.code}-${suggestion.label}`}
-                className={`cnae-suggestion-card${alreadySelected ? " is-selected" : ""}`}
+                className="suggestion"
                 onClick={() => onAddSuggestion(suggestion)}
                 disabled={alreadySelected}
               >
-                <span className="cnae-suggestion-code">{formatCnaeCode(suggestion.code)}</span>
+                <span className="suggestion-code">{formatCnaeCode(suggestion.code)}</span>
                 <strong>{suggestion.label}</strong>
                 <span className="muted">{suggestion.reason}</span>
-                <span className="cnae-suggestion-cta">{alreadySelected ? "Já adicionado" : "Adicionar à pesquisa"}</span>
+                <span className="suggestion-cta">{alreadySelected ? "✓ Adicionado" : "+ Adicionar à pesquisa"}</span>
               </button>
             );
           })}

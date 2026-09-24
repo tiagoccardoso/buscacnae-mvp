@@ -1,61 +1,52 @@
 import Link from "next/link";
+import { getAppName } from "@/lib/env";
 import { footerNavigation, getBusinessShortDescription } from "@/lib/site-content";
+
+const columns = [
+  { title: "Produto", items: footerNavigation.product },
+  { title: "Confiança", items: footerNavigation.trust },
+  { title: "Casos de uso", items: footerNavigation.useCases }
+];
 
 export function SiteFooter() {
   return (
-    <footer className="container footer">
-      <div className="surface-premium card-lg footer-premium-shell">
-        <div className="footer-grid footer-grid-expanded">
-          <div className="stack" style={{ gap: 14 }}>
-            <span className="eyebrow">BuscaCNAE</span>
-            <strong style={{ fontSize: "1.45rem", letterSpacing: "-0.04em" }}>
-              Descubra, filtre e compre listas B2B por CNAE e região com preço transparente antes do pagamento.
-            </strong>
-            <span className="muted">{getBusinessShortDescription()}</span>
-            <div className="inline-list">
-              <span className="pill">Pesquisa pública</span>
-              <span className="pill">Checkout com prévia</span>
-              <span className="pill">Dashboard opcional</span>
-            </div>
-          </div>
-
-          <div className="stack">
-            <span className="footer-heading">Produto</span>
-            {footerNavigation.product.map((item) => (
-              <Link key={item.href} href={item.href} className="muted">
-                {item.label}
-              </Link>
-            ))}
-          </div>
-
-          <div className="stack">
-            <span className="footer-heading">Confiança</span>
-            {footerNavigation.trust.map((item) => (
-              <Link key={item.href} href={item.href} className="muted">
-                {item.label}
-              </Link>
-            ))}
-          </div>
-
-          <div className="stack">
-            <span className="footer-heading">Casos de uso</span>
-            {footerNavigation.useCases.map((item) => (
-              <Link key={item.href} href={item.href} className="muted">
-                {item.label}
-              </Link>
-            ))}
-          </div>
-
-          <div className="stack">
-            <span className="footer-heading">Atendimento humanizado</span>
-            <span className="muted">
-              Para registrar tickets de atendimento humanizado, acesse a plataforma{" "}
-              <a href="https://www.selectsaas.com.br" target="_blank" rel="noopener noreferrer" className="muted">
-                SelectSaaS
-              </a>
-              .
+    <footer className="site-footer">
+      <div className="container">
+        <div className="footer-grid">
+          <div className="footer-brand">
+            <span className="brand">
+              <span className="brand-mark" aria-hidden="true">BC</span>
+              <span>{getAppName()}</span>
             </span>
+            <p>
+              Descubra, filtre e compre listas B2B por CNAE e região com preço transparente antes do pagamento.
+            </p>
+            <p>{getBusinessShortDescription()}</p>
           </div>
+
+          {columns.map((column) => (
+            <nav key={column.title} aria-label={column.title}>
+              <span className="footer-heading">{column.title}</span>
+              <ul className="footer-links">
+                {column.items.map((item) => (
+                  <li key={item.href}>
+                    <Link href={item.href}>{item.label}</Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
+        </div>
+
+        <div className="footer-bottom">
+          <span>Pesquisa pública · Checkout com prévia · Dashboard opcional</span>
+          <span>
+            Atendimento humanizado: registre tickets na plataforma{" "}
+            <a href="https://www.selectsaas.com.br" target="_blank" rel="noopener noreferrer">
+              SelectSaaS
+            </a>
+            .
+          </span>
         </div>
       </div>
     </footer>

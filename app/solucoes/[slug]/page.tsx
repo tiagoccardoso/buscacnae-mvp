@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { buildPageMetadata } from "@/lib/seo";
 import { useCasePages } from "@/lib/site-content";
+import { PageHeader } from "@/components/ui/page-header";
+import { SectionHeader } from "@/components/ui/section-header";
 
 export function generateStaticParams() {
   return useCasePages.map((page) => ({ slug: page.slug }));
@@ -33,44 +35,41 @@ export default async function UseCasePage({ params }: { params: Promise<{ slug: 
 
   return (
     <main className="page">
-      <section className="container stack">
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">{page.heroEyebrow}</span>
-          <h1 className="display-title" style={{ fontSize: "clamp(2.2rem, 4vw, 4rem)" }}>
-            {page.title}
-          </h1>
-          <p className="lead-copy">{page.description}</p>
-          <div className="inline-actions">
-            <Link href="/" className="button">Começar pesquisa</Link>
-            <Link href="/pricing" className="button-ghost">Ver preços</Link>
-          </div>
-        </div>
+      <div className="container">
+        <PageHeader
+          eyebrow={page.heroEyebrow}
+          title={page.title}
+          lead={page.description}
+          actions={
+            <>
+              <Link href="/" className="button">Começar pesquisa</Link>
+              <Link href="/pricing" className="button-ghost">Ver preços</Link>
+            </>
+          }
+        />
 
-        <div className="surface-premium card-lg panel-grid two">
-          <div className="stack">
-            <span className="eyebrow">Quando usar</span>
-            <h2 className="section-title">{page.intentTitle}</h2>
-            <div className="stack">
+        <section className="section section-spaced split" aria-label="Detalhes do caso de uso">
+          <div className="stack-lg">
+            <SectionHeader eyebrow="Quando usar" title={page.intentTitle} />
+            <ul className="check-list">
               {page.bullets.map((item) => (
-                <div key={item} className="signal-card">
-                  <strong>{item}</strong>
-                </div>
+                <li key={item}>{item}</li>
               ))}
-            </div>
+            </ul>
           </div>
-          <div className="stack">
+          <div className="stack-lg">
             <span className="eyebrow">O que ajuda na prática</span>
-            <div className="stack">
+            <div className="stack-lg">
               {page.benefits.map((item) => (
-                <div key={item} className="signal-card">
+                <div key={item} className="feature feature-rule">
                   <strong>{item}</strong>
-                  <span className="muted">A jornada continua a mesma: pesquisa, prévia, preço visível, checkout e download da lista.</span>
+                  <p>A jornada continua a mesma: pesquisa, prévia, preço visível, checkout e download da lista.</p>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

@@ -49,36 +49,6 @@ const LABEL_OVERRIDES: Record<string, string> = {
   complement: "Complemento"
 };
 
-const PANEL_STYLE = {
-  borderRadius: 18,
-  border: "1px solid rgba(255, 255, 255, 0.08)",
-  background: "rgba(7, 16, 37, 0.36)",
-  padding: 18,
-  display: "grid",
-  gap: 14
-} as const;
-
-const FIELD_ROW_STYLE = {
-  borderRadius: 14,
-  border: "1px solid rgba(255, 255, 255, 0.08)",
-  background: "rgba(255, 255, 255, 0.03)",
-  padding: "12px 14px",
-  display: "grid",
-  gap: 6
-} as const;
-
-const GROUP_STYLE = {
-  display: "grid",
-  gap: 12,
-  alignContent: "start"
-} as const;
-
-const GROUP_GRID_STYLE = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 18
-} as const;
-
 function hasContent(value: unknown): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value === "string") return value.trim().length > 0;
@@ -190,19 +160,19 @@ function renderStructuredValue(key: string, value: unknown, path: string): React
     if (items.length === 0) return <span>-</span>;
 
     return (
-      <div style={{ display: "grid", gap: 8 }}>
+      <ul className="value-list">
         {items.map((item, index) => (
-          <div key={`${path}-${index}`} style={{ ...FIELD_ROW_STYLE, padding: "10px 12px" }}>
+          <li key={`${path}-${index}`}>
             {typeof item === "string" || typeof item === "number" || typeof item === "boolean"
               ? renderPrimitive(key, item)
-              : <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{safeJsonStringify(item, 2)}</pre>}
-          </div>
+              : <pre className="value-pre">{safeJsonStringify(item, 2)}</pre>}
+          </li>
         ))}
-      </div>
+      </ul>
     );
   }
 
-  return <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{safeJsonStringify(value, 2)}</pre>;
+  return <pre className="value-pre">{safeJsonStringify(value, 2)}</pre>;
 }
 
 function buildFieldGroups(fields: SectionField[]): FieldGroup[] {
@@ -272,11 +242,9 @@ function buildFieldGroups(fields: SectionField[]): FieldGroup[] {
 
 function renderFieldRow(field: SectionField, index: number, groupKey: string) {
   return (
-    <div key={`${groupKey}-${index}-${field.key}`} style={FIELD_ROW_STYLE}>
-      <span className="kicker">{field.label}</span>
-      <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.65 }}>
-        {renderStructuredValue(field.key, field.value, `${groupKey}-${index}-${field.key}`)}
-      </div>
+    <div key={`${groupKey}-${index}-${field.key}`} className="kv-row">
+      <dt>{field.label}</dt>
+      <dd>{renderStructuredValue(field.key, field.value, `${groupKey}-${index}-${field.key}`)}</dd>
     </div>
   );
 }
@@ -289,37 +257,24 @@ export function EstablishmentDetails({ establishment }: EstablishmentDetailsProp
   const groupedFields = buildFieldGroups(primaryFields);
 
   return (
-    <div className="stack">
-      <div className="surface-soft card stack">
-        <div className="stack" style={{ gap: 8 }}>
-          <strong>Dados principais</strong>
-          <span className="muted" style={{ lineHeight: 1.7 }}>
-            Todas as informações consolidadas da pesquisa e do JSON bruto foram reunidas abaixo em uma leitura única.
-          </span>
-        </div>
-
-        <div style={GROUP_GRID_STYLE}>
-          {groupedFields.map((group) => (
-            <section key={group.title} style={PANEL_STYLE}>
-              <div style={GROUP_STYLE}>
-                <div className="stack" style={{ gap: 4 }}>
-                  <strong style={{ fontSize: "1rem" }}>{group.title}</strong>
-                  {group.description ? <span className="muted" style={{ lineHeight: 1.6 }}>{group.description}</span> : null}
-                </div>
-                <div style={GROUP_STYLE}>
-                  {group.fields.map((field, index) => renderFieldRow(field, index, group.title))}
-                </div>
-              </div>
-            </section>
-          ))}
-        </div>
+    <div className="stack-xl">
+      <div className="detail-groups">
+        {groupedFields.map((group) => (
+          <section key={group.title} className="detail-group" aria-label={group.title}>
+            <div className="detail-group-header">
+              <h3 className="headline">{group.title}</h3>
+              {group.description ? <p className="footnote">{group.description}</p> : null}
+            </div>
+            <dl className="kv-list">{group.fields.map((field, index) => renderFieldRow(field, index, group.title))}</dl>
+          </section>
+        ))}
       </div>
 
       {hasContent(rawJsonPayload) ? (
-        <div className="surface-soft card stack">
-          <strong>Dados brutos formatados (JSON)</strong>
-          <pre className="payload-json-block">{safeJsonStringify(rawJsonPayload, 2)}</pre>
-        </div>
+        <details className="disclosure-inline">
+          <summary>Dados brutos formatados (JSON)</summary>
+          <pre className="code-block">{safeJsonStringify(rawJsonPayload, 2)}</pre>
+        </details>
       ) : null}
     </div>
   );

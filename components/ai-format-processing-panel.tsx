@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ProgressBar } from "@/components/ui/progress-bar";
 
 type ProcessingStatus = "idle" | "processing" | "ready" | "error";
 
@@ -221,8 +222,8 @@ export function AiFormatProcessingPanel({ searchId, initialStatus, initialError,
   }
 
   return (
-    <div className="stack" style={{ gap: 10 }}>
-      <div className={`notice ${status === "error" ? "danger" : "warning"}`}>
+    <div className="stack-sm">
+      <div className={`notice ${status === "error" ? "danger" : status === "processing" ? "info" : "warning"}`} role={status === "error" ? "alert" : "status"}>
         {status === "idle"
           ? "Sua lista com IA ainda não foi iniciada."
           : status === "error"
@@ -231,60 +232,40 @@ export function AiFormatProcessingPanel({ searchId, initialStatus, initialError,
       </div>
 
       {status === "processing" ? (
-        <div className="stack" style={{ gap: 8 }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Processamento em andamento: {progress}%</div>
-          <div style={{ fontSize: 13, color: "var(--muted-foreground, #666)" }}>
-            Etapa {currentStep} de {Math.max(totalChunks, 1)}
-            {typeof statusData?.totalRecords === "number" && statusData.totalRecords > 0 ? ` • ${statusData.totalRecords} registros` : ""}
-            {etaLabel ? ` • ETA ~ ${etaLabel}` : ""}
+        <div className="stack-xs" aria-live="polite">
+          <div className="progress-meta">
+            <strong>Processamento em andamento: {progress}%</strong>
+            <span>
+              Etapa {currentStep} de {Math.max(totalChunks, 1)}
+              {typeof statusData?.totalRecords === "number" && statusData.totalRecords > 0 ? ` · ${statusData.totalRecords} registros` : ""}
+              {etaLabel ? ` · ETA ~ ${etaLabel}` : ""}
+            </span>
           </div>
-          <div
-            aria-label="Progresso da preparação com IA"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress}
-            style={{
-              width: "100%",
-              height: 8,
-              borderRadius: 999,
-              background: "var(--border, #ddd)",
-              overflow: "hidden"
-            }}
-          >
-            <div
-              style={{
-                width: `${progress}%`,
-                height: "100%",
-                background: "var(--primary, #111)",
-                transition: "width 300ms ease"
-              }}
-            />
-          </div>
+          <ProgressBar value={progress} label="Progresso da preparação com IA" />
 
           {statusData?.stale ? (
-            <div className="notice warning" style={{ marginTop: 4 }}>
+            <div className="notice warning">
               Sem atualização recente do processamento. Tentaremos retomar automaticamente.
             </div>
           ) : null}
         </div>
       ) : null}
 
-      <div className="inline-actions">
+      <div className="cluster">
         {status === "idle" ? (
-          <button type="button" className="button" disabled={loading} onClick={() => start(false)}>
+          <button type="button" className="button" disabled={loading} aria-busy={loading} onClick={() => start(false)}>
             {loading ? "Iniciando..." : "Iniciar preparação com IA"}
           </button>
         ) : null}
 
         {status === "error" ? (
-          <button type="button" className="button" disabled={loading} onClick={() => start(true)}>
+          <button type="button" className="button" disabled={loading} aria-busy={loading} onClick={() => start(true)}>
             {loading ? "Tentando novamente..." : "Tentar novamente"}
           </button>
         ) : null}
 
         {status === "processing" ? (
-          <button type="button" className="button-ghost" disabled={loading} onClick={processAndRefresh}>
+          <button type="button" className="button-ghost" disabled={loading} aria-busy={loading} onClick={processAndRefresh}>
             {loading ? "Atualizando..." : "Atualizar status"}
           </button>
         ) : null}

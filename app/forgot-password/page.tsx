@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requestPasswordResetAction } from "@/app/sign-in/server-actions";
 import { buildPageMetadata } from "@/lib/seo";
+import { AuthCard } from "@/components/ui/auth-card";
+import { SubmitButton } from "@/components/ui/submit-button";
 
 export const metadata = buildPageMetadata({
   title: "Recuperar senha",
@@ -21,45 +23,30 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
 
   return (
     <main className="page">
-      <section className="container auth-grid auth-grid-premium">
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Recuperação</span>
-          <h1 className="display-title" style={{ fontSize: "clamp(2.4rem, 4vw, 4rem)" }}>
-            Recupere o acesso à sua conta.
-          </h1>
-          <p className="lead-copy">Informe o e-mail cadastrado para receber as instruções de redefinição de senha.</p>
-        </div>
+      <div className="container">
+        <AuthCard
+          title="Recuperar acesso"
+          subtitle="Informe o e-mail cadastrado para receber as instruções de redefinição de senha."
+          footer={
+            <>
+              <Link href="/sign-in">Voltar ao login</Link>
+              <Link href="/sign-up">Criar conta</Link>
+            </>
+          }
+        >
+          {message ? <div className="notice success" role="status">{message}</div> : null}
+          {error ? <div className="notice danger" role="alert">{error}</div> : null}
 
-        <div className="surface-premium card-lg stack auth-form-shell">
-          <span className="eyebrow">Esqueci minha senha</span>
-          <h2 className="section-title" style={{ fontSize: "2rem", marginBottom: 0 }}>
-            Solicitar recuperação
-          </h2>
-          <p className="section-copy">Por segurança, a mensagem será a mesma mesmo que o e-mail não esteja cadastrado.</p>
-
-          {message ? <div className="notice success">{message}</div> : null}
-          {error ? <div className="notice danger">{error}</div> : null}
-
-          <form action={requestPasswordResetAction} className="stack">
+          <form action={requestPasswordResetAction} className="auth-form">
             <div className="field">
               <label htmlFor="email">E-mail</label>
-              <input id="email" name="email" type="email" className="input input-premium" placeholder="voce@empresa.com" defaultValue={email} autoComplete="email" required />
+              <input id="email" name="email" type="email" className="input" placeholder="voce@empresa.com" defaultValue={email} autoComplete="email" aria-describedby="forgot-help" required />
+              <span id="forgot-help" className="field-help">Por segurança, a mensagem será a mesma mesmo que o e-mail não esteja cadastrado.</span>
             </div>
-            <button className="button full button-lg" type="submit">
-              Recuperar senha
-            </button>
+            <SubmitButton pendingLabel="Enviando...">Recuperar senha</SubmitButton>
           </form>
-
-          <div className="inline-actions" style={{ justifyContent: "space-between" }}>
-            <Link href="/sign-in" className="button-ghost">
-              Voltar ao login
-            </Link>
-            <Link href="/sign-up" className="button-secondary">
-              Criar conta
-            </Link>
-          </div>
-        </div>
-      </section>
+        </AuthCard>
+      </div>
     </main>
   );
 }

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { DeliveryPreview } from "@/components/delivery-preview";
+import { PageHeader } from "@/components/ui/page-header";
+import { SectionHeader } from "@/components/ui/section-header";
 import { buildPageMetadata } from "@/lib/seo";
 import { minimumCheckoutAmount, pricingTiers } from "@/lib/site-content";
 
@@ -25,76 +27,92 @@ const exampleTotal = pricingTiers.reduce((sum, tier) => {
 export default function PricingPage() {
   return (
     <main className="page">
-      <section className="container stack">
-        <div className="surface-premium card-lg pricing-stage">
-          <div className="stack" style={{ gap: 14 }}>
-            <span className="eyebrow">Preço por composição da lista</span>
-            <h1 className="section-title" style={{ fontSize: "2.6rem", marginBottom: 0 }}>
-              Veja o preço antes do pagamento e pague de acordo com a composição real da lista.
-            </h1>
-            <p className="section-copy">
-              A pesquisa é pública. Você informa os filtros, o sistema calcula a composição do lote encontrado e mostra o total do pedido antes do checkout.
-            </p>
-            <div className="inline-list">
-              <span className="pill">Compra avulsa</span>
-              <span className="pill">Prévia com valor</span>
-              <span className="pill">Dashboard opcional</span>
-              <span className="pill">Mínimo operacional {minimumCheckoutAmount}</span>
-            </div>
-          </div>
+      <div className="container">
+        <PageHeader
+          eyebrow="Preço por composição da lista"
+          title="Veja o preço antes do pagamento e pague pela composição real da lista."
+          lead="A pesquisa é pública. Você informa os filtros, o sistema calcula a composição do lote encontrado e mostra o total do pedido antes do checkout."
+          actions={
+            <>
+              <Link href="/" className="button" data-analytics-event="search_entry_clicked" data-analytics-label="Pricing hero pesquisa">
+                Fazer uma pesquisa
+              </Link>
+              <Link href="/faq" className="button-ghost">
+                Ver FAQ comercial
+              </Link>
+            </>
+          }
+        />
 
-          <div className="pricing-display-card stack" style={{ gap: 10 }}>
-            <span className="kicker">Exemplo de composição</span>
-            <strong>40 base + 20 contato + 10 contato plus + 5 completos</strong>
-            <span className="muted">Total do exemplo: R$ {(exampleTotal / 100).toFixed(2).replace(".", ",")}. A composição final sempre depende do que a busca retornar.</span>
+        <section className="section section-spaced" aria-labelledby="tiers-title">
+          <h2 id="tiers-title" className="sr-only">Preço por tipo de lead</h2>
+          <div className="tier-grid">
+            {pricingTiers.map((tier) => (
+              <article key={tier.key} className="tier">
+                <span className="kicker">{tier.label}</span>
+                <p className="tier-price">
+                  {tier.formattedUnitPrice}
+                  <small>por lead</small>
+                </p>
+                <p>{tier.helperText}</p>
+              </article>
+            ))}
           </div>
-        </div>
+          <div className="cluster">
+            <span className="pill">Compra avulsa</span>
+            <span className="pill">Prévia com valor</span>
+            <span className="pill">Dashboard opcional</span>
+            <span className="pill">Mínimo operacional {minimumCheckoutAmount}</span>
+          </div>
+        </section>
 
-        <div className="pricing-grid">
-          {pricingTiers.map((tier) => (
-            <div key={tier.key} className="surface-premium card stack pricing-card">
-              <span className="eyebrow">{tier.label}</span>
-              <strong className="price">{tier.formattedUnitPrice}</strong>
-              <p className="section-copy">{tier.helperText}</p>
-            </div>
-          ))}
-        </div>
+        <section className="section section-spaced split" aria-labelledby="example-title">
+          <SectionHeader
+            id="example-title"
+            eyebrow="Exemplo de composição"
+            title="40 base + 20 contato + 10 contato plus + 5 completos"
+            copy="A composição final sempre depende do que a busca retornar."
+          />
+          <div className="tile stack-xs">
+            <span className="kicker">Total do exemplo</span>
+            <p className="order-total-value">R$ {(exampleTotal / 100).toFixed(2).replace(".", ",")}</p>
+          </div>
+        </section>
 
-        <div className="grid-3 responsive-feature-grid">
-          <div className="surface-premium card stack">
-            <span className="eyebrow">1. Pesquise</span>
-            <p className="section-copy">Monte o recorte por CNAE, estado, cidade e filtros de CNAE e localização sem precisar criar conta primeiro.</p>
-          </div>
-          <div className="surface-premium card stack">
-            <span className="eyebrow">2. Veja a composição</span>
-            <p className="section-copy">A prévia mostra quantos registros vieram em cada faixa e qual é o valor total do pedido.</p>
-          </div>
-          <div className="surface-premium card stack">
-            <span className="eyebrow">3. Libere a lista</span>
-            <p className="section-copy">Depois do pagamento, a lista fica liberada online e pronta para download em XLSX na mesma jornada.</p>
-          </div>
-        </div>
+        <section className="section section-spaced" aria-labelledby="pricing-steps">
+          <SectionHeader id="pricing-steps" eyebrow="Como o preço é formado" title="Três passos, nenhuma surpresa." />
+          <ol className="steps">
+            <li className="step">
+              <strong>Pesquise</strong>
+              <p>Monte o recorte por CNAE, estado, cidade e filtros de CNAE e localização sem precisar criar conta primeiro.</p>
+            </li>
+            <li className="step">
+              <strong>Veja a composição</strong>
+              <p>A prévia mostra quantos registros vieram em cada faixa e qual é o valor total do pedido.</p>
+            </li>
+            <li className="step">
+              <strong>Libere a lista</strong>
+              <p>Depois do pagamento, a lista fica liberada online e pronta para download em XLSX na mesma jornada.</p>
+            </li>
+          </ol>
+        </section>
 
-        <div className="surface-premium card-lg panel-grid two">
-          <div className="stack">
-            <span className="eyebrow">Regra comercial</span>
-            <h2 className="section-title">O preço é calculado pela composição do lote, não por plano.</h2>
-            <p className="section-copy">
-              Quando houver resultados, o checkout aplica o valor da composição real do lote e respeita mínimo operacional de {minimumCheckoutAmount}. Se a busca não encontrar registros, não há cobrança.
-            </p>
-          </div>
-          <div className="inline-actions" style={{ alignItems: "flex-end", justifyContent: "flex-start" }}>
-            <Link href="/" className="button" data-analytics-event="search_entry_clicked" data-analytics-label="Pricing fazer pesquisa">
+        <section className="section section-spaced tile tile-inverse" aria-labelledby="pricing-rule">
+          <div className="cta-band">
+            <SectionHeader
+              id="pricing-rule"
+              eyebrow="Regra comercial"
+              title="O preço é calculado pela composição do lote, não por plano."
+              copy={`Quando houver resultados, o checkout aplica o valor da composição real do lote e respeita mínimo operacional de ${minimumCheckoutAmount}. Se a busca não encontrar registros, não há cobrança.`}
+            />
+            <Link href="/" className="button button-lg" data-analytics-event="search_entry_clicked" data-analytics-label="Pricing fazer pesquisa">
               Fazer uma pesquisa agora
             </Link>
-            <Link href="/faq" className="button-ghost">
-              Ver FAQ comercial
-            </Link>
           </div>
-        </div>
+        </section>
 
         <DeliveryPreview />
-      </section>
+      </div>
     </main>
   );
 }

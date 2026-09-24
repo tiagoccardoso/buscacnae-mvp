@@ -1,27 +1,25 @@
 import Link from "next/link";
 import { useCasePages } from "@/lib/site-content";
+import { SectionHeader } from "@/components/ui/section-header";
 
 export function UseCasesSection() {
   return (
-    <section className="surface-premium card-lg stack">
-      <div className="stack" style={{ gap: 8 }}>
-        <span className="eyebrow">Casos de uso</span>
-        <h2 className="section-title">Entradas de aquisição por intenção</h2>
-        <p className="section-copy">
-          Páginas pensadas para tráfego orgânico, mídia paga e segmentação comercial sem inflar a mensagem do produto.
-        </p>
-      </div>
+    <section className="section section-spaced" aria-labelledby="use-cases-title">
+      <SectionHeader
+        id="use-cases-title"
+        eyebrow="Casos de uso"
+        title="Entradas de aquisição por intenção"
+        copy="Páginas pensadas para tráfego orgânico, mídia paga e segmentação comercial sem inflar a mensagem do produto."
+      />
 
-      <div className="grid-3 responsive-feature-grid">
+      <div className="grid-auto">
         {useCasePages.slice(0, 4).map((item) => (
-          <article key={item.slug} className="surface-soft card stack use-case-card">
-            <span className="eyebrow">{item.menuLabel}</span>
+          <Link key={item.slug} href={`/solucoes/${item.slug}`} className="link-card">
+            <span className="kicker">{item.menuLabel}</span>
             <strong>{item.title}</strong>
-            <span className="muted">{item.description}</span>
-            <Link href={`/solucoes/${item.slug}`} className="button-ghost">
-              Ver página
-            </Link>
-          </article>
+            <p>{item.description}</p>
+            <span className="link-card-cta">Ver página</span>
+          </Link>
         ))}
       </div>
     </section>

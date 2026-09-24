@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CommercialFaq } from "@/components/commercial-faq";
 import { buildPageMetadata } from "@/lib/seo";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata = buildPageMetadata({
   title: "FAQ comercial",
@@ -12,23 +13,23 @@ export const metadata = buildPageMetadata({
 export default function FaqPage() {
   return (
     <main className="page">
-      <section className="container stack">
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">FAQ comercial</span>
-          <h1 className="display-title" style={{ fontSize: "clamp(2.2rem, 4vw, 4rem)" }}>
-            Respostas diretas para decidir com menos dúvida.
-          </h1>
-          <p className="lead-copy">
-            Esta página reúne preço, dados, entrega, dashboard, recompra e outras respostas que normalmente travam a compra quando não estão claras.
-          </p>
-          <div className="inline-actions">
-            <Link href="/pricing" className="button-secondary">Ver preços</Link>
-            <Link href="/dados" className="button-ghost">Entender os dados</Link>
-          </div>
-        </div>
+      <div className="container container-narrow">
+        <PageHeader
+          eyebrow="FAQ comercial"
+          title="Respostas diretas para decidir com menos dúvida."
+          lead="Esta página reúne preço, dados, entrega, dashboard, recompra e outras respostas que normalmente travam a compra quando não estão claras."
+          actions={
+            <>
+              <Link href="/pricing" className="button-secondary">Ver preços</Link>
+              <Link href="/dados" className="button-ghost">Entender os dados</Link>
+            </>
+          }
+        />
 
-        <CommercialFaq />
-      </section>
+        <div className="section-spaced">
+          <CommercialFaq compact showHeader={false} />
+        </div>
+      </div>
     </main>
   );
 }

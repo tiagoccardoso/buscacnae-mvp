@@ -1,4 +1,5 @@
 import { buildPageMetadata } from "@/lib/seo";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata = buildPageMetadata({
   title: "Política de privacidade",
@@ -32,26 +33,24 @@ const items = [
 export default function PrivacyPage() {
   return (
     <main className="page">
-      <section className="container stack">
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Política de privacidade</span>
-          <h1 className="display-title" style={{ fontSize: "clamp(2.2rem, 4vw, 4rem)" }}>
-            Regras básicas de tratamento de dados na plataforma.
-          </h1>
-          <p className="lead-copy">
-            Este texto resume como a plataforma trata dados de conta, de pedidos e de uso do produto para operar autenticação, checkout, histórico e suporte.
-          </p>
-        </div>
+      <div className="container container-narrow">
+        <PageHeader
+          eyebrow="Política de privacidade"
+          title="Regras básicas de tratamento de dados na plataforma."
+          lead="Este texto resume como a plataforma trata dados de conta, de pedidos e de uso do produto para operar autenticação, checkout, histórico e suporte."
+        />
 
-        <div className="grid-2 trust-grid">
-          {items.map((item) => (
-            <article key={item.title} className="surface-premium card-lg stack">
-              <h2 className="section-title" style={{ fontSize: "1.35rem" }}>{item.title}</h2>
-              <p className="section-copy">{item.copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+        <section className="section section-spaced" aria-label="Política de privacidade">
+          <div className="stack-xl">
+            {items.map((item) => (
+              <article key={item.title} className="feature feature-rule">
+                <h2 className="title-3">{item.title}</h2>
+                <p>{item.copy}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

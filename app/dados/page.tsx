@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { buildPageMetadata } from "@/lib/seo";
 import { publicContactEmail } from "@/lib/site-content";
+import { PageHeader } from "@/components/ui/page-header";
+import { SectionHeader } from "@/components/ui/section-header";
 
 export const metadata = buildPageMetadata({
   title: "Dados, origem e atualização",
@@ -35,37 +37,42 @@ const sections = [
 export default function DataPage() {
   return (
     <main className="page">
-      <section className="container stack">
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Dados e atualização</span>
-          <h1 className="display-title" style={{ fontSize: "clamp(2.2rem, 4vw, 4rem)" }}>
-            De onde vêm os dados, o que entra na lista e o que esperar de forma realista.
-          </h1>
-          <p className="lead-copy">
-            Esta página foi criada para reduzir incerteza antes da compra. Ela explica origem, composição, atualização, recorte disponível e limites do material entregue.
-          </p>
-        </div>
+      <div className="container">
+        <PageHeader
+          eyebrow="Dados e atualização"
+          title="De onde vêm os dados, o que entra na lista e o que esperar de forma realista."
+          lead="Esta página foi criada para reduzir incerteza antes da compra. Ela explica origem, composição, atualização, recorte disponível e limites do material entregue."
+        />
 
-        <div className="grid-2 trust-grid">
-          {sections.map((section) => (
-            <article key={section.title} className="surface-premium card-lg stack">
-              <h2 className="section-title" style={{ fontSize: "1.35rem" }}>{section.title}</h2>
-              <p className="section-copy">{section.copy}</p>
-            </article>
-          ))}
-        </div>
+        <section className="section section-spaced" aria-label="Detalhes sobre os dados">
+          <div className="grid-2">
+            {sections.map((section) => (
+              <article key={section.title} className="feature feature-rule">
+                <h2 className="title-3">{section.title}</h2>
+                <p>{section.copy}</p>
+              </article>
+            ))}
+          </div>
+        </section>
 
-        <div className="surface-premium card-lg stack">
-          <span className="eyebrow">Contato</span>
-          <p className="section-copy">
-            Dúvidas sobre origem dos dados, entrega ou limites de uso podem ser enviadas para <a href={`mailto:${publicContactEmail}`}>{publicContactEmail}</a>.
-          </p>
-          <div className="inline-actions">
+        <section className="section section-spaced tile" aria-labelledby="data-contact">
+          <SectionHeader
+            id="data-contact"
+            eyebrow="Contato"
+            title="Ficou alguma dúvida?"
+            copy={
+              <span className="prose">
+                Dúvidas sobre origem dos dados, entrega ou limites de uso podem ser enviadas para{" "}
+                <a href={`mailto:${publicContactEmail}`}>{publicContactEmail}</a>.
+              </span>
+            }
+          />
+          <div className="cluster">
             <Link href="/faq" className="button-secondary">Ver FAQ</Link>
             <Link href="/contato" className="button-ghost">Abrir página de contato</Link>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }
