@@ -233,27 +233,76 @@ export function monthsEndingAt(referenceDate: string, count: number) {
 
 /* ------------------------------------------------------------------ filtro de abertura */
 
-/**
- * Valores aceitos no filtro de abertura (?abertura=):
- * "12m" (novas empresas), "AAAA" (ano), "AAAA-MM" (mês) ou "na" (sem data).
- */
-export function isOpenedFilterValue(value: string) {
-  return value === "12m" || value === NOT_INFORMED || /^\d{4}$/.test(value) || /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+/** Maior janela aceita em "Nm" (50 anos). */
+export const MAX_OPENED_WINDOW_MONTHS = 600;
+
+const WINDOW_FILTER = /^(\d{1,3})m$/;
+const YEAR_RANGE_FILTER = /^(\d{4}):(\d{4})$/;
+
+/** "24m" → 24; qualquer outra coisa → null. "12m" = novas empresas. */
+export function openedWindowMonths(value: string) {
+  const match = WINDOW_FILTER.exec(value);
+  if (!match) return null;
+  const months = Number(match[1]);
+  return months >= 1 && months <= MAX_OPENED_WINDOW_MONTHS ? months : null;
 }
 
-let cachedWindow: { reference: string; start: string } | null = null;
+/** "2019:2021" → { from: "2019", to: "2021" } (inclusivo); from > to → null. */
+export function openedYearRange(value: string) {
+  const match = YEAR_RANGE_FILTER.exec(value);
+  if (!match || match[1] > match[2] || Number(match[1]) < 1800) return null;
+  return { from: match[1], to: match[2] };
+}
 
-/** Início da janela de "novas" com cache da última referência (evita recalcular por empresa). */
-export function cachedWindowStart(referenceDate: string) {
-  if (cachedWindow?.reference !== referenceDate) cachedWindow = { reference: referenceDate, start: newCompanyWindowStart(referenceDate) };
-  return cachedWindow.start;
+/**
+ * Valores aceitos no filtro de abertura (?abertura=):
+ * - "12m" (novas empresas) ou, em geral, "Nm" = abertas nos últimos N meses (1–600),
+ *   janela [referência − N meses, referência] inclusiva (Fase 4: "últimos 2 anos" = "24m");
+ * - "AAAA" (ano), "AAAA-MM" (mês), "AAAA:AAAA" (anos, inclusivo) ou "na" (sem data).
+ */
+export function isOpenedFilterValue(value: string) {
+  return (
+    value === NOT_INFORMED ||
+    openedWindowMonths(value) !== null ||
+    openedYearRange(value) !== null ||
+    /^\d{4}$/.test(value) ||
+    /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
+  );
+}
+
+const windowCache = new Map<string, string>();
+
+/** Início (inclusivo) de uma janela de N meses, com cache por referência (evita recalcular por empresa). */
+export function cachedWindowStart(referenceDate: string, months = NEW_COMPANY_WINDOW_MONTHS) {
+  const cacheKey = `${referenceDate}|${months}`;
+  let start = windowCache.get(cacheKey);
+  if (start === undefined) {
+    if (windowCache.size > 64) windowCache.clear();
+    start = subtractMonthsIso(referenceDate, months);
+    windowCache.set(cacheKey, start);
+  }
+  return start;
+}
+
+function matchesOpenedDay(day: string | null, year: string, month: string, filter: string, referenceDate: string) {
+  const months = openedWindowMonths(filter);
+  if (months !== null) return day !== null && day >= cachedWindowStart(referenceDate, months) && day <= referenceDate;
+  if (filter === NOT_INFORMED) return year === NOT_INFORMED;
+  const range = openedYearRange(filter);
+  if (range) return year !== NOT_INFORMED && year >= range.from && year <= range.to;
+  if (filter.length === 4) return year === filter;
+  return month === filter;
 }
 
 export function matchesOpenedFilter(openedAt: string | null | undefined, filter: string, referenceDate: string) {
-  if (filter === "12m") return isNewCompany(openedAt, referenceDate, cachedWindowStart(referenceDate));
-  if (filter === NOT_INFORMED) return openedYearKey(openedAt) === NOT_INFORMED;
-  if (filter.length === 4) return openedYearKey(openedAt) === filter;
-  return openedMonthKey(openedAt) === filter;
+  const parts = parseIsoDay(openedAt);
+  return matchesOpenedDay(
+    parts ? formatIsoDay(parts) : null,
+    parts ? pad(parts.year, 4) : NOT_INFORMED,
+    parts ? `${pad(parts.year, 4)}-${pad(parts.month)}` : NOT_INFORMED,
+    filter,
+    referenceDate
+  );
 }
 
 const MONTH_LABELS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -265,8 +314,14 @@ export function formatMonthKey(key: string) {
 }
 
 export function openedFilterLabel(filter: string) {
-  if (filter === "12m") return `Abertas nos últimos ${NEW_COMPANY_WINDOW_MONTHS} meses`;
+  const months = openedWindowMonths(filter);
+  if (months !== null) {
+    if (months % 12 === 0 && months > 12) return `Abertas nos últimos ${months / 12} anos`;
+    return months === 1 ? "Abertas no último mês" : `Abertas nos últimos ${months} meses`;
+  }
   if (filter === NOT_INFORMED) return "Sem data de abertura";
+  const range = openedYearRange(filter);
+  if (range) return range.from === range.to ? `Abertas em ${range.from}` : `Abertas de ${range.from} a ${range.to}`;
   if (filter.length === 4) return `Abertas em ${filter}`;
   return `Abertas em ${formatMonthKey(filter)}`;
 }
@@ -323,8 +378,5 @@ export function computeFacetKeys(input: {
 
 /** Mesmo resultado de matchesOpenedFilter, usando as chaves pré-calculadas. */
 export function matchesOpenedKeys(keys: FacetKeys, filter: string, referenceDate: string) {
-  if (filter === "12m") return keys.day !== null && keys.day >= cachedWindowStart(referenceDate) && keys.day <= referenceDate;
-  if (filter === NOT_INFORMED) return keys.year === NOT_INFORMED;
-  if (filter.length === 4) return keys.year === filter;
-  return keys.month === filter;
+  return matchesOpenedDay(keys.day, keys.year, keys.month, filter, referenceDate);
 }

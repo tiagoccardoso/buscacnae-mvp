@@ -25,6 +25,7 @@ import {
 } from "@/lib/map/types";
 import { DEFAULT_COMPANY_TABLE_FILTERS, hasActiveFilters, type CompanyTableFilters } from "@/lib/results/company-table-model";
 import { pickFilterQuery, replaceUrlParams, writeCompanyFilters } from "@/lib/results/filter-params";
+import { useAiCommands } from "@/lib/ai/ui-bus";
 import { CompanyMapPanel } from "@/components/map/company-map-panel";
 import { MapFilters } from "@/components/map/map-filters";
 import { RegionInsights } from "@/components/map/region-insights";
@@ -133,6 +134,15 @@ export function BusinessMapWorkspace({
     setAreaMessage("");
     setMovedSinceLoad(false);
   }
+
+  // Comandos do "Pergunte ao BuscaCNAE": filtros (+ camada) pelo mesmo estado dos controles.
+  useAiCommands("mapa", (command) => {
+    setFilters(command.filters);
+    if (command.layer) setMode(command.layer);
+    setSelectedId(null);
+    setGroupIds([]);
+    setRegion(null);
+  });
 
   // Modelo único (MapCompany) com o estado "salvo" atualizado nesta sessão.
   const companies = useMemo<MapCompany[]>(() => {

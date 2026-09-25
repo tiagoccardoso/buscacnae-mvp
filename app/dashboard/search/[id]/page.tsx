@@ -30,6 +30,7 @@ import { loadSearchUniverse } from "@/lib/analytics/universe-server";
 import { analysisReferenceDate } from "@/lib/analytics/dimensions";
 import { UniverseSummary } from "@/components/analytics/universe-summary";
 import { MarketIntelligenceWorkspace } from "@/components/intelligence/market-intelligence-workspace";
+import { AskBuscaCnae } from "@/components/ai/ask-buscacnae";
 import { mapLayerFromParam } from "@/lib/map/types";
 import { getPublicMapConfig } from "@/lib/env";
 
@@ -187,6 +188,10 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
   return (
     <>
+      {/* Primeiro filho e com chave estável: a conversa sobrevive à troca Empresas/Mapa/Inteligência. */}
+      {hasStoredRows ? (
+        <AskBuscaCnae key={`ai-${id}`} searchId={id} view={view} companyHrefBase="/dashboard/companies/" headline={summary.headline} />
+      ) : null}
       {aiFormatMessage ? (
         <div className="stack-sm">
           <div className={`notice ${aiFormatMessage.type}`} role={aiFormatMessage.type === "danger" ? "alert" : "status"}>

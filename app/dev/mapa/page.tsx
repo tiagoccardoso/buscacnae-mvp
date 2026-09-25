@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { BusinessMapWorkspace } from "@/components/map/business-map-workspace";
 import { MarketIntelligenceWorkspace } from "@/components/intelligence/market-intelligence-workspace";
+import { AskBuscaCnae } from "@/components/ai/ask-buscacnae";
 import { getPublicMapConfig } from "@/lib/env";
 import { mapLayerFromParam } from "@/lib/map/types";
 import { parseCompanyFilters } from "@/lib/results/filter-params";
@@ -34,6 +35,15 @@ export default async function DevMapPage({ searchParams }: DevMapPageProps) {
 
   return (
     <main className="container section" style={{ paddingBlock: "var(--space-6)" }}>
+      <AskBuscaCnae
+        key={`ai-${size}`}
+        searchId={`dev-${size}`}
+        view={view}
+        endpoint={`/api/dev/ai-ask?n=${size}`}
+        resultsHref={`/dev/mapa?n=${size}`}
+        listView="mapa"
+        headline={`dados sintéticos · ${new Intl.NumberFormat("pt-BR").format(size)} empresas`}
+      />
       <nav className="cluster" aria-label="Volume de teste">
         {ALLOWED_SIZES.map((option) => (
           <a key={option} className={option === size ? "button button-sm" : "button-secondary button-sm"} href={`/dev/mapa?n=${option}&view=${view}`}>

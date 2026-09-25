@@ -20,6 +20,7 @@ import {
   type FacetFilterKey
 } from "@/lib/results/company-table-model";
 import { replaceUrlParams, writeCompanyFilters } from "@/lib/results/filter-params";
+import { useAiCommands } from "@/lib/ai/ui-bus";
 
 type MarketIntelligenceWorkspaceProps = {
   searchId: string;
@@ -71,6 +72,9 @@ export function MarketIntelligenceWorkspace({
       params.delete("camada");
     });
   }, [filters]);
+
+  // Comandos do "Pergunte ao BuscaCNAE" (mesmo setFilters dos controles da tela).
+  useAiCommands("inteligencia", (command) => setFilters(command.filters));
 
   const deferredQuery = useDeferredValue(filters.query);
   const effectiveFilters = useMemo(() => ({ ...filters, query: deferredQuery }), [filters, deferredQuery]);

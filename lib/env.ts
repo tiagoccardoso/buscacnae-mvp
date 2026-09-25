@@ -193,3 +193,36 @@ export function getPublicMapConfig(): PublicMapConfig {
     googleMapTilesKey: getEnv("NEXT_PUBLIC_GOOGLE_MAP_TILES_KEY")
   };
 }
+
+/* ---------------------------------------------------------------------------
+   IA Empresarial — "Pergunte ao BuscaCNAE" (ver docs/IA_EMPRESARIAL.md)
+   --------------------------------------------------------------------------- */
+
+/**
+ * Planejador das perguntas: "openai" (padrão quando OPENAI_API_KEY existe) ou "rules"
+ * (intérprete determinístico em pt-BR, sem rede). O motor de dados é o mesmo nos dois.
+ */
+export function getAiAssistantProvider(): "openai" | "rules" {
+  const value = getEnv("AI_ASSISTANT_PROVIDER").toLowerCase();
+  if (value === "rules") return "rules";
+  return getOpenAiApiKey() ? "openai" : "rules";
+}
+
+export function getAiAssistantModel() {
+  return getEnv("AI_ASSISTANT_MODEL") || getOpenAiModel();
+}
+
+/** Tempo máximo de cada chamada ao modelo (ms). Estourou → intérprete por regras. */
+export function getAiAssistantTimeoutMs() {
+  return readBoundedInt("AI_ASSISTANT_TIMEOUT_MS", 12000, 2000, 30000);
+}
+
+/** Interpretação em linguagem natural (2ª chamada ao modelo). "0" desliga. */
+export function isAiInterpretationEnabled() {
+  return getEnv("AI_ASSISTANT_INTERPRETATION") !== "0";
+}
+
+/** Perguntas por usuário a cada 10 minutos. */
+export function getAiAssistantRateLimit() {
+  return readBoundedInt("AI_ASSISTANT_RATE_LIMIT", 30, 1, 1000);
+}

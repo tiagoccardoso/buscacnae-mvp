@@ -100,6 +100,8 @@ Erros transitórios têm retry conservador; HTTP 429 não é repetido agressivam
 
 **Inteligência de Mercado (Fase 3).** A aba **Inteligência** mostra indicadores e gráficos (Apache ECharts) calculados de forma determinística sobre as mesmas empresas da lista e do mapa, com drill-down (clicar num município, CNAE, porte, faixa de capital ou período filtra Empresas, Mapa e Inteligência). Métricas, fórmulas, limites, decisão sobre DuckDB-Wasm e referência ao Apache Superset em [`docs/INTELIGENCIA_MERCADO.md`](docs/INTELIGENCIA_MERCADO.md). Validação local: `/dev/mapa?n=10000&view=inteligencia`.
 
+**IA Empresarial — “Pergunte ao BuscaCNAE” (Fase 4).** Botão flutuante no resultado da busca: perguntas em português sobre as empresas da busca (“Quais municípios têm mais empresas?”, “Compare Cascavel e Pato Branco”, “Mostre no mapa”, “Filtre somente ME”). O modelo de linguagem só escolhe uma ferramenta de leitura com argumentos validados; todo número é calculado pelo mesmo motor da Inteligência, e a resposta mostra filtros, universo, período e fonte, separando **Dado**, **Cálculo** e **Interpretação da IA**. Funciona sem chave (intérprete por regras); com `OPENAI_API_KEY`, usa o modelo para planejar e interpretar. Sem SQL gerado por IA. Detalhes, segurança e testes em [`docs/IA_EMPRESARIAL.md`](docs/IA_EMPRESARIAL.md). Validação local: `/dev/mapa?n=10000&view=inteligencia` → “Pergunte ao BuscaCNAE”.
+
 ## 5) Variáveis de ambiente
 
 Copie `.env.example` para `.env.local` e preencha os campos.

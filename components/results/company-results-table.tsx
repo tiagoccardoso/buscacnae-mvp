@@ -14,6 +14,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { CompanyListItem } from "@/lib/company-model";
 import { replaceUrlParams, writeCompanyFilters } from "@/lib/results/filter-params";
+import { useAiCommands } from "@/lib/ai/ui-bus";
 import { buildFilterLabelMaps } from "@/lib/analytics/labels";
 import { ActiveFilterChips, ExactStatusOption } from "@/components/analytics/active-filter-chips";
 import {
@@ -198,6 +199,8 @@ export function CompanyResultsTable({
 }: CompanyResultsTableProps) {
   const baseId = useId();
   const [filters, setFilters] = useState<CompanyTableFilters>(initialFilters ?? DEFAULT_COMPANY_TABLE_FILTERS);
+  // Comandos do "Pergunte ao BuscaCNAE" (só na tabela sincronizada com a URL da busca).
+  useAiCommands(syncFiltersToUrl ? "lista" : null, (command) => setFilters(command.filters));
 
   useEffect(() => {
     if (!syncFiltersToUrl) return;
