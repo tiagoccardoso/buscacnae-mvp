@@ -105,15 +105,33 @@ function buildPlaceholder(_table: string, _column: string, index: number) {
   return `$${index}`;
 }
 
+function splitSelectColumns(columns: string) {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+
+  for (let index = 0; index < columns.length; index += 1) {
+    const character = columns[index];
+    if (character === "(") {
+      depth += 1;
+    } else if (character === ")") {
+      depth = Math.max(0, depth - 1);
+    } else if (character === "," && depth === 0) {
+      parts.push(columns.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+
+  parts.push(columns.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
 function parseColumns(columns: string) {
   const trimmed = columns.trim();
   if (!trimmed || trimmed === "*") return { base: ["*"], relations: [] as string[] };
 
   const relations: string[] = [];
-  const base = trimmed
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
+  const base = splitSelectColumns(trimmed)
     .filter((item) => {
       const relation = item.match(/^([a-z_][a-z0-9_]*)\([^)]*\)$/i)?.[1];
       if (relation) {
