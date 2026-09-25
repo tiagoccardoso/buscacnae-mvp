@@ -27,6 +27,8 @@ export async function runAreaSearch(args: {
   email: string;
   sourceSearchId: string;
   bounds: GeoBounds;
+  /** Cancela a consulta à Casa dos Dados se o cliente desistir da requisição. */
+  signal?: AbortSignal | null;
 }): Promise<AreaSearchResponse> {
   if (!isUuid(args.sourceSearchId)) {
     return { ok: false, reason: "invalid", message: "Busca de origem inválida." };
@@ -86,7 +88,7 @@ export async function runAreaSearch(args: {
     capitalSocialMax: readNumberOrNull(payload.capitalSocialMax),
     activityStartYear: readNumberOrNull(payload.activityStartYear),
     activityStartYearExact: readBoolean(payload.activityStartYearExact)
-  });
+  }, { signal: args.signal });
 
   if (!result.ok) {
     return { ok: false, reason: "error", message: result.error };

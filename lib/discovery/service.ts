@@ -4,8 +4,11 @@ import { getDiscoveryAutoRefinementThreshold, getDiscoveryCacheTtlHours, getDisc
 import { DiscoveryProvider, DiscoverySearchInput, DiscoverySearchOutput, NormalizedEstablishment, ServiceResult } from "@/lib/types";
 import { normalizeCode, normalizeCnpj, normalizeText, sha256, toTitleCase } from "@/lib/utils";
 import { buildLeadPricingSummary } from "@/lib/lead-pricing";
-import { isCasaDosDadosError, resolveCasaDosDadosPaging, searchWithCasaDosDados } from "./providers/casadosdados";
+import { cleanNormalizedEstablishment } from "@/lib/data-quality";
+import { isCasaDosDadosAbort, isCasaDosDadosError, resolveCasaDosDadosPaging, searchWithCasaDosDados } from "./providers/casadosdados";
 import { ensureSearchAccessOrderForSearch } from "@/lib/billing";
+import { createStoredDetailLookup } from "./detail-store";
+import { insertSearchResults, upsertEstablishments } from "./persistence";
 
 type PublicCitySelection = {
   cityName: string;
@@ -41,16 +44,6 @@ type PrepareSearchOrderInput = {
 
 function normalizeCompanySizeLabel(value: string) {
   return normalizeCompanySizeInput(value) ?? "";
-}
-
-function parseCapitalValue(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const normalized = value.replace(/\./g, "").replace(",", ".");
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
 }
 
 function parseOpenedAtYear(value: unknown) {
@@ -218,6 +211,8 @@ function logTechnicalDiscoveryError(scope: string, error: unknown) {
 function formatServiceError(error: unknown, fallback: string) {
   if (isCasaDosDadosError(error)) {
     switch (error.kind) {
+      case "aborted":
+        return "A busca foi cancelada antes de terminar.";
       case "rate_limit":
         return "Muitas consultas em pouco tempo. Aguarde alguns instantes e tente novamente.";
       case "timeout":
@@ -312,7 +307,8 @@ function dedupeNormalizedRows(rows: NormalizedEstablishment[]) {
   for (const row of rows) {
     const normalizedCnpj = normalizeCnpj(row.cnpj);
     if (!normalizedCnpj) continue;
-    const hydrated = hydrateNormalizedEstablishment({ ...row, cnpj: normalizedCnpj });
+    // Linhas antigas do banco também passam pela higienização central antes de persistir.
+    const hydrated = cleanNormalizedEstablishment(hydrateNormalizedEstablishment({ ...row, cnpj: normalizedCnpj }));
     const existing = aggregated.get(normalizedCnpj);
     aggregated.set(normalizedCnpj, existing ? mergeNormalizedEstablishments(existing, hydrated) : hydrated);
   }
@@ -429,12 +425,18 @@ async function writeProviderCache(cacheKey: string, input: DiscoverySearchInput,
  * Consulta a Casa dos Dados reaproveitando o cache persistente (provider_cache) e
  * deduplicando buscas idênticas simultâneas (ex.: duplo envio do formulário).
  */
-async function searchCompaniesWithCache(input: DiscoverySearchInput): Promise<ProviderSearchResult> {
+async function searchCompaniesWithCache(input: DiscoverySearchInput, signal?: AbortSignal | null): Promise<ProviderSearchResult> {
   const cacheKey = buildProviderCacheKey(input);
 
   const pending = inFlightProviderSearches.get(cacheKey);
   if (pending) {
-    return { output: await pending, cached: false, cacheKey };
+    try {
+      return { output: await pending, cached: false, cacheKey };
+    } catch (error) {
+      // A busca compartilhada foi cancelada por outro chamador: esta segue normalmente.
+      if (!isCasaDosDadosAbort(error) || signal?.aborted) throw error;
+      return searchCompaniesWithCache(input, signal);
+    }
   }
 
   const cached = await readProviderCache(cacheKey);
@@ -443,7 +445,8 @@ async function searchCompaniesWithCache(input: DiscoverySearchInput): Promise<Pr
   }
 
   const request = (async () => {
-    const output = await searchWithCasaDosDados(input);
+    // Detalhes (GET /v4/cnpj) já salvos e recentes são reaproveitados do banco.
+    const output = await searchWithCasaDosDados(input, { storedDetails: createStoredDetailLookup(), signal });
     await writeProviderCache(cacheKey, input, output);
     return output;
   })().finally(() => {
@@ -532,7 +535,8 @@ function applyPublicFilters<
 }
 
 export async function prepareSearchOrder(
-  input: PrepareSearchOrderInput
+  input: PrepareSearchOrderInput,
+  options: { signal?: AbortSignal | null } = {}
 ): Promise<ServiceResult<{ orderId: string; searchId: string; accessToken: string }>> {
   try {
     const db = createDbClient();
@@ -623,7 +627,7 @@ export async function prepareSearchOrder(
         activityStartYearExact: input.activityStartYearExact
       };
 
-      const { output: providerResponse, cached } = await searchCompaniesWithCache(providerInput);
+      const { output: providerResponse, cached } = await searchCompaniesWithCache(providerInput, options.signal);
 
       const localRows = hasAdvancedPublicFilters(input)
         ? await fetchStoredEstablishmentsForTarget(target, cnaeCode)
@@ -746,77 +750,13 @@ export async function prepareSearchOrder(
     }
 
     if (allRows.length > 0) {
-      const establishmentsPayload = allRows.map((row) => ({
-        cnpj: row.cnpj,
-        cnpj_root: row.cnpjRoot,
-        company_name: row.companyName,
-        trade_name: row.tradeName,
-        registration_status: row.registrationStatus,
-        opened_at: row.openedAt,
-        primary_cnae_code: row.primaryCnaeCode,
-        primary_cnae_description: row.primaryCnaeDescription,
-        secondary_cnaes: row.secondaryCnaes,
-        legal_nature_code: row.legalNatureCode,
-        legal_nature_description: row.legalNatureDescription,
-        company_size: row.companySize,
-        simples_opt_in: row.simplesOptIn,
-        mei_opt_in: row.meiOptIn,
-        capital_social: row.capitalSocial,
-        email: row.email,
-        phone: row.phone,
-        website: row.website,
-        country: row.country,
-        state_code: row.stateCode,
-        city_name: row.cityName,
-        city_ibge: row.cityIbge,
-        neighborhood: row.neighborhood,
-        cep: row.cep,
-        address_line: row.addressLine,
-        address_number: row.addressNumber,
-        complement: row.complement,
-        provider_payload: row.providerPayload
-      }));
-
-      const { error: establishmentsError } = await db.from("establishments").upsert(establishmentsPayload, { onConflict: "cnpj" });
-
-      if (establishmentsError) {
-        throw establishmentsError;
-      }
-
-      const { data: storedEstablishments, error: storedEstablishmentsError } = await db
-        .from("establishments")
-        .select("id, cnpj")
-        .in(
-          "cnpj",
-          allRows.map((row) => row.cnpj)
-        );
-
-      if (storedEstablishmentsError) {
-        throw storedEstablishmentsError;
-      }
-
-      const establishmentMap = new Map((storedEstablishments ?? []).map((item) => [item.cnpj, item.id]));
-      const searchResultsPayload = allRows
-        .map((row, index) => {
-          const establishmentId = establishmentMap.get(row.cnpj);
-          if (!establishmentId) return null;
-          return {
-            search_query_id: insertedSearch.id,
-            profile_id: input.profileId,
-            establishment_id: establishmentId,
-            position: index + 1,
-            provider_payload: row.providerPayload
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => Boolean(item));
-
-      if (searchResultsPayload.length > 0) {
-        const { error: searchResultsError } = await db.from("search_results").insert(searchResultsPayload);
-
-        if (searchResultsError) {
-          throw searchResultsError;
-        }
-      }
+      const establishmentIds = await upsertEstablishments(db, allRows);
+      await insertSearchResults(db, {
+        searchQueryId: insertedSearch.id,
+        profileId: input.profileId,
+        rows: allRows,
+        establishmentIds
+      });
     }
 
     const order = await ensureSearchAccessOrderForSearch({
@@ -859,7 +799,8 @@ function normalizeInput(input: DiscoverySearchInput) {
 }
 
 export async function runDiscoverySearch(
-  input: DiscoverySearchInput
+  input: DiscoverySearchInput,
+  options: { signal?: AbortSignal | null } = {}
 ): Promise<ServiceResult<{ searchId: string }>> {
   try {
     const provider = getDiscoveryProvider();
@@ -888,7 +829,7 @@ export async function runDiscoverySearch(
       ? await fetchStoredEstablishmentsForTarget({ cityName: normalizedInput.cityName, stateCode: normalizedInput.stateCode }, normalizedInput.cnae)
       : [];
 
-    const { output: providerResponse, cached: cachedHit, cacheKey } = await searchCompaniesWithCache(normalizedInput);
+    const { output: providerResponse, cached: cachedHit, cacheKey } = await searchCompaniesWithCache(normalizedInput, options.signal);
     const providerTotalResults = providerResponse.providerTotalResults ?? null;
     const fetchedResults: number | null = providerResponse.fetchedResults ?? providerResponse.normalized.length;
     const hitFetchLimit = providerResponse.hitFetchLimit ?? false;
@@ -935,64 +876,7 @@ export async function runDiscoverySearch(
     };
     Object.assign(queryPayload, buildAutoRefinementMetadata(totalFound));
 
-    const establishmentsPayload = cleanRows.map((row) => ({
-      cnpj: row.cnpj,
-      cnpj_root: row.cnpjRoot,
-      company_name: row.companyName,
-      trade_name: row.tradeName,
-      registration_status: row.registrationStatus,
-      opened_at: row.openedAt,
-      primary_cnae_code: row.primaryCnaeCode,
-      primary_cnae_description: row.primaryCnaeDescription,
-      secondary_cnaes: row.secondaryCnaes,
-      legal_nature_code: row.legalNatureCode,
-      legal_nature_description: row.legalNatureDescription,
-      company_size: row.companySize,
-      simples_opt_in: row.simplesOptIn,
-      mei_opt_in: row.meiOptIn,
-      capital_social: row.capitalSocial,
-      email: row.email,
-      phone: row.phone,
-      website: row.website,
-      country: row.country,
-      state_code: row.stateCode,
-      city_name: row.cityName,
-      city_ibge: row.cityIbge,
-      neighborhood: row.neighborhood,
-      cep: row.cep,
-      address_line: row.addressLine,
-      address_number: row.addressNumber,
-      complement: row.complement,
-      provider_payload: row.providerPayload
-    }));
-
-    if (establishmentsPayload.length > 0) {
-      const { error: establishmentsError } = await db.from("establishments").upsert(establishmentsPayload, {
-        onConflict: "cnpj"
-      });
-
-      if (establishmentsError) {
-        throw establishmentsError;
-      }
-    }
-
-    const storedEstablishmentsResult = cleanRows.length
-      ? await db
-          .from("establishments")
-          .select("id, cnpj")
-          .in(
-            "cnpj",
-            cleanRows.map((row) => row.cnpj)
-          )
-      : { data: [] as Array<{ id: string; cnpj: string }>, error: null };
-
-    if (storedEstablishmentsResult.error) {
-      throw storedEstablishmentsResult.error;
-    }
-
-    const storedEstablishments = storedEstablishmentsResult.data;
-
-    const establishmentMap = new Map((storedEstablishments ?? []).map((item) => [item.cnpj, item.id]));
+    const establishmentMap = cleanRows.length > 0 ? await upsertEstablishments(db, cleanRows) : new Map<string, string>();
 
     const { data: insertedSearch, error: searchError } = await db
       .from("search_queries")
@@ -1016,38 +900,12 @@ export async function runDiscoverySearch(
     }
 
     if (cleanRows.length > 0) {
-      const searchResultsPayload = cleanRows
-        .map((row, index) => {
-          const establishmentId = establishmentMap.get(row.cnpj);
-          if (!establishmentId) return null;
-
-          return {
-            search_query_id: insertedSearch.id,
-            profile_id: normalizedInput.profileId,
-            establishment_id: establishmentId,
-            position: index + 1,
-            provider_payload: row.providerPayload
-          };
-        })
-        .filter(
-          (
-            item
-          ): item is {
-            search_query_id: string;
-            profile_id: string;
-            establishment_id: string;
-            position: number;
-            provider_payload: unknown;
-          } => item !== null
-        );
-
-      if (searchResultsPayload.length > 0) {
-        const { error: searchResultsError } = await db.from("search_results").insert(searchResultsPayload);
-
-        if (searchResultsError) {
-          throw searchResultsError;
-        }
-      }
+      await insertSearchResults(db, {
+        searchQueryId: insertedSearch.id,
+        profileId: normalizedInput.profileId,
+        rows: cleanRows,
+        establishmentIds: establishmentMap
+      });
     }
 
     return {

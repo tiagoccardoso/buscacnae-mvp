@@ -203,7 +203,36 @@ test("contatos vêm da consulta detalhada da Casa dos Dados", async () => {
   assert.equal(out.normalized[0].email, "a@b.com");
   assert.ok(out.normalized[0].phone);
   const payload = out.normalized[0].providerPayload as Record<string, unknown>;
-  assert.deepEqual(Object.keys(payload).sort(), ["casadosdados_detalhe", "casadosdados_pesquisa"]);
+  assert.deepEqual(Object.keys(payload).sort(), ["casadosdados_detalhe", "casadosdados_detalhe_em", "casadosdados_pesquisa"]);
+  assert.ok(!Number.isNaN(Date.parse(String(payload.casadosdados_detalhe_em))), "instante da consulta detalhada registrado");
+});
+
+test("detalhe já salvo e recente é reaproveitado: nenhuma chamada GET /v4/cnpj", async () => {
+  const searchRow = row();
+  const storedAt = new Date(Date.now() - 60_000).toISOString();
+  handler = (call) => call.method === "POST" ? json({ total: 1, cnpjs: [searchRow] }) : detailOk(call);
+  const lookedUp: string[][] = [];
+  const out = await searchWithCasaDosDados(base, {
+    storedDetails: async (cnpjs) => {
+      lookedUp.push(cnpjs);
+      return new Map([[String(searchRow.cnpj), { raw: { cnpj: searchRow.cnpj, contato_email: [{ email: "salvo@x.com" }] }, fetchedAt: storedAt }]]);
+    }
+  });
+  assert.equal(calls.filter((c) => c.method === "GET").length, 0, "não deve consultar o detalhe de novo");
+  assert.deepEqual(lookedUp, [[String(searchRow.cnpj)]]);
+  assert.equal(out.normalized[0].email, "salvo@x.com");
+  assert.equal(out.detailReused, 1);
+  assert.equal(out.detailRequests, 0);
+  const payload = out.normalized[0].providerPayload as Record<string, unknown>;
+  assert.equal(payload.casadosdados_detalhe_em, storedAt, "preserva o instante original (não renova o prazo)");
+});
+
+test("falha no reuso do banco não derruba a pesquisa: cai para a consulta detalhada", async () => {
+  handler = (call) => call.method === "POST" ? json({ total: 1, cnpjs: [row()] }) : detailOk(call);
+  const out = await searchWithCasaDosDados(base, { storedDetails: async () => { throw new Error("db down"); } });
+  assert.equal(calls.filter((c) => c.method === "GET").length, 1);
+  assert.equal(out.normalized[0].email, "a@b.com");
+  assert.equal(out.detailReused, 0);
 });
 
 test("18. nenhuma chamada fora da Casa dos Dados em todos os cenários", () => {
@@ -214,4 +243,76 @@ test("18. nenhuma chamada fora da Casa dos Dados em todos os cenários", () => {
 
 process.on("exit", () => {
   // noop
+});
+
+const isAborted = (error: unknown) => (error as { kind?: string })?.kind === "aborted";
+
+test("cancelamento: sinal já abortado não dispara nenhuma chamada", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  handler = () => json({ total: 1, cnpjs: [row()] });
+  await assert.rejects(searchWithCasaDosDados(base, { signal: controller.signal }), isAborted);
+  assert.equal(calls.length, 0);
+});
+
+test("cancelamento: requisição em andamento é abortada e não é repetida", async () => {
+  const controller = new AbortController();
+  handler = () => {
+    setTimeout(() => controller.abort(), 5);
+    return new Promise<Response>(() => {});
+  };
+  const started = Date.now();
+  await assert.rejects(searchWithCasaDosDados(base, { signal: controller.signal }), isAborted);
+  assert.equal(calls.length, 1);
+  assert.ok(Date.now() - started < 900, "não pode esperar o timeout");
+});
+
+test("cancelamento: interrompe o backoff de retry (503) sem nova tentativa", async () => {
+  const controller = new AbortController();
+  handler = () => {
+    setTimeout(() => controller.abort(), 5);
+    return new Response("", { status: 503 });
+  };
+  await assert.rejects(searchWithCasaDosDados(base, { signal: controller.signal }), isAborted);
+  assert.equal(calls.length, 1);
+});
+
+test("cancelamento: para a paginação e as consultas detalhadas", async () => {
+  process.env.DISCOVERY_PAGE_SIZE = "2";
+  const controller = new AbortController();
+  handler = (call) => {
+    if (call.method === "POST") {
+      controller.abort();
+      return json({ total: 10, cnpjs: [row(), row()] });
+    }
+    return detailOk(call);
+  };
+  await assert.rejects(searchWithCasaDosDados(base, { signal: controller.signal }), isAborted);
+  assert.equal(calls.filter((c) => c.method === "POST").length, 1);
+  assert.equal(calls.filter((c) => c.method === "GET").length, 0);
+});
+
+test("normalização central: telefone, CEP, UF, município e CNAE chegam limpos da Casa dos Dados", async () => {
+  handler = (call) => call.method === "POST"
+    ? json({ total: 1, cnpjs: [{
+        cnpj: "33.000.167/0001-01",
+        razao_social: "  “PADARIA  SAO JOAO LTDA” ​",
+        nome_fantasia: "-",
+        codigo_atividade_principal: 111301,
+        endereco: { uf: "sp", municipio: "SANTA BARBARA D'OESTE", cep: 1001000, numero: "SN", bairro: "CENTRO ," }
+      }] })
+    : json({ cnpj: "33000167000101", contato_telefonico: [{ completo: "+55 (11) 98765-4321" }], contato_email: [{ email: " CONTATO@PADARIA.COM.BR " }] });
+  const out = await searchWithCasaDosDados(base);
+  const item = out.normalized[0];
+  assert.equal(item.cnpj, "33000167000101");
+  assert.equal(item.companyName, "PADARIA SAO JOAO LTDA");
+  assert.equal(item.tradeName, null);
+  assert.equal(item.primaryCnaeCode, "0111301");
+  assert.equal(item.stateCode, "SP");
+  assert.equal(item.cityName, "Santa Barbara d'Oeste");
+  assert.equal(item.cep, "01001000");
+  assert.equal(item.addressNumber, "S/N");
+  assert.equal(item.neighborhood, "CENTRO");
+  assert.equal(item.phone, "(11) 98765-4321");
+  assert.equal(item.email, "contato@padaria.com.br");
 });

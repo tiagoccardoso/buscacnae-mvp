@@ -8,9 +8,9 @@ import {
   normalizeCode,
   normalizeText,
   parseBoolean,
-  parseNumber,
-  toTitleCase
+  parseNumber
 } from "@/lib/utils";
+import { cleanNormalizedEstablishment } from "@/lib/data-quality";
 
 
 type CasaDosDadosFieldSource = Record<string, unknown>;
@@ -43,7 +43,9 @@ export type CasaDosDadosErrorKind =
   | "timeout"
   | "network"
   | "invalid_request"
-  | "invalid_response";
+  | "invalid_response"
+  /** Cancelada pelo chamador (AbortSignal): nunca é repetida nem registrada como falha. */
+  | "aborted";
 
 export class CasaDosDadosError extends Error {
   readonly kind: CasaDosDadosErrorKind;
@@ -63,6 +65,10 @@ export function isCasaDosDadosError(error: unknown): error is CasaDosDadosError 
   return error instanceof CasaDosDadosError;
 }
 
+export function isCasaDosDadosAbort(error: unknown): boolean {
+  return error instanceof CasaDosDadosError && error.kind === "aborted";
+}
+
 function classifyHttpStatus(status: number): CasaDosDadosErrorKind {
   if (status === 401 || status === 403) return "auth";
   if (status === 429) return "rate_limit";
@@ -78,8 +84,31 @@ function parseRetryAfterMs(value: string | null) {
   return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
 }
 
-function sleep(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+function abortedError() {
+  return new CasaDosDadosError("aborted", "Consulta à Casa dos Dados cancelada.");
+}
+
+function throwIfAborted(signal?: AbortSignal | null) {
+  if (signal?.aborted) throw abortedError();
+}
+
+/** Espera cancelável: um cancelamento durante o backoff encerra a consulta na hora. */
+function sleep(ms: number, signal?: AbortSignal | null) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortedError());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortedError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /**
@@ -132,9 +161,19 @@ async function readCasaDosDadosJsonResponse(response: Response) {
   }
 }
 
-async function performCasaDosDadosRequest(path: string, method: "GET" | "POST", body: unknown, apiKey: string) {
+async function performCasaDosDadosRequest(
+  path: string,
+  method: "GET" | "POST",
+  body: unknown,
+  apiKey: string,
+  signal?: AbortSignal | null
+) {
+  throwIfAborted(signal);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), getCasaDosDadosTimeoutMs());
+  // Cancelamento externo (ex.: usuário saiu da página) aborta a requisição em andamento.
+  const forwardAbort = () => controller.abort();
+  signal?.addEventListener("abort", forwardAbort, { once: true });
 
   let response: Response;
   try {
@@ -150,12 +189,14 @@ async function performCasaDosDadosRequest(path: string, method: "GET" | "POST", 
       signal: controller.signal
     });
   } catch (error) {
+    if (signal?.aborted) throw abortedError();
     const aborted = controller.signal.aborted || (error instanceof Error && error.name === "AbortError");
     throw aborted
       ? new CasaDosDadosError("timeout", "Casa dos Dados não respondeu dentro do tempo limite.")
       : new CasaDosDadosError("network", "Falha de conexão com a Casa dos Dados.");
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", forwardAbort);
   }
 
   if (!response.ok) {
@@ -172,7 +213,13 @@ async function performCasaDosDadosRequest(path: string, method: "GET" | "POST", 
   return readCasaDosDadosJsonResponse(response);
 }
 
-async function requestCasaDosDados(path: string, method: "GET" | "POST", body: unknown, context: string): Promise<unknown> {
+async function requestCasaDosDados(
+  path: string,
+  method: "GET" | "POST",
+  body: unknown,
+  context: string,
+  signal?: AbortSignal | null
+): Promise<unknown> {
   let apiKey: string;
   try {
     apiKey = getCasaDosDadosKey();
@@ -184,15 +231,16 @@ async function requestCasaDosDados(path: string, method: "GET" | "POST", body: u
 
   for (let attempt = 0; ; attempt += 1) {
     try {
-      return await performCasaDosDadosRequest(path, method, body, apiKey);
+      return await performCasaDosDadosRequest(path, method, body, apiKey, signal);
     } catch (error) {
       const normalized = isCasaDosDadosError(error)
         ? error
         : new CasaDosDadosError("network", "Falha inesperada ao consultar a Casa dos Dados.");
+      if (normalized.kind === "aborted") throw normalized;
       const delay = computeRetryDelay(normalized, attempt);
       logCasaDosDadosFailure(context, normalized, attempt, delay !== null);
       if (delay === null) throw normalized;
-      await sleep(delay);
+      await sleep(delay, signal);
     }
   }
 }
@@ -427,10 +475,14 @@ function mergeSecondaryCnaes(base: unknown, detail: unknown) {
   return detail ?? base ?? null;
 }
 
-function mergeProviderPayload(searchPayload: unknown, detailPayload?: unknown) {
+/** Chave com o instante (ISO) em que a consulta detalhada foi obtida na Casa dos Dados. */
+export const CASA_DOS_DADOS_DETAIL_FETCHED_AT_KEY = "casadosdados_detalhe_em";
+
+function mergeProviderPayload(searchPayload: unknown, detailPayload?: unknown, detailFetchedAt?: string | null) {
   return {
     casadosdados_pesquisa: searchPayload ?? null,
-    casadosdados_detalhe: detailPayload ?? null
+    casadosdados_detalhe: detailPayload ?? null,
+    ...(detailPayload && detailFetchedAt ? { [CASA_DOS_DADOS_DETAIL_FETCHED_AT_KEY]: detailFetchedAt } : {})
   };
 }
 
@@ -515,22 +567,31 @@ function extractCasaDosDadosCnpj(item: Record<string, unknown>) {
   return normalizeCnpj(firstTextFromSources(sources, "cnpj", "cnpj_completo", "cnpj_formatado", "documento") ?? "");
 }
 
+const MISSING_COMPANY_NAME = "Sem razão social";
+
+function realCompanyName(value: string | null | undefined) {
+  return value && value !== MISSING_COMPANY_NAME ? value : null;
+}
+
 function mergeCasaDosDadosEstablishment(
   searchRow: NormalizedEstablishment,
   detailRow?: NormalizedEstablishment | null,
-  detailRaw?: unknown
+  detailRaw?: unknown,
+  detailFetchedAt?: string | null
 ): NormalizedEstablishment {
   if (!detailRow) {
     return {
       ...searchRow,
-      providerPayload: mergeProviderPayload(searchRow.providerPayload, detailRaw)
+      providerPayload: mergeProviderPayload(searchRow.providerPayload, detailRaw, detailFetchedAt)
     };
   }
 
   return {
     cnpj: detailRow.cnpj || searchRow.cnpj,
     cnpjRoot: pickFirstNonEmpty(detailRow.cnpjRoot, searchRow.cnpjRoot),
-    companyName: pickFirstNonEmpty(detailRow.companyName, searchRow.companyName) ?? searchRow.companyName,
+    // "Sem razão social" é só o marcador de ausência: não pode sobrepor o nome real da outra fonte.
+    companyName:
+      pickFirstNonEmpty(realCompanyName(detailRow.companyName), realCompanyName(searchRow.companyName)) ?? MISSING_COMPANY_NAME,
     tradeName: pickFirstNonEmpty(detailRow.tradeName, searchRow.tradeName),
     registrationStatus: pickFirstNonEmpty(detailRow.registrationStatus, searchRow.registrationStatus),
     openedAt: pickFirstNonEmpty(detailRow.openedAt, searchRow.openedAt),
@@ -555,7 +616,7 @@ function mergeCasaDosDadosEstablishment(
     addressLine: pickFirstNonEmpty(detailRow.addressLine, searchRow.addressLine),
     addressNumber: pickFirstNonEmpty(detailRow.addressNumber, searchRow.addressNumber),
     complement: pickFirstNonEmpty(detailRow.complement, searchRow.complement),
-    providerPayload: mergeProviderPayload(searchRow.providerPayload, detailRaw)
+    providerPayload: mergeProviderPayload(searchRow.providerPayload, detailRaw, detailFetchedAt)
   };
 }
 
@@ -603,7 +664,8 @@ export function normalizeCasaDosDadosEstablishment(
       ? (address.ibge as Record<string, unknown>)
       : null;
 
-  return {
+  // Toda linha passa pela etapa central de qualidade de dados (lib/data-quality).
+  return cleanNormalizedEstablishment({
     cnpj,
     cnpjRoot: normalizeCode(firstTextFromSources(sources, "cnpj_raiz", "cnpjRoot", "raiz_cnpj") ?? ""),
     companyName:
@@ -670,12 +732,36 @@ export function normalizeCasaDosDadosEstablishment(
     addressNumber: coalesceText(firstTextFromSources(sources, "numero", "address_number", "endereco_numero"), address?.numero),
     complement: coalesceText(firstTextFromSources(sources, "complemento", "complement"), address?.complemento),
     providerPayload: item
-  };
+  });
 }
 
-type CasaDosDadosDetail = {
+export type CasaDosDadosDetail = {
   raw: Record<string, unknown>;
   normalized: NormalizedEstablishment | null;
+  /** Instante (ISO) em que a Casa dos Dados respondeu a consulta detalhada. */
+  fetchedAt?: string;
+};
+
+/** Consulta detalhada já persistida (establishments.provider_payload) e ainda dentro da janela de reuso. */
+export type StoredCasaDosDadosDetail = {
+  raw: Record<string, unknown>;
+  fetchedAt: string;
+};
+
+/**
+ * Busca, em lote, consultas detalhadas já salvas. Implementada fora do provider
+ * (lib/discovery/detail-store.ts) para manter este módulo sem dependência de banco.
+ */
+export type StoredDetailLookup = (cnpjs: string[]) => Promise<Map<string, StoredCasaDosDadosDetail>>;
+
+export type CasaDosDadosSearchOptions = {
+  storedDetails?: StoredDetailLookup;
+  /**
+   * Cancelamento cooperativo: interrompe paginação, backoff e novas consultas detalhadas.
+   * Consultas detalhadas já em andamento são compartilhadas (dedupe) e não são abortadas,
+   * pois podem estar servindo outra busca simultânea; seu resultado vai para o cache.
+   */
+  signal?: AbortSignal | null;
 };
 
 // Cache em memória (por instância) + deduplicação de consultas detalhadas simultâneas.
@@ -706,16 +792,18 @@ async function loadCasaDosDadosCompanyByCnpj(normalizedCnpj: string): Promise<Ca
     ? rawPayload as Record<string, unknown>
     : { data: rawPayload };
 
+  return buildCasaDosDadosDetail(raw, new Date().toISOString());
+}
+
+/** Normaliza uma resposta do GET /v4/cnpj (nova ou reaproveitada do banco). */
+export function buildCasaDosDadosDetail(raw: Record<string, unknown>, fetchedAt: string): CasaDosDadosDetail {
   const normalized = normalizeCasaDosDadosEstablishment(raw);
 
   return {
     raw,
-    normalized: normalized
-      ? {
-          ...normalized,
-          cityName: normalized.cityName ? toTitleCase(normalized.cityName) : normalized.cityName
-        }
-      : null
+    fetchedAt,
+    // Município já chega em title case pt-BR pela etapa de qualidade de dados.
+    normalized
   };
 }
 
@@ -749,7 +837,22 @@ type DetailEnrichmentSummary = {
   succeeded: number;
   failed: number;
   skipped: number;
+  /** Linhas atendidas por consulta detalhada já salva (nenhuma chamada HTTP). */
+  reused: number;
 };
+
+async function loadStoredDetailsSafely(rows: NormalizedEstablishment[], lookup?: StoredDetailLookup) {
+  if (!lookup || rows.length === 0) return new Map<string, StoredCasaDosDadosDetail>();
+  try {
+    return await lookup(rows.map((row) => row.cnpj));
+  } catch (error) {
+    // Reuso é otimização: se o banco falhar, segue consultando a Casa dos Dados normalmente.
+    console.warn("[casadosdados] reuso de consulta detalhada indisponível", {
+      name: error instanceof Error ? error.name : "unknown"
+    });
+    return new Map<string, StoredCasaDosDadosDetail>();
+  }
+}
 
 /**
  * A pesquisa avançada não devolve contatos (e-mail/telefone) nem Simples/MEI;
@@ -758,12 +861,22 @@ type DetailEnrichmentSummary = {
  * Em erro de autenticação/configuração/rate limit o enriquecimento é interrompido
  * (circuit breaker) para não agravar o bloqueio nem gastar créditos inutilmente.
  */
-async function enrichWithCasaDosDadosDetails(rows: NormalizedEstablishment[]) {
-  const summary: DetailEnrichmentSummary = { attempted: 0, succeeded: 0, failed: 0, skipped: 0 };
+export async function enrichWithCasaDosDadosDetails(rows: NormalizedEstablishment[], options: CasaDosDadosSearchOptions = {}) {
+  const summary: DetailEnrichmentSummary = { attempted: 0, succeeded: 0, failed: 0, skipped: 0, reused: 0 };
   let halted = false;
+  const stored = await loadStoredDetailsSafely(rows, options.storedDetails);
 
   const enriched = await mapWithConcurrency(rows, DETAIL_CONCURRENCY, async (current) => {
-    if (halted) {
+    const reusable = stored.get(current.cnpj);
+    if (reusable) {
+      const detail = buildCasaDosDadosDetail(reusable.raw, reusable.fetchedAt);
+      if (detail.normalized) {
+        summary.reused += 1;
+        return mergeCasaDosDadosEstablishment(current, detail.normalized, detail.raw, detail.fetchedAt);
+      }
+    }
+
+    if (halted || options.signal?.aborted) {
       summary.skipped += 1;
       return mergeCasaDosDadosEstablishment(current, null, null);
     }
@@ -772,7 +885,7 @@ async function enrichWithCasaDosDadosDetails(rows: NormalizedEstablishment[]) {
     try {
       const detail = await fetchCasaDosDadosCompanyByCnpj(current.cnpj);
       summary.succeeded += 1;
-      return mergeCasaDosDadosEstablishment(current, detail.normalized, detail.raw);
+      return mergeCasaDosDadosEstablishment(current, detail.normalized, detail.raw, detail.fetchedAt ?? null);
     } catch (error) {
       summary.failed += 1;
       if (isCasaDosDadosError(error) && (error.kind === "rate_limit" || error.kind === "auth" || error.kind === "config")) {
@@ -782,8 +895,12 @@ async function enrichWithCasaDosDadosDetails(rows: NormalizedEstablishment[]) {
     }
   });
 
+  throwIfAborted(options.signal);
   if (summary.failed > 0 || summary.skipped > 0) {
     console.warn("[casadosdados] consulta detalhada incompleta", summary);
+  }
+  if (summary.reused > 0) {
+    console.info("[casadosdados] consultas detalhadas reaproveitadas do banco", { reused: summary.reused, requested: summary.attempted });
   }
 
   return { rows: enriched, summary };
@@ -863,7 +980,8 @@ export function resolveCasaDosDadosPaging() {
 }
 
 export async function searchWithCasaDosDados(
-  input: DiscoverySearchInput
+  input: DiscoverySearchInput,
+  options: CasaDosDadosSearchOptions = {}
 ): Promise<DiscoverySearchOutput> {
   const body = buildCasaDosDadosSearchBody(input);
   const { pageSize, maxResults, maxPages } = resolveCasaDosDadosPaging();
@@ -876,11 +994,13 @@ export async function searchWithCasaDosDados(
 
   // Paginação oficial (pagina/limite) com tamanho de página fixo para não pular nem repetir registros.
   for (let page = 1; page <= maxPages; page += 1) {
+    throwIfAborted(options.signal);
     const rawPage = await requestCasaDosDados(
       CASA_DOS_DADOS_SEARCH_PATH,
       "POST",
       { ...body, pagina: page, limite: pageSize },
-      "pesquisa"
+      "pesquisa",
+      options.signal
     );
     rawPages.push(rawPage);
     pagesFetched += 1;
@@ -920,19 +1040,18 @@ export async function searchWithCasaDosDados(
     .map((item) => normalizeCasaDosDadosEstablishment(item))
     .filter((item): item is NormalizedEstablishment => Boolean(item));
 
-  const enrichment = await enrichWithCasaDosDadosDetails(searchNormalized);
+  const enrichment = await enrichWithCasaDosDadosDetails(searchNormalized, options);
 
   return {
     provider: "casadosdados",
     raw: rawPages.length === 1 ? rawPages[0] : { paginas: rawPages },
-    normalized: enrichment.rows.map((item) => ({
-      ...item,
-      cityName: item.cityName ? toTitleCase(item.cityName) : item.cityName
-    })),
+    normalized: enrichment.rows,
     providerTotalResults,
     fetchedResults: enrichment.rows.length,
     pagesFetched,
     hitFetchLimit,
-    detailIncomplete: enrichment.summary.failed > 0 || enrichment.summary.skipped > 0
+    detailIncomplete: enrichment.summary.failed > 0 || enrichment.summary.skipped > 0,
+    detailRequests: enrichment.summary.attempted,
+    detailReused: enrichment.summary.reused
   };
 }

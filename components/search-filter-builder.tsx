@@ -23,6 +23,18 @@ type SearchFilterBuilderProps = {
   defaultActivityStartYearExact?: boolean;
 };
 
+/** Evita uma requisição por tecla nos combos de CNAE e cidade (a anterior já é abortada). */
+const QUERY_DEBOUNCE_MS = 220;
+
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 function normalizeText(value: string) {
   return value
     .trim()
@@ -392,6 +404,8 @@ export function SearchFilterBuilder({
   const [cnaeQuery, setCnaeQuery] = useState("");
   const [stateQuery, setStateQuery] = useState("");
   const [cityQuery, setCityQuery] = useState("");
+  const debouncedCnaeQuery = useDebouncedValue(cnaeQuery, QUERY_DEBOUNCE_MS);
+  const debouncedCityQuery = useDebouncedValue(cityQuery, QUERY_DEBOUNCE_MS);
   const [cnaeOptions, setCnaeOptions] = useState<PickerOption[]>([]);
   const [stateOptions, setStateOptions] = useState<PickerOption[]>([]);
   const [cityOptions, setCityOptions] = useState<CityOption[]>([]);
@@ -471,8 +485,8 @@ export function SearchFilterBuilder({
   useEffect(() => {
     const controller = new AbortController();
     const params = new URLSearchParams({
-      q: cnaeQuery.trim(),
-      limit: cnaeQuery.trim() ? "40" : "30"
+      q: debouncedCnaeQuery.trim(),
+      limit: debouncedCnaeQuery.trim() ? "40" : "30"
     });
 
     setCnaesLoading(true);
@@ -494,7 +508,7 @@ export function SearchFilterBuilder({
       });
 
     return () => controller.abort();
-  }, [cnaeQuery]);
+  }, [debouncedCnaeQuery]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -547,8 +561,8 @@ export function SearchFilterBuilder({
     const controller = new AbortController();
     const params = new URLSearchParams({
       states: stateCodes.join(","),
-      q: cityQuery.trim(),
-      limit: cityQuery.trim() ? "40" : "20"
+      q: debouncedCityQuery.trim(),
+      limit: debouncedCityQuery.trim() ? "40" : "20"
     });
 
     setCitiesLoading(true);
@@ -570,7 +584,7 @@ export function SearchFilterBuilder({
       });
 
     return () => controller.abort();
-  }, [cityQuery, selectedStates, stateWide]);
+  }, [debouncedCityQuery, selectedStates, stateWide]);
 
   function addCnae(option: PickerOption) {
     setSelectedCnaes((current) => uniqueByValue([...current, option]));

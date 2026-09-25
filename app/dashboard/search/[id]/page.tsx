@@ -3,7 +3,6 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/server";
 import { createDbClient } from "@/lib/db-client";
 import { EmptyState } from "@/components/empty-state";
-import { LeadToggleForm } from "@/components/lead-toggle-form";
 import { FormattedDownloadButtons } from "@/components/formatted-download-buttons";
 import { AiFormatProcessingPanel } from "@/components/ai-format-processing-panel";
 import {
@@ -15,15 +14,14 @@ import {
   type SearchAccessOrderRecord,
   type SearchAiFormatOrderRecord
 } from "@/lib/billing";
-import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime, formatMoney } from "@/lib/format";
 import { getSearchSummary } from "@/lib/search-summary";
-import { extractSingleObject } from "@/lib/utils";
 import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
-import { mergeEstablishmentSources } from "@/lib/establishment-canonical";
-import { companySummaryFromEstablishment } from "@/lib/company-model";
+import { companyFromSearchRow, toCompanyListItem, type CompanyListItem } from "@/lib/company-model";
 import { getAiFormatPricingTable, getAiFormattingPriceSummary } from "@/lib/ai-format-pricing";
-import { buildAddressSummary } from "@/lib/establishment-detail-sections";
+import { CompanyResultsTable } from "@/components/results/company-results-table";
+import { saveSelectedEstablishmentsAction, toggleSavedEstablishmentAction } from "@/app/dashboard/actions";
 import { ResultsViewToggle } from "@/components/map/results-view-toggle";
 import { BusinessMapWorkspace } from "@/components/map/business-map-workspace";
 import { getPublicMapConfig } from "@/lib/env";
@@ -157,6 +155,20 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const autoStartAiProcessing = aiFormatState === "success" && aiFormatUnlocked && aiFormatProcessingStatus === "idle";
   const unlockedRows = orderUnlocked ? rows ?? [] : (rows ?? []).slice(0, 1);
   const hiddenResultsCount = Math.max(0, (rows?.length ?? 0) - unlockedRows.length);
+  // Modelo normalizado (Company → CompanyListItem): só campos exibidos vão ao navegador,
+  // nunca o payload bruto da Casa dos Dados.
+  const listItems: CompanyListItem[] = view === "mapa"
+    ? []
+    : unlockedRows
+        .map((row) => {
+          const company = companyFromSearchRow(row);
+          if (!company || !company.cnpj) return null;
+          return toCompanyListItem(company, {
+            position: Number(row.position ?? 0),
+            saved: savedSet.has(String(row.establishment_id ?? company.id))
+          });
+        })
+        .filter((item): item is CompanyListItem => item !== null);
 
   return (
     <>
@@ -420,68 +432,15 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
             </div>
           ) : null}
 
-          <div className="result-list">
-            {unlockedRows.map((row) => {
-              const establishment = extractSingleObject(row.establishments);
-              if (!establishment) return null;
-
-              const establishmentId = String(establishment.id);
-              const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
-              // Mesmo modelo normalizado usado pelo Mapa Empresarial (lib/company-model.ts).
-              const canonical = companySummaryFromEstablishment(mergedEstablishment);
-              const companyName = canonical.legalName;
-              const cnpj = canonical.cnpj;
-              const cityName = canonical.cityName ?? "-";
-              const stateCode = canonical.stateCode ?? "-";
-              const status = canonical.status ?? "-";
-              const addressSummary = buildAddressSummary(mergedEstablishment);
-              const missing = "Não retornado pela API";
-
-              return (
-                <article key={establishmentId} className="result-item">
-                  <div className="result-item-head">
-                    <span className="result-item-index">#{row.position}</span>
-                    <div className="result-item-title">
-                      <strong>{companyName}</strong>
-                      <span>{canonical.tradeName || "Nome fantasia não informado"}</span>
-                    </div>
-                  </div>
-                  <dl className="result-meta">
-                    <div>
-                      <dt>CNPJ</dt>
-                      <dd className="numeric">{formatCnpj(cnpj)}</dd>
-                    </div>
-                    <div>
-                      <dt>Cidade</dt>
-                      <dd>{cityName}/{stateCode}</dd>
-                    </div>
-                    <div>
-                      <dt>Status</dt>
-                      <dd>{status}</dd>
-                    </div>
-                    <div>
-                      <dt>Telefone</dt>
-                      <dd className={canonical.phone ? undefined : "is-missing"}>{canonical.phone ?? missing}</dd>
-                    </div>
-                    <div>
-                      <dt>E-mail</dt>
-                      <dd className={canonical.email ? undefined : "is-missing"}>{canonical.email ?? missing}</dd>
-                    </div>
-                    <div>
-                      <dt>Endereço</dt>
-                      <dd className={addressSummary ? undefined : "is-missing"}>{addressSummary ?? missing}</dd>
-                    </div>
-                  </dl>
-                  <div className="result-item-actions">
-                    <Link href={`/dashboard/companies/${encodeURIComponent(cnpj)}`} className="button-ghost button-sm">
-                      Ver ficha
-                    </Link>
-                    <LeadToggleForm establishmentId={establishmentId} isSaved={savedSet.has(establishmentId)} size="sm" />
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+          <CompanyResultsTable
+            items={listItems}
+            variant="dashboard"
+            caption={`Empresas da busca: ${summary.headline}`}
+            showCompanyLink
+            saveSelectionAction={saveSelectedEstablishmentsAction}
+            toggleSavedAction={toggleSavedEstablishmentAction}
+            csvFileName={`buscacnae-selecao-${id.slice(0, 8)}`}
+          />
         </section>
       )}
     </>

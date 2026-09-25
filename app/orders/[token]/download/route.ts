@@ -3,6 +3,8 @@ import { getSearchAccessOrderByAccessToken, syncSearchAccessOrderPaymentStatus }
 import { mergeEstablishmentSources } from "@/lib/establishment-canonical";
 import { buildDisplayEstablishment, getEstablishmentPayload } from "@/lib/establishment-presenter";
 import { createXlsxWorkbook } from "@/lib/export/xlsx";
+import { buildCompanyCrmSheet } from "@/lib/export/company-sheet";
+import { companyFromEstablishment, type Company } from "@/lib/company-model";
 import { buildEstablishmentDetailSections } from "@/lib/establishment-detail-sections";
 import { formatCnpj, formatDate, formatMoney } from "@/lib/format";
 import { createDbClient } from "@/lib/db-client";
@@ -133,38 +135,7 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
       .order("position", { ascending: true })
   ]);
 
-  const crmSheetRows: string[][] = [
-    [
-      "Posição",
-      "CNPJ",
-      "Raiz do CNPJ",
-      "Razão Social",
-      "Nome Fantasia",
-      "Situação Cadastral",
-      "Data de Abertura",
-      "CNAE Principal",
-      "Descrição CNAE Principal",
-      "CNAEs Secundários",
-      "Código Natureza Jurídica",
-      "Natureza Jurídica",
-      "Porte",
-      "Simples",
-      "MEI",
-      "Capital Social",
-      "Telefone",
-      "E-mail",
-      "Site",
-      "País",
-      "UF",
-      "Cidade",
-      "IBGE Cidade",
-      "Bairro",
-      "CEP",
-      "Endereço",
-      "Número",
-      "Complemento"
-    ]
-  ];
+  const crmEntries: Array<{ position: number; company: Company }> = [];
 
   const fichaSheetRows: string[][] = [
     ["Posição", "CNPJ", "Razão Social", "Grupo", "Campo", "Valor"]
@@ -176,49 +147,20 @@ export async function GET(_request: Request, { params }: DownloadRouteProps) {
 
     const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
 
-    const display = buildDisplayEstablishment(mergedEstablishment);
-
-    crmSheetRows.push([
-      toCell(row.position),
-      formatCnpj(toCell(display.cnpj)),
-      toCell(display.cnpj_root),
-      toCell(display.company_name),
-      toCell(display.trade_name),
-      toCell(display.registration_status),
-      formatMaybeDate(display.opened_at),
-      toCell(display.primary_cnae_code),
-      toCell(display.primary_cnae_description),
-      formatSecondaryCnaes(display.secondary_cnaes),
-      toCell(display.legal_nature_code),
-      toCell(display.legal_nature_description),
-      toCell(display.company_size),
-      toCell(display.simples_opt_in),
-      toCell(display.mei_opt_in),
-      formatMaybeMoney(display.capital_social),
-      toCell(display.phone),
-      toCell(display.email),
-      toCell(display.website),
-      toCell(display.country),
-      toCell(display.state_code),
-      toCell(display.city_name),
-      toCell(display.city_ibge),
-      toCell(display.neighborhood),
-      toCell(display.cep),
-      toCell(display.address_line),
-      toCell(display.address_number),
-      toCell(display.complement)
-    ]);
+    // Planilha CRM a partir do modelo normalizado (lib/company-model.ts).
+    crmEntries.push({ position: Number(row.position ?? 0), company: companyFromEstablishment(mergedEstablishment) });
 
     fichaSheetRows.push(...buildFichaRows(row.position, mergedEstablishment));
   }
 
+  const crmSheet = buildCompanyCrmSheet(crmEntries);
   const workbook = createXlsxWorkbook({
     sheets: [
       {
         name: "Leads CRM",
-        rows: crmSheetRows,
-        columnWidths: [10, 22, 16, 34, 28, 18, 14, 16, 34, 46, 16, 28, 18, 10, 10, 16, 18, 30, 24, 12, 8, 22, 14, 18, 14, 44, 12, 18],
-        wrapColumns: [8, 9, 11, 16, 17, 24, 25, 27],
+        rows: crmSheet.rows,
+        columnWidths: crmSheet.columnWidths,
+        wrapColumns: crmSheet.wrapColumns,
         freezeHeader: true,
         autoFilter: true
       },

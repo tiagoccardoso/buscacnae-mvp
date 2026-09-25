@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await runAreaSearch({ profileId: user.id, email: user.email ?? "", sourceSearchId: searchId, bounds });
+    const result = await runAreaSearch({ profileId: user.id, email: user.email ?? "", sourceSearchId: searchId, bounds, signal: request.signal });
     if (result.ok) {
       revalidatePath("/dashboard");
       revalidatePath("/dashboard/history");

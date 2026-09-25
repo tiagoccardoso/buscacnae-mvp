@@ -1,6 +1,7 @@
 import { findMunicipality, findStateCentroid } from "@/lib/geo/municipalities";
 import { isFiniteCoordinate, isWithinBrazil, parseCoordinate, spreadPosition } from "@/lib/map/geo";
 import type { CompanyLocation, LocationPrecision, LocationSource } from "@/lib/map/types";
+import { normalizeCep as normalizeCepValue } from "@/lib/data-quality/normalize";
 
 /**
  * Estratégia de localização (ordem de preferência):
@@ -66,9 +67,9 @@ export function extractProviderCoordinates(payload: unknown) {
   return { address, municipality };
 }
 
+/** Regra única de CEP (lib/data-quality): 8 dígitos, zero à esquerda recuperado, "00000000" inválido. */
 export function normalizeCep(value: string | null | undefined) {
-  const digits = (value ?? "").replace(/\D/g, "");
-  return digits.length === 8 && !/^0+$/.test(digits) ? digits : null;
+  return normalizeCepValue(value);
 }
 
 function build(input: LocationInput, coordinates: Coordinates, precision: LocationPrecision, source: LocationSource): CompanyLocation {

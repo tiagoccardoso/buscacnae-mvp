@@ -49,7 +49,11 @@ export type EstablishmentRow = {
 export type CompanyDetailFetcher = (cnpj: string) => Promise<{
   raw: Record<string, unknown>;
   normalized: NormalizedEstablishment | null;
+  fetchedAt?: string;
 }>;
+
+/** Mesmo nome de chave usado pelo provider (lib/discovery/providers/casadosdados.ts). */
+const DETAIL_FETCHED_AT_KEY = "casadosdados_detalhe_em";
 
 export type CompanyProfileResult = {
   company: EstablishmentRow;
@@ -88,19 +92,20 @@ export function needsDetailedRefresh(row: EstablishmentRow) {
   return detailedFields.filter(hasValue).length < 8;
 }
 
-function mergeProviderPayload(existingPayload: unknown, detailedPayload: Record<string, unknown>) {
+function mergeProviderPayload(existingPayload: unknown, detailedPayload: Record<string, unknown>, fetchedAt?: string) {
   const detailKey = "casadosdados_detalhe";
   const sanitizedExisting = sanitizeProviderPayload(existingPayload);
+  const stamp = fetchedAt ? { [DETAIL_FETCHED_AT_KEY]: fetchedAt } : {};
 
   if (sanitizedExisting && typeof sanitizedExisting === "object" && !Array.isArray(sanitizedExisting)) {
-    return { ...(sanitizedExisting as Record<string, unknown>), [detailKey]: detailedPayload };
+    return { ...(sanitizedExisting as Record<string, unknown>), [detailKey]: detailedPayload, ...stamp };
   }
 
   if (sanitizedExisting) {
-    return { casadosdados_pesquisa: sanitizedExisting, [detailKey]: detailedPayload };
+    return { casadosdados_pesquisa: sanitizedExisting, [detailKey]: detailedPayload, ...stamp };
   }
 
-  return { [detailKey]: detailedPayload };
+  return { [detailKey]: detailedPayload, ...stamp };
 }
 
 /**
@@ -127,7 +132,7 @@ export function mergeEstablishmentRow(
   current: EstablishmentRow,
   normalized: NormalizedEstablishment,
   detailedPayload: Record<string, unknown>,
-  options: { authoritative?: boolean } = {}
+  options: { authoritative?: boolean; fetchedAt?: string } = {}
 ): EstablishmentRow {
   const pick = <K extends keyof EstablishmentRow>(key: K, next: EstablishmentRow[K] | null | undefined) => {
     if (next !== null && next !== undefined && !(typeof next === "string" && !next.trim())) return next;
@@ -164,7 +169,7 @@ export function mergeEstablishmentRow(
     address_line: pick("address_line", normalized.addressLine),
     address_number: pick("address_number", normalized.addressNumber),
     complement: pick("complement", normalized.complement),
-    provider_payload: mergeProviderPayload(current.provider_payload, detailedPayload)
+    provider_payload: mergeProviderPayload(current.provider_payload, detailedPayload, options.fetchedAt)
   };
 }
 
@@ -219,7 +224,10 @@ export async function resolveCompanyProfile(
   try {
     const detail = await fetchDetail(row.cnpj);
     if (detail.normalized) {
-      const merged = mergeEstablishmentRow(sanitizedRow, detail.normalized, detail.raw, { authoritative: legacy });
+      const merged = mergeEstablishmentRow(sanitizedRow, detail.normalized, detail.raw, {
+        authoritative: legacy,
+        fetchedAt: detail.fetchedAt
+      });
       return {
         company: merged,
         updatePayload: buildEstablishmentUpdatePayload(merged),

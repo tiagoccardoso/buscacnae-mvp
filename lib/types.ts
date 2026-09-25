@@ -40,6 +40,10 @@ export type DiscoverySearchOutput = {
   hitFetchLimit?: boolean;
   /** true quando a consulta detalhada (contatos) não pôde ser concluída para todas as linhas. */
   detailIncomplete?: boolean;
+  /** Consultas detalhadas (GET /v4/cnpj) efetivamente disparadas nesta busca. */
+  detailRequests?: number;
+  /** Linhas atendidas por consulta detalhada já salva no banco (sem chamada HTTP). */
+  detailReused?: number;
 };
 
 export type NormalizedEstablishment = {

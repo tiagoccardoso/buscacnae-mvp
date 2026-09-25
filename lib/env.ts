@@ -79,6 +79,17 @@ export function getDiscoveryCacheTtlHours() {
   return Number(getEnv("DISCOVERY_CACHE_TTL_HOURS") || "24");
 }
 
+/**
+ * Janela (horas) em que uma consulta detalhada da Casa dos Dados já salva em
+ * establishments é reaproveitada pela pesquisa, sem nova chamada GET /v4/cnpj.
+ * 0 desliga o reuso. Padrão: 168h (7 dias).
+ */
+export function getDiscoveryDetailReuseHours() {
+  const raw = getEnv("DISCOVERY_DETAIL_REUSE_HOURS");
+  const value = Number(raw === "" ? "168" : raw);
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 24 * 90) : 0;
+}
+
 export function getDiscoveryMaxResults() {
   return Number(getEnv("DISCOVERY_MAX_RESULTS") || "0");
 }
@@ -133,6 +144,18 @@ export function getMapGeocodingConfig() {
   return {
     provider: provider === "brasilapi" ? "brasilapi" : "none",
     maxLookups: readBoundedInt("MAP_GEOCODING_MAX_LOOKUPS", 25, 0, 200)
+  };
+}
+
+/**
+ * Server-side apenas. Diretório de CEP usado SOMENTE como complemento territorial
+ * (lib/geo/postal-code-directory.ts). Desligado por padrão ("none").
+ */
+export function getPostalDirectoryConfig() {
+  const provider = getEnv("LOCATION_POSTAL_DIRECTORY").toLowerCase();
+  return {
+    provider: provider === "opencep" ? "opencep" : "none",
+    maxLookups: readBoundedInt("LOCATION_POSTAL_DIRECTORY_MAX_LOOKUPS", 20, 0, 200)
   };
 }
 

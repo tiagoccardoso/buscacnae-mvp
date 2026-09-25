@@ -129,7 +129,8 @@ test("abrir ficha legada revalida só na Casa dos Dados e substitui campos que v
   assert.ok(!requested.some((url) => /cnpj\.ws/i.test(url)));
   // E-mail antigo (só existia na CNPJ.ws) não é mantido; telefone passa a ser o da Casa dos Dados.
   assert.equal(result.company.email, null);
-  assert.equal(result.company.phone, "11987654321");
+  // Telefone canônico (lib/data-quality): DDD + máscara brasileira.
+  assert.equal(result.company.phone, "(11) 98765-4321");
   assert.equal(result.company.simples_opt_in, null);
   // Campos da pesquisa da Casa dos Dados são preservados quando o detalhe não os traz.
   assert.equal(result.company.primary_cnae_code, "4781400");

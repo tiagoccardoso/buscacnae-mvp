@@ -1188,3 +1188,152 @@
   text-underline-offset: 0.12em;
   text-decoration-thickness: 2px;
 }
+
+/* ---------------------------------------------------------------------------
+   Tabela de resultados (TanStack Table + Virtual) — components/results
+   --------------------------------------------------------------------------- */
+
+.results-toolbar {
+  display: grid;
+  grid-template-columns: minmax(14rem, 2fr) repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-4) var(--space-5);
+  align-items: end;
+}
+
+.results-toolbar .field {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .results-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.results-summary {
+  gap: var(--space-3);
+  min-height: var(--control-height-sm);
+}
+
+.results-selection-bar {
+  position: sticky;
+  top: var(--space-4);
+  z-index: var(--z-sticky);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-1);
+}
+
+.results-table-wrap.is-virtualized {
+  max-height: min(72vh, 56rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--radius-md);
+}
+
+.results-table-wrap.is-virtualized:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Cada empresa é um <tbody> (linha + detalhe opcional) para a medição dinâmica
+   do virtualizador; a borda inferior passa a ser por grupo. */
+.results-table tbody tr:last-child td {
+  border-bottom: var(--border-thin) solid var(--separator);
+}
+
+.results-table tbody.is-selected > tr:first-child {
+  background: var(--accent-soft);
+}
+
+.results-table tr.results-spacer,
+.results-table tr.results-spacer:hover {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.results-table .cell-select {
+  width: 2.5rem;
+  padding-right: 0;
+}
+
+.results-checkbox {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.sort-button:hover {
+  color: var(--label);
+}
+
+.sort-indicator {
+  color: var(--label-tertiary);
+  font-size: var(--text-caption);
+}
+
+.sort-indicator.is-active {
+  color: var(--accent);
+}
+
+.results-pill {
+  justify-self: start;
+  margin-top: var(--space-1);
+}
+
+.results-table .is-missing {
+  color: var(--label-tertiary);
+}
+
+.results-empty {
+  justify-items: start;
+  padding: var(--space-6) 0;
+  color: var(--label-secondary);
+}
+
+.results-detail {
+  max-width: var(--measure);
+}
+
+.results-pagination {
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.results-page-size {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.results-page-size .input {
+  width: auto;
+}
+
+@media (max-width: 820px) {
+  .results-table .cell-select {
+    width: auto;
+  }
+
+  .results-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+}

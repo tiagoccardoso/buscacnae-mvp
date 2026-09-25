@@ -6,6 +6,8 @@ import { formatCnpj } from "@/lib/format";
 import { createDbClient } from "@/lib/db-client";
 import { getCurrentUser } from "@/lib/auth/server";
 import { resolveCompanyProfile, type EstablishmentRow } from "@/lib/company-profile";
+import { companyFromEstablishment } from "@/lib/company-model";
+import { normalizeCnpj } from "@/lib/utils";
 
 type CompanyPageProps = {
   params: Promise<{ cnpj: string }>;
@@ -24,7 +26,17 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
     redirect("/sign-in");
   }
 
-  const normalizedCnpj = decodeURIComponent(cnpj);
+  // CNPJ sempre normalizado (aceita máscara na URL; numérico ou alfanumérico de 14 posições).
+  let decodedCnpj = cnpj;
+  try {
+    decodedCnpj = decodeURIComponent(cnpj);
+  } catch {
+    notFound();
+  }
+  const normalizedCnpj = normalizeCnpj(decodedCnpj);
+  if (normalizedCnpj.length !== 14) {
+    notFound();
+  }
 
   const { data } = await db
     .from("establishments")
@@ -44,6 +56,8 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
     });
   });
   const company = profile.company;
+  // Modelo normalizado para o cabeçalho da ficha (situação, matriz/filial, localidade).
+  const normalized = companyFromEstablishment(company as unknown as Record<string, unknown>);
 
   if (profile.updatePayload) {
     const { error } = await db.from("establishments").update(profile.updatePayload).eq("id", company.id);
@@ -77,6 +91,20 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
           {company.company_name}
         </h2>
         <p className="footnote numeric">{formatCnpj(company.cnpj)}</p>
+        <div className="inline-list" aria-label="Resumo cadastral">
+          {normalized.status ? (
+            <span className={`pill ${normalized.status.trim().toUpperCase() === "ATIVA" ? "success" : "warning"}`}>{normalized.status}</span>
+          ) : null}
+          {normalized.headquartersOrBranch ? (
+            <span className="pill">{normalized.headquartersOrBranch === "matriz" ? "Matriz" : "Filial"}</span>
+          ) : null}
+          {normalized.address.city ? (
+            <span className="pill">
+              {normalized.address.city}
+              {normalized.address.state ? `/${normalized.address.state}` : ""}
+            </span>
+          ) : null}
+        </div>
         <p className="section-copy">
           Informações cadastrais da Casa dos Dados, reunidas em uma leitura única.
         </p>

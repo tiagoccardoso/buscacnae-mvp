@@ -1,16 +1,14 @@
 import type { Metadata } from "next";
-import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { EstablishmentDetails } from "@/components/establishment-details";
 import { getSearchAccessOrderByAccessToken, syncSearchAccessOrderPaymentStatus } from "@/lib/billing";
 import { createDbClient } from "@/lib/db-client";
-import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime, formatMoney } from "@/lib/format";
 import { getSearchSummary } from "@/lib/search-summary";
-import { extractSingleObject } from "@/lib/utils";
 import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
-import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
+import { companyFromSearchRow, toCompanyListItem, type CompanyListItem } from "@/lib/company-model";
+import { CompanyResultsTable } from "@/components/results/company-results-table";
 
 export const metadata: Metadata = {
   robots: {
@@ -46,13 +44,25 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
     notFound();
   }
 
-  const { data: rows } = await db
-    .from("search_results")
-    .select("position, establishment_id, provider_payload, establishments(*)")
-    .eq("search_query_id", currentOrder.search_query_id)
-    .order("position", { ascending: true });
-
   const unlocked = currentOrder.status === "paid" || currentOrder.status === "free";
+
+  // Linhas só são carregadas quando a lista está liberada (antes eram lidas sempre,
+  // com o payload bruto completo, mesmo para pedidos pendentes).
+  const { data: rows } = unlocked
+    ? await db
+        .from("search_results")
+        .select("position, establishment_id, provider_payload, establishments(*)")
+        .eq("search_query_id", currentOrder.search_query_id)
+        .order("position", { ascending: true })
+    : { data: [] as Array<Record<string, unknown>> };
+
+  const listItems: CompanyListItem[] = (rows ?? [])
+    .map((row) => {
+      const company = companyFromSearchRow(row);
+      if (!company || !company.cnpj) return null;
+      return toCompanyListItem(company, { position: Number(row.position ?? 0) });
+    })
+    .filter((item): item is CompanyListItem => item !== null);
   const summary = getSearchSummary(search);
   const pricingSummary = readLeadPricingSummary((search.query_payload as Record<string, unknown> | null)?.leadPricingSummary);
 
@@ -121,77 +131,17 @@ export default async function OrderResultPage({ params, searchParams }: OrderRes
               <div className="section-header">
                 <span className="eyebrow">Estabelecimentos</span>
                 <h2 id="order-rows-title" className="title-2">
-                  {rows && rows.length > 0 ? `${rows.length} empresas na lista` : "Nenhuma empresa na lista"}
+                  {listItems.length > 0 ? `${listItems.length} empresas na lista` : "Nenhuma empresa na lista"}
                 </h2>
               </div>
 
-              {rows && rows.length > 0 ? (
-                <div className="table-wrap">
-                  <table className="table table-responsive">
-                    <caption className="sr-only">Estabelecimentos da lista liberada</caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">#</th>
-                        <th scope="col">Empresa</th>
-                        <th scope="col">CNPJ</th>
-                        <th scope="col">Cidade</th>
-                        <th scope="col">Contato</th>
-                        <th scope="col">Endereço</th>
-                        <th scope="col">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((row) => {
-                        const establishment = extractSingleObject(row.establishments);
-                        if (!establishment) return null;
-
-                        const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
-                        const canonical = canonicalizeEstablishment(mergedEstablishment);
-
-                        return (
-                          <Fragment key={String(row.establishment_id)}>
-                            <tr>
-                              <td data-label="#" className="subtle numeric">{row.position}</td>
-                              <td data-label="Empresa">
-                                <div className="cell-stack">
-                                  <strong>{canonical.companyName ?? "-"}</strong>
-                                  <span className="muted">{canonical.tradeName ?? "-"}</span>
-                                </div>
-                              </td>
-                              <td data-label="CNPJ" className="cell-nowrap">{formatCnpj(canonical.cnpj ?? "")}</td>
-                              <td data-label="Cidade" className="cell-nowrap">
-                                {(canonical.cityName ?? "-")}/{(canonical.stateCode ?? "-")}
-                              </td>
-                              <td data-label="Contato">
-                                <div className="cell-stack">
-                                  <span>{canonical.phone ?? "-"}</span>
-                                  <span className="muted">{canonical.email ?? "-"}</span>
-                                </div>
-                              </td>
-                              <td data-label="Endereço">
-                                <div className="cell-stack">
-                                  <span>{canonical.addressLine ?? "-"}</span>
-                                  <span className="muted">{canonical.neighborhood ?? "-"}</span>
-                                </div>
-                              </td>
-                              <td data-label="Status">{canonical.registrationStatus ?? "-"}</td>
-                            </tr>
-                            <tr className="row-details-row">
-                              <td colSpan={7} data-label="">
-                                <details className="row-details">
-                                  <summary>Ver todos os campos consolidados</summary>
-                                  <div className="row-details-body">
-                                    <EstablishmentDetails establishment={mergedEstablishment} />
-                                  </div>
-                                </details>
-                              </td>
-                            </tr>
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              {listItems.length > 0 ? (
+                <CompanyResultsTable
+                  items={listItems}
+                  variant="order"
+                  caption="Estabelecimentos da lista liberada"
+                  csvFileName={`buscacnae-lista-${currentOrder.id.slice(0, 8)}`}
+                />
               ) : (
                 <div className="notice success">Nenhum estabelecimento foi encontrado para esse filtro.</div>
               )}

@@ -7,6 +7,13 @@ export function formatCnpj(value?: string | null) {
 export function formatDate(value?: string | null) {
   if (!value) return "-";
 
+  // Datas sem horário ("2020-05-01") seriam interpretadas como UTC e exibidas no dia
+  // anterior no fuso de Brasília; formatamos diretamente.
+  const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+  }
+
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     return value;

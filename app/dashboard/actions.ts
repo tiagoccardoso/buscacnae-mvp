@@ -42,6 +42,49 @@ export async function toggleSavedEstablishmentAction(formData: FormData) {
   revalidatePath("/dashboard/leads");
 }
 
+// Ids de establishments (uuid no schema atual); aceita apenas caracteres seguros.
+const ESTABLISHMENT_ID_PATTERN = /^[0-9a-zA-Z-]{1,64}$/;
+const MAX_BULK_SAVE = 1000;
+
+/**
+ * Salva na carteira, em lote, as empresas selecionadas na tabela de resultados.
+ * Idempotente (ON CONFLICT) e em lotes de 500 para não estourar o limite de parâmetros.
+ */
+export async function saveSelectedEstablishmentsAction(establishmentIds: string[]): Promise<{ ok: boolean; saved: number; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, saved: 0, error: "Faça login para salvar empresas." };
+  }
+
+  const ids = Array.from(new Set((Array.isArray(establishmentIds) ? establishmentIds : []).map((id) => String(id).trim())))
+    .filter((id) => ESTABLISHMENT_ID_PATTERN.test(id))
+    .slice(0, MAX_BULK_SAVE);
+
+  if (ids.length === 0) {
+    return { ok: false, saved: 0, error: "Nenhuma empresa válida selecionada." };
+  }
+
+  const db = createDbClient();
+  for (let index = 0; index < ids.length; index += 500) {
+    const part = ids.slice(index, index + 500);
+    const { error } = await db
+      .from("saved_establishments")
+      .upsert(
+        part.map((establishmentId) => ({ profile_id: user.id, establishment_id: establishmentId })),
+        { onConflict: "profile_id,establishment_id" }
+      )
+      .select("establishment_id");
+    if (error) {
+      console.error("[leads] falha ao salvar seleção", { code: error.code ?? null });
+      return { ok: false, saved: 0, error: "Não foi possível salvar a seleção agora. Tente novamente." };
+    }
+  }
+
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard/leads");
+  return { ok: true, saved: ids.length };
+}
+
 function uniqueIds(values: FormDataEntryValue[]) {
   return Array.from(
     new Set(
