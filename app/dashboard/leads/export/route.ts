@@ -16,10 +16,17 @@ export async function GET(request: Request) {
 
   const listId = new URL(request.url).searchParams.get("list")?.trim() ?? "";
   const db = createDbClient();
-  let query = db.from("saved_establishments").select("created_at, notes, tags, stage, list_id, saved_lead_lists(id,name,score_criteria), establishments(*)").eq("profile_id", user.id).order("created_at", { ascending: false });
+  // Keep the export readable while the additive Fase 5 migration is pending.
+  let query = db.from("saved_establishments").select("created_at, notes, list_id, saved_lead_lists(id,name), establishments(*)").eq("profile_id", user.id).order("created_at", { ascending: false });
   if (listId) query = query.eq("list_id", listId);
   const { data: rows, error } = await query;
   if (error) return NextResponse.json({ error: "Não foi possível exportar a lista." }, { status: 500 });
+  const [{ data: listCriteriaRows }, { data: metaRows }] = await Promise.all([
+    db.from("saved_lead_lists").select("id,score_criteria").eq("profile_id", user.id),
+    db.from("saved_establishments").select("establishment_id,tags,stage").eq("profile_id", user.id)
+  ]);
+  const criteriaByListId = new Map((listCriteriaRows ?? []).map((item) => [String(item.id), item.score_criteria]));
+  const metaByEstablishmentId = new Map((metaRows ?? []).map((item) => [String(item.establishment_id), item]));
 
   const header = ["empresa", "nome_fantasia", "cnpj", "cidade", "uf", "cnae_principal", "porte", "situacao_oficial", "abertura", "capital_social", "email_oficial", "telefone_oficial", "site_oficial", "lista", "tags_operacionais", "notas_operacionais", "etapa", "score_deterministico", "explicacao_score", "origem_cadastro"];
   const lines = [header.map(csv).join(",")];
@@ -28,6 +35,7 @@ export async function GET(request: Request) {
     if (!establishment) continue;
     const display = buildDisplayEstablishment(establishment);
     const list = extractSingleObject(row.saved_lead_lists);
+    const meta = metaByEstablishmentId.get(String(establishment.id));
     const score = calculateLeadScore({
       registrationStatus: String(display.registration_status ?? ""),
       companySize: String(display.company_size ?? ""),
@@ -37,7 +45,7 @@ export async function GET(request: Request) {
       website: String(display.website ?? ""),
       email: String(display.email ?? ""),
       phone: String(display.phone ?? "")
-    }, normalizeScoreCriteria(list?.score_criteria));
+    }, normalizeScoreCriteria(criteriaByListId.get(String(list?.id ?? row.list_id ?? ""))));
     const values = [
       display.company_name,
       display.trade_name,
@@ -53,9 +61,9 @@ export async function GET(request: Request) {
       display.phone,
       display.website,
       list?.name,
-      Array.isArray(row.tags) ? row.tags.join(" | ") : "",
+      Array.isArray(meta?.tags) ? meta.tags.join(" | ") : "",
       row.notes,
-      row.stage,
+      meta?.stage ?? "new",
       score.score,
       scoreExplanation(score),
       "official:Casa dos Dados"

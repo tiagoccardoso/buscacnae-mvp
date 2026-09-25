@@ -116,18 +116,26 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const status = typeof params.status === "string" ? params.status : "";
   const error = typeof params.error === "string" ? params.error : "";
 
-  const [{ data: listRows }, { data: rows }] = await Promise.all([
-    db.from("saved_lead_lists").select("id,name,description,tags,score_criteria,created_at").eq("profile_id", user.id).order("name", { ascending: true }),
-    db.from("saved_establishments").select("created_at, notes, tags, stage, list_id, saved_lead_lists(id,name), establishments(*)").eq("profile_id", user.id).order("created_at", { ascending: false })
+  // These are the columns that already existed before the Fase 5 migration.
+  // Keep the main read compatible so an unapplied migration cannot hide the
+  // user's existing wallet entries behind the empty state.
+  const [{ data: listRows }, { data: rows }, { data: optionalListRows }, { data: optionalMetaRows }] = await Promise.all([
+    db.from("saved_lead_lists").select("id,name,created_at").eq("profile_id", user.id).order("name", { ascending: true }),
+    db.from("saved_establishments").select("created_at, notes, list_id, saved_lead_lists(id,name), establishments(*)").eq("profile_id", user.id).order("created_at", { ascending: false }),
+    db.from("saved_lead_lists").select("id,description,tags,score_criteria").eq("profile_id", user.id),
+    db.from("saved_establishments").select("establishment_id,tags,stage").eq("profile_id", user.id)
   ]);
 
-  const savedLists = (listRows ?? []) as SavedListRecord[];
+  const optionalListById = new Map((optionalListRows ?? []).map((list) => [String(list.id), list]));
+  const optionalMetaByEstablishmentId = new Map((optionalMetaRows ?? []).map((row) => [String(row.establishment_id), row]));
+  const savedLists = (listRows ?? []).map((list) => ({ ...list, ...(optionalListById.get(String(list.id)) ?? {}) })) as SavedListRecord[];
   const listById = new Map(savedLists.map((list) => [list.id, list]));
   const leads = (rows ?? [])
     .map((row) => {
       const establishment = extractSingleObject(row.establishments);
       const list = extractSingleObject(row.saved_lead_lists);
       if (!establishment) return null;
+      const optionalMeta = optionalMetaByEstablishmentId.get(String(establishment.id));
       const display = buildDisplayEstablishment(establishment);
       const listId = valueOrEmpty(row.list_id ?? list?.id);
       const criteria: ScoreCriteria = normalizeScoreCriteria(listById.get(listId)?.score_criteria);
@@ -160,8 +168,8 @@ export default async function LeadsPage({ searchParams }: LeadsPageProps) {
         listId,
         listName: valueOrEmpty(list?.name),
         notes: valueOrEmpty(row.notes),
-        tags: stringList(row.tags),
-        stage: STAGES.some((item) => item.value === row.stage) ? row.stage as ProspectingStage : "new",
+        tags: stringList(optionalMeta?.tags),
+        stage: STAGES.some((item) => item.value === optionalMeta?.stage) ? optionalMeta?.stage as ProspectingStage : "new",
         score: score.score,
         scoreExplanation: scoreExplanation(score)
       } satisfies LeadView;
