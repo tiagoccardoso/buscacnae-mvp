@@ -20,7 +20,8 @@ const TABLES = new Set([
   "stripe_webhook_events",
   "search_access_orders",
   "search_access_bulk_orders",
-  "search_ai_format_orders"
+  "search_ai_format_orders",
+  "postal_code_locations"
 ]);
 
 function assertIdentifier(value: string) {

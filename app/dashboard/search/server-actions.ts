@@ -74,11 +74,14 @@ export async function runSearchAction(formData: FormData) {
     activityStartYearExact: formData.get("activityStartYearExact") === "on"
   });
 
+  // Lista e Mapa leem a mesma busca salva; o parâmetro só escolhe a visualização de destino.
+  const resultView = String(formData.get("resultView") ?? "") === "mapa" ? "mapa" : "lista";
+
   if (!result.ok) {
-    redirect(`/dashboard/search?error=${encodeURIComponent(result.error)}`);
+    redirect(`/dashboard/search?error=${encodeURIComponent(result.error)}${resultView === "mapa" ? "&view=mapa" : ""}`);
   }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/history");
-  redirect(`/dashboard/search/${result.data.searchId}`);
+  redirect(resultView === "mapa" ? `/dashboard/mapa?search=${result.data.searchId}` : `/dashboard/search/${result.data.searchId}`);
 }

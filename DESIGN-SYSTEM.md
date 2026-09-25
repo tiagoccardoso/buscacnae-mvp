@@ -13,6 +13,7 @@ materiais translúcidos só em cromo flutuante, movimento curto e com propósito
 | `app/styles/components.css` | Superfícies, botões, formulários, avisos, pills, estatísticas, tabelas, disclosure, progresso, estados vazios, listas chave-valor. |
 | `app/styles/layout.css` | Barra de navegação (vidro), menu mobile, rodapé, shell e navegação segmentada do dashboard. |
 | `app/styles/pages.css` | Hero + painel de busca, picker/combobox, assistente de CNAE, resultados, resumo de pedido, preços, autenticação, rankings. |
+| `app/styles/map.css` | Mapa Empresarial: painel lateral, palco do mapa, controles, resumo da empresa, bottom sheets no mobile. O Cesium lê as cores dos tokens em tempo de execução (`lib/map/engine/palette.ts`). |
 
 Regra: componentes usam **somente tokens** (`var(--label)`, `var(--space-5)`…). Nenhum hex fora de `tokens.css`.
 

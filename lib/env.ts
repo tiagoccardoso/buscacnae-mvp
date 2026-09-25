@@ -116,3 +116,49 @@ export function getOpenAiApiKey() {
 export function getOpenAiModel() {
   return getEnv("OPENAI_MODEL") || "gpt-4.1-mini";
 }
+
+/* ---------------------------------------------------------------------------
+   Mapa Empresarial (ver docs/MAPA_EMPRESARIAL.md)
+   --------------------------------------------------------------------------- */
+
+function readBoundedInt(name: string, fallback: number, min: number, max: number) {
+  const value = Number(getEnv(name) || String(fallback));
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+/** Server-side apenas. Geocodificação de CEP desligada por padrão ("none"). */
+export function getMapGeocodingConfig() {
+  const provider = getEnv("MAP_GEOCODING_PROVIDER").toLowerCase();
+  return {
+    provider: provider === "brasilapi" ? "brasilapi" : "none",
+    maxLookups: readBoundedInt("MAP_GEOCODING_MAX_LOOKUPS", 25, 0, 200)
+  };
+}
+
+/** Teto de marcadores enviados ao navegador por busca. */
+export function getMapMaxMarkers() {
+  return readBoundedInt("MAP_MAX_MARKERS", 5000, 100, 20000);
+}
+
+/** Máximo de municípios convertidos a partir da área visível em "Buscar nesta área". */
+export function getMapAreaSearchMaxCities() {
+  return readBoundedInt("MAP_AREA_SEARCH_MAX_CITIES", 12, 1, 40);
+}
+
+export type MapBasemapId = "osm" | "carto-light" | "carto-dark" | "ion" | "offline";
+
+/**
+ * Configuração PÚBLICA do mapa (enviada ao navegador). Somente valores que podem
+ * ser expostos: o token do Cesium ion e a chave do Google Map Tiles são chaves de
+ * navegador e devem ser restritas por domínio no painel de cada fornecedor.
+ */
+export function getPublicMapConfig() {
+  const basemap = getEnv("NEXT_PUBLIC_MAP_BASEMAP").toLowerCase();
+  const allowed: MapBasemapId[] = ["osm", "carto-light", "carto-dark", "ion", "offline"];
+  return {
+    basemap: (allowed.includes(basemap as MapBasemapId) ? basemap : "osm") as MapBasemapId,
+    cesiumIonToken: getEnv("NEXT_PUBLIC_CESIUM_ION_TOKEN"),
+    googleMapTilesKey: getEnv("NEXT_PUBLIC_GOOGLE_MAP_TILES_KEY")
+  };
+}

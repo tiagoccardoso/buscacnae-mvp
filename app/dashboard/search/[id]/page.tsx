@@ -20,9 +20,13 @@ import { getSearchSummary } from "@/lib/search-summary";
 import { extractSingleObject } from "@/lib/utils";
 import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
-import { canonicalizeEstablishment, mergeEstablishmentSources } from "@/lib/establishment-canonical";
+import { mergeEstablishmentSources } from "@/lib/establishment-canonical";
+import { companySummaryFromEstablishment } from "@/lib/company-model";
 import { getAiFormatPricingTable, getAiFormattingPriceSummary } from "@/lib/ai-format-pricing";
 import { buildAddressSummary } from "@/lib/establishment-detail-sections";
+import { ResultsViewToggle } from "@/components/map/results-view-toggle";
+import { BusinessMapWorkspace } from "@/components/map/business-map-workspace";
+import { getPublicMapConfig } from "@/lib/env";
 
 type SearchResultPageProps = {
   params: Promise<{ id: string }>;
@@ -62,6 +66,8 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const aiFormatState = typeof resolvedSearchParams.ai_format === "string" ? resolvedSearchParams.ai_format : "";
+  // Lista e Mapa compartilham a mesma busca salva: nenhum filtro precisa ser reconstruído.
+  const view = resolvedSearchParams.view === "mapa" ? "mapa" : "lista";
   const user = await getCurrentUser();
   const db = createDbClient();
 
@@ -175,7 +181,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
             </p>
           </div>
           <div className="cluster">
-            <Link href={`/dashboard/search?reuse=${id}`} className="button-secondary">
+            <Link href={`/dashboard/search?reuse=${id}${view === "mapa" ? "&view=mapa" : ""}`} className="button-secondary">
               Repetir busca
             </Link>
             <Link href="/dashboard/search" className="button-ghost">
@@ -215,6 +221,13 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
           </div>
         ) : null}
 
+        <div className="results-view-toggle">
+          <ResultsViewToggle searchId={id} view={view} />
+          {view === "mapa" ? (
+            <p className="footnote">Mesmos resultados e filtros da lista, no mapa.</p>
+          ) : null}
+        </div>
+
         {autoRefinementSuggested && suggestedActivityStartYear ? (
           <div className="notice warning">
             <div className="stack-xs">
@@ -232,7 +245,13 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
         ) : null}
       </section>
 
-      {order ? (
+      {view === "mapa" ? (
+        <section className="section" aria-label="Mapa dos resultados">
+          <BusinessMapWorkspace searchId={id} config={getPublicMapConfig()} variant="embedded" />
+        </section>
+      ) : null}
+
+      {view === "mapa" ? null : order ? (
         <section className="order-layout" aria-label="Compra da lista">
           <div className="stack-xl">
             {pricingSummary ? (
@@ -374,7 +393,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
         </div>
       )}
 
-      {!rows || rows.length === 0 ? (
+      {view === "mapa" ? null : !rows || rows.length === 0 ? (
         <EmptyState
           title="Nenhum estabelecimento retornado"
           description="Tente outro recorte de CNAEs ou ajuste a região da busca. O resultado continua salvo no dashboard para você revisar depois."
@@ -408,12 +427,13 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
               const establishmentId = String(establishment.id);
               const mergedEstablishment = mergeEstablishmentSources(establishment, extractSingleObject(row.provider_payload));
-              const canonical = canonicalizeEstablishment(mergedEstablishment);
-              const companyName = canonical.companyName ?? "-";
-              const cnpj = canonical.cnpj ?? "";
+              // Mesmo modelo normalizado usado pelo Mapa Empresarial (lib/company-model.ts).
+              const canonical = companySummaryFromEstablishment(mergedEstablishment);
+              const companyName = canonical.legalName;
+              const cnpj = canonical.cnpj;
               const cityName = canonical.cityName ?? "-";
               const stateCode = canonical.stateCode ?? "-";
-              const status = canonical.registrationStatus ?? "-";
+              const status = canonical.status ?? "-";
               const addressSummary = buildAddressSummary(mergedEstablishment);
               const missing = "Não retornado pela API";
 

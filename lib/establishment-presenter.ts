@@ -1,4 +1,5 @@
 import { extractSingleObject } from "@/lib/utils";
+import { sanitizeProviderPayload } from "@/lib/provider-payload";
 
 export type DisplayEstablishment = Record<string, unknown> & {
   cnpj: unknown;
@@ -118,8 +119,14 @@ function extractPhoneText(value: unknown): string | null {
   return extractFirstText(value);
 }
 
+/**
+ * Payload bruto do provedor, já sem blocos legados de fontes não autorizadas
+ * (ver lib/provider-payload.ts). Todo consumidor (ficha, lista, exportação, mapa)
+ * lê o payload por aqui.
+ */
 export function getEstablishmentPayload(establishment: Record<string, unknown>) {
-  return extractSingleObject(establishment.provider_payload);
+  const payload = extractSingleObject(establishment.provider_payload);
+  return payload ? sanitizeProviderPayload(payload) : null;
 }
 
 function collectPayloadSources(establishment: Record<string, unknown>) {
@@ -129,17 +136,6 @@ function collectPayloadSources(establishment: Record<string, unknown>) {
     payload?.consulta_cnpj,
     payload?.consulta_cnpj && typeof payload.consulta_cnpj === "object" && !Array.isArray(payload.consulta_cnpj)
       ? extractSingleObject((payload.consulta_cnpj as Record<string, unknown>).estabelecimento)
-      : null,
-    // Legado (somente leitura): registros salvos antes da remoção da CNPJ.ws continuam exibíveis.
-    payload?.cnpjws_consulta,
-    payload?.cnpjws_consulta && typeof payload.cnpjws_consulta === "object" && !Array.isArray(payload.cnpjws_consulta)
-      ? extractSingleObject((payload.cnpjws_consulta as Record<string, unknown>).estabelecimento)
-      : null,
-    payload?.cnpjws_consulta && typeof payload.cnpjws_consulta === "object" && !Array.isArray(payload.cnpjws_consulta)
-      ? extractSingleObject((payload.cnpjws_consulta as Record<string, unknown>).simples)
-      : null,
-    payload?.cnpjws_consulta && typeof payload.cnpjws_consulta === "object" && !Array.isArray(payload.cnpjws_consulta)
-      ? extractSingleObject((payload.cnpjws_consulta as Record<string, unknown>).consulta_cnpj)
       : null,
     payload?.casadosdados_pesquisa,
     payload?.casadosdados_pesquisa && typeof payload.casadosdados_pesquisa === "object" && !Array.isArray(payload.casadosdados_pesquisa)
@@ -210,8 +206,7 @@ function resolveSecondaryCnaes(establishment: Record<string, unknown>, sources: 
     ["estabelecimento", "atividade_secundaria"],
     ["estabelecimento", "atividades_secundarias"],
     ["consulta_cnpj", "atividade_secundaria"],
-    ["consulta_cnpj", "atividades_secundarias"],
-    ["cnpjws_consulta", "estabelecimento", "atividade_secundaria"]
+    ["consulta_cnpj", "atividades_secundarias"]
   ]);
 }
 
@@ -314,10 +309,10 @@ export function buildDisplayEstablishment(establishment: Record<string, unknown>
       findFirstFromPaths(payloadSources, [["porte_empresa", "descricao"], ["porte", "descricao"], ["porte"]]),
     simples_opt_in:
       getValue(establishment, "simples_opt_in", "simples") ??
-      findFirstFromPaths(payloadSources, [["simples", "optante"], ["simples_optante"], ["cnpjws_consulta", "simples", "optante"], ["cnpjws_consulta", "simples", "simples"]]),
+      findFirstFromPaths(payloadSources, [["simples", "optante"], ["simples_optante"]]),
     mei_opt_in:
       getValue(establishment, "mei_opt_in", "mei") ??
-      findFirstFromPaths(payloadSources, [["mei", "optante"], ["mei_optante"], ["cnpjws_consulta", "simples", "mei"], ["simples", "mei"]]),
+      findFirstFromPaths(payloadSources, [["mei", "optante"], ["mei_optante"], ["simples", "mei"]]),
     capital_social:
       getValue(establishment, "capital_social") ??
       findFirstFromPaths(payloadSources, [["capital_social"]]),
@@ -359,6 +354,6 @@ export function buildDisplayEstablishment(establishment: Record<string, unknown>
     complement:
       getValue(establishment, "complement", "complemento") ??
       findFirstFromPaths(payloadSources, [["endereco", "complemento"], ["complemento"], ["estabelecimento", "complemento"], ["consulta_cnpj", "complemento"]]),
-    provider_payload: getValue(establishment, "provider_payload")
+    provider_payload: sanitizeProviderPayload(getValue(establishment, "provider_payload"))
   };
 }

@@ -1,165 +1,22 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { EstablishmentDetails } from "@/components/establishment-details";
 import { fetchCasaDosDadosCompanyByCnpj, isCasaDosDadosError } from "@/lib/discovery/providers/casadosdados";
 import { formatCnpj } from "@/lib/format";
 import { createDbClient } from "@/lib/db-client";
 import { getCurrentUser } from "@/lib/auth/server";
-import { NormalizedEstablishment } from "@/lib/types";
+import { resolveCompanyProfile, type EstablishmentRow } from "@/lib/company-profile";
 
 type CompanyPageProps = {
   params: Promise<{ cnpj: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-type EstablishmentRow = {
-  id: string;
-  cnpj: string;
-  cnpj_root?: string | null;
-  company_name: string;
-  trade_name?: string | null;
-  registration_status?: string | null;
-  opened_at?: string | null;
-  primary_cnae_code?: string | null;
-  primary_cnae_description?: string | null;
-  secondary_cnaes?: unknown;
-  legal_nature_code?: string | null;
-  legal_nature_description?: string | null;
-  company_size?: string | null;
-  simples_opt_in?: boolean | null;
-  mei_opt_in?: boolean | null;
-  capital_social?: number | string | null;
-  email?: string | null;
-  phone?: string | null;
-  website?: string | null;
-  country?: string | null;
-  state_code?: string | null;
-  city_name?: string | null;
-  city_ibge?: string | null;
-  neighborhood?: string | null;
-  cep?: string | null;
-  address_line?: string | null;
-  address_number?: string | null;
-  complement?: string | null;
-  provider_payload?: unknown;
-};
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function hasValue(value: unknown) {
-  return typeof value === "string" ? value.trim().length > 0 : value !== null && value !== undefined;
-}
-
-function needsDetailedEnrichment(row: EstablishmentRow) {
-  const detailedFields = [
-    row.registration_status,
-    row.primary_cnae_code,
-    row.primary_cnae_description,
-    row.opened_at,
-    row.city_name,
-    row.state_code,
-    row.cep,
-    row.address_line,
-    row.email,
-    row.phone,
-    row.legal_nature_description
-  ];
-
-  return detailedFields.filter(hasValue).length < 8;
-}
-
-function mergeProviderPayload(existingPayload: unknown, detailedPayload: Record<string, unknown>) {
-  const detailKey = "casadosdados_detalhe";
-
-  if (existingPayload && typeof existingPayload === "object" && !Array.isArray(existingPayload)) {
-    return {
-      ...(existingPayload as Record<string, unknown>),
-      [detailKey]: detailedPayload
-    };
-  }
-
-  if (existingPayload) {
-    return {
-      casadosdados_pesquisa: existingPayload,
-      [detailKey]: detailedPayload
-    };
-  }
-
-  return {
-    [detailKey]: detailedPayload
-  };
-}
-
-function mergeEstablishmentRow(
-  current: EstablishmentRow,
-  normalized: NormalizedEstablishment,
-  detailedPayload: Record<string, unknown>
-): EstablishmentRow {
-  return {
-    ...current,
-    cnpj: normalized.cnpj || current.cnpj,
-    cnpj_root: normalized.cnpjRoot ?? current.cnpj_root ?? null,
-    company_name: normalized.companyName || current.company_name,
-    trade_name: normalized.tradeName ?? current.trade_name ?? null,
-    registration_status: normalized.registrationStatus ?? current.registration_status ?? null,
-    opened_at: normalized.openedAt ?? current.opened_at ?? null,
-    primary_cnae_code: normalized.primaryCnaeCode ?? current.primary_cnae_code ?? null,
-    primary_cnae_description:
-      normalized.primaryCnaeDescription ?? current.primary_cnae_description ?? null,
-    secondary_cnaes: normalized.secondaryCnaes ?? current.secondary_cnaes ?? null,
-    legal_nature_code: normalized.legalNatureCode ?? current.legal_nature_code ?? null,
-    legal_nature_description:
-      normalized.legalNatureDescription ?? current.legal_nature_description ?? null,
-    company_size: normalized.companySize ?? current.company_size ?? null,
-    simples_opt_in: normalized.simplesOptIn ?? current.simples_opt_in ?? null,
-    mei_opt_in: normalized.meiOptIn ?? current.mei_opt_in ?? null,
-    capital_social: normalized.capitalSocial ?? current.capital_social ?? null,
-    email: normalized.email ?? current.email ?? null,
-    phone: normalized.phone ?? current.phone ?? null,
-    website: normalized.website ?? current.website ?? null,
-    country: normalized.country ?? current.country ?? null,
-    state_code: normalized.stateCode ?? current.state_code ?? null,
-    city_name: normalized.cityName ?? current.city_name ?? null,
-    city_ibge: normalized.cityIbge ?? current.city_ibge ?? null,
-    neighborhood: normalized.neighborhood ?? current.neighborhood ?? null,
-    cep: normalized.cep ?? current.cep ?? null,
-    address_line: normalized.addressLine ?? current.address_line ?? null,
-    address_number: normalized.addressNumber ?? current.address_number ?? null,
-    complement: normalized.complement ?? current.complement ?? null,
-    provider_payload: mergeProviderPayload(current.provider_payload, detailedPayload)
-  };
-}
-
-function buildEstablishmentUpdatePayload(row: EstablishmentRow) {
-  return {
-    cnpj_root: row.cnpj_root ?? null,
-    company_name: row.company_name,
-    trade_name: row.trade_name ?? null,
-    registration_status: row.registration_status ?? null,
-    opened_at: row.opened_at ?? null,
-    primary_cnae_code: row.primary_cnae_code ?? null,
-    primary_cnae_description: row.primary_cnae_description ?? null,
-    secondary_cnaes: row.secondary_cnaes ?? null,
-    legal_nature_code: row.legal_nature_code ?? null,
-    legal_nature_description: row.legal_nature_description ?? null,
-    company_size: row.company_size ?? null,
-    simples_opt_in: row.simples_opt_in ?? null,
-    mei_opt_in: row.mei_opt_in ?? null,
-    capital_social: row.capital_social ?? null,
-    email: row.email ?? null,
-    phone: row.phone ?? null,
-    website: row.website ?? null,
-    country: row.country ?? null,
-    state_code: row.state_code ?? null,
-    city_name: row.city_name ?? null,
-    city_ibge: row.city_ibge ?? null,
-    neighborhood: row.neighborhood ?? null,
-    cep: row.cep ?? null,
-    address_line: row.address_line ?? null,
-    address_number: row.address_number ?? null,
-    complement: row.complement ?? null,
-    provider_payload: row.provider_payload ?? null
-  };
-}
-
-export default async function CompanyPage({ params }: CompanyPageProps) {
+export default async function CompanyPage({ params, searchParams }: CompanyPageProps) {
   const { cnpj } = await params;
+  const query = searchParams ? await searchParams : {};
   const user = await getCurrentUser();
   const db = createDbClient();
 
@@ -179,35 +36,41 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
     notFound();
   }
 
-  let company = data as EstablishmentRow;
+  // Fonte única: Casa dos Dados. Nenhuma outra consulta externa acontece ao abrir a ficha.
+  const profile = await resolveCompanyProfile(data as EstablishmentRow, fetchCasaDosDadosCompanyByCnpj, (error) => {
+    console.warn("[company] consulta detalhada indisponível", {
+      kind: isCasaDosDadosError(error) ? error.kind : "unknown",
+      status: isCasaDosDadosError(error) ? error.status : null
+    });
+  });
+  const company = profile.company;
 
-  if (needsDetailedEnrichment(company)) {
-    try {
-      const detail = await fetchCasaDosDadosCompanyByCnpj(company.cnpj);
-      if (detail.normalized) {
-        company = mergeEstablishmentRow(company, detail.normalized, detail.raw);
-
-        const db = createDbClient();
-        const { error } = await db
-          .from("establishments")
-          .update(buildEstablishmentUpdatePayload(company))
-          .eq("id", company.id);
-
-        if (error) {
-          console.error("Falha ao persistir dados detalhados do estabelecimento", error);
-        }
-      }
-    } catch (error) {
-      // Detalhes são complementares: a ficha segue com os dados já salvos.
-      console.warn("[company] consulta detalhada indisponível", {
-        kind: isCasaDosDadosError(error) ? error.kind : "unknown",
-        status: isCasaDosDadosError(error) ? error.status : null
-      });
+  if (profile.updatePayload) {
+    const { error } = await db.from("establishments").update(profile.updatePayload).eq("id", company.id);
+    if (error) {
+      console.error("Falha ao persistir dados detalhados do estabelecimento", { code: error.code ?? null });
     }
   }
 
+  // Retorno contextual ao Mapa Empresarial (preserva a busca de origem).
+  const fromMap = query.from === "mapa";
+  const originSearch = typeof query.search === "string" && UUID_PATTERN.test(query.search) ? query.search : "";
+  const backHref = fromMap
+    ? originSearch
+      ? `/dashboard/mapa?search=${originSearch}`
+      : "/dashboard/mapa"
+    : null;
+
   return (
     <section className="section" aria-labelledby="company-title">
+      {backHref ? (
+        <div>
+          <Link href={backHref} className="button-ghost button-sm">
+            ← Voltar ao mapa
+          </Link>
+        </div>
+      ) : null}
+
       <div className="section-header">
         <span className="eyebrow">Ficha do estabelecimento</span>
         <h2 id="company-title" className="title-1">
@@ -215,9 +78,16 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
         </h2>
         <p className="footnote numeric">{formatCnpj(company.cnpj)}</p>
         <p className="section-copy">
-          Informações cadastrais consolidadas da pesquisa, reunidas em uma leitura única.
+          Informações cadastrais da Casa dos Dados, reunidas em uma leitura única.
         </p>
       </div>
+
+      {profile.pendingRevalidation ? (
+        <div className="notice info" role="status">
+          Esta ficha foi registrada em uma versão anterior da plataforma e ainda não pôde ser atualizada agora.
+          Contatos e dados tributários podem estar desatualizados; uma nova atualização será tentada na próxima abertura.
+        </div>
+      ) : null}
 
       <EstablishmentDetails establishment={company as unknown as Record<string, unknown>} />
     </section>

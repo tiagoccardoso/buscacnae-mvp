@@ -12,6 +12,11 @@ const items = [
     match: (path: string) => path.startsWith("/dashboard/history") || /^\/dashboard\/search\/[^/]+/.test(path)
   },
   {
+    href: "/dashboard/mapa",
+    label: "Mapa empresarial",
+    match: (path: string) => path.startsWith("/dashboard/mapa")
+  },
+  {
     href: "/dashboard/leads",
     label: "Leads salvos",
     match: (path: string) => path.startsWith("/dashboard/leads") || path.startsWith("/dashboard/companies")

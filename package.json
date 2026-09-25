@@ -4,23 +4,30 @@
   "private": true,
   "description": "MVP SaaS para descoberta de empresas por CNAE e cidade.",
   "scripts": {
+    "predev": "node scripts/copy-cesium-assets.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/copy-cesium-assets.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p .",
     "test": "tsx --test tests/*.test.mts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
+    "cesium": "^1.145.0",
     "next": "16.2.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "stripe": "^18.4.0"
+    "stripe": "^18.4.0",
+    "supercluster": "^9.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.6",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.2",
     "tsx": "^4.20.0",
     "typescript": "^5.8.3"
   }

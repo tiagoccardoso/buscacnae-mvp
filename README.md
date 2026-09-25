@@ -94,6 +94,10 @@ A Casa dos Dados é a **única** fonte externa de consulta de empresas (`lib/dis
 Buscas idênticas são reaproveitadas via tabela `provider_cache` (TTL em `DISCOVERY_CACHE_TTL_HOURS`).
 Erros transitórios têm retry conservador; HTTP 429 não é repetido agressivamente.
 
+## 4.1) Mapa Empresarial
+
+`/dashboard/mapa` e a aba **Mapa** do resultado da busca mostram os mesmos resultados da lista em um mapa CesiumJS (clusters, densidade, "Buscar nesta área"). Funciona sem chaves pagas (OpenStreetMap + textura offline do Cesium). Detalhes, variáveis `MAP_*`/`NEXT_PUBLIC_MAP_*` e migração opcional `sql/neon_map_locations.sql` em [`docs/MAPA_EMPRESARIAL.md`](docs/MAPA_EMPRESARIAL.md).
+
 ## 5) Variáveis de ambiente
 
 Copie `.env.example` para `.env.local` e preencha os campos.
@@ -102,7 +106,11 @@ Copie `.env.example` para `.env.local` e preencha os campos.
 
 ```bash
 npm install
-npm run dev
+npm run dev        # copia o Cesium para public/cesium (predev)
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
 
 ## Deploy na Vercel

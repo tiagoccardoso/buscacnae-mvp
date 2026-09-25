@@ -5,6 +5,7 @@ import { getSearchSummary } from "@/lib/search-summary";
 import { buildEstablishmentDetailSections } from "@/lib/establishment-detail-sections";
 import { buildDisplayEstablishment, getEstablishmentPayload } from "@/lib/establishment-presenter";
 import { extractSingleObject, safeJsonStringify } from "@/lib/utils";
+import { sanitizeProviderPayload, withSanitizedProviderPayload } from "@/lib/provider-payload";
 import {
   claimSearchAiFormatOrderProcessingLock,
   heartbeatSearchAiFormatOrder,
@@ -832,14 +833,14 @@ function buildPreparedExportRecords(payload: SearchAiFormattedPayload, rows: Sea
 
   return rows
     .map((row) => {
-      const establishment = extractSingleObject(row.establishments);
+      const establishment = withSanitizedProviderPayload(extractSingleObject(row.establishments));
       if (!establishment) return null;
 
       const position = Number(row.position ?? 0);
       const sourceRecord = buildSourceRecord(position, establishment);
       const aiRecord = aiByPosition.get(position) ?? mergeAiRecord(sourceRecord);
       const establishmentPayload = expandStructuredValue(establishment.provider_payload);
-      const searchResultPayload = expandStructuredValue(row.provider_payload);
+      const searchResultPayload = expandStructuredValue(sanitizeProviderPayload(row.provider_payload));
       const establishmentWithoutPayload = { ...establishment };
       delete establishmentWithoutPayload.provider_payload;
 
@@ -893,7 +894,7 @@ function buildPreparedExportRecords(payload: SearchAiFormattedPayload, rows: Sea
         establishment,
         flattenedFields,
         jsonAudit,
-        searchResultPayloadText: safeJsonStringify(row.provider_payload, 2)
+        searchResultPayloadText: safeJsonStringify(sanitizeProviderPayload(row.provider_payload), 2)
       } satisfies PreparedExportRecord;
     })
     .filter((item): item is PreparedExportRecord => Boolean(item))
@@ -903,14 +904,14 @@ function buildPreparedExportRecords(payload: SearchAiFormattedPayload, rows: Sea
 function buildFormattingAiInputRecord(
   row: { position?: number | string | null; establishments?: unknown; provider_payload?: unknown }
 ): FormattingAiInputRecord | null {
-  const establishment = extractSingleObject(row.establishments);
+  const establishment = withSanitizedProviderPayload(extractSingleObject(row.establishments));
   if (!establishment) return null;
 
   const position = Number(row.position ?? 0);
   const sourceRecord = buildSourceRecord(position, establishment);
   const flatFields = new Map<string, string>();
   const establishmentPayload = expandStructuredValue(establishment.provider_payload);
-  const searchResultPayload = expandStructuredValue(row.provider_payload);
+  const searchResultPayload = expandStructuredValue(sanitizeProviderPayload(row.provider_payload));
   const establishmentWithoutPayload = { ...establishment };
   delete establishmentWithoutPayload.provider_payload;
 

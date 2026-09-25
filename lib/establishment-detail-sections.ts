@@ -12,8 +12,6 @@ const OMIT_DISPLAY_KEYS = new Set(["id", "created_at", "updated_at", "provider_p
 const OMIT_RAW_PATH_SUFFIXES = new Set(["capital_social"]);
 const WRAPPER_SEGMENTS = new Set([
   "provider_payload",
-  // Chave legada: somente leitura de payloads históricos já salvos no banco (nenhuma chamada externa).
-  "cnpjws_consulta",
   "consulta_cnpj",
   "casadosdados_pesquisa",
   "casadosdados_detalhe",

@@ -16,6 +16,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const reuse = typeof params.reuse === "string" ? params.reuse : "";
   const suggestedYear = typeof params.suggestedYear === "string" ? params.suggestedYear : "";
   const suggestedExact = params.suggestedExact === "1";
+  // Destino após a busca: lista (padrão) ou Mapa Empresarial. Os filtros são os mesmos.
+  const resultView = params.view === "mapa" ? "mapa" : "lista";
 
   let reuseDefaults = {};
   let reuseMessage = "";
@@ -66,12 +68,15 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           data-analytics-label="Dashboard search form"
           aria-label="Nova busca por CNAE e região"
         >
+          <input type="hidden" name="resultView" value={resultView} />
           <SearchFilterBuilder {...reuseDefaults} />
 
           <div className="search-submit">
             <SearchSubmitButton idleLabel="Ver volume e preço da busca" pendingLabel="Buscando volume e preço..." />
             <p className="footnote">
-              O resultado fica salvo no dashboard e já mostra a rota de compra da lista para avançar sem sair do fluxo.
+              {resultView === "mapa"
+                ? "O resultado fica salvo no dashboard e abre direto no Mapa Empresarial; a mesma busca continua disponível em lista."
+                : "O resultado fica salvo no dashboard e já mostra a rota de compra da lista para avançar sem sair do fluxo."}
             </p>
           </div>
         </form>
