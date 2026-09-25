@@ -17,6 +17,7 @@ const TABLES = new Set([
   "search_results",
   "saved_establishments",
   "saved_lead_lists",
+  "prospecting_enrichments",
   "stripe_webhook_events",
   "search_access_orders",
   "search_access_bulk_orders",
@@ -54,7 +55,8 @@ const JSON_COLUMNS_BY_TABLE: Record<string, Set<string>> = {
   search_results: new Set(["provider_payload"]),
   stripe_webhook_events: new Set(["payload"]),
   search_access_bulk_orders: new Set(["order_ids"]),
-  search_ai_format_orders: new Set(["formatted_payload", "format_job_payload"])
+  search_ai_format_orders: new Set(["formatted_payload", "format_job_payload"]),
+  prospecting_enrichments: new Set(["value"])
 };
 
 function isJsonColumn(table: string, column: string) {

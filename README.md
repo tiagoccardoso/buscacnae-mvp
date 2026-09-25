@@ -24,6 +24,7 @@ Starter pronto para deploy de um SaaS de descoberta de empresas por **CNAE + cid
 - Webhook idempotente
 - SQL inicial com tabelas, índices e triggers no Neon PostgreSQL
 - Integração centralizada com a Casa dos Dados (timeout, retry conservador, cache e deduplicação)
+- Central de prospecção: listas, tags, notas, etapas, pesquisa assistida, enriquecimento com proveniência, score determinístico e exportação
 
 ## Requisitos
 
@@ -101,6 +102,8 @@ Erros transitórios têm retry conservador; HTTP 429 não é repetido agressivam
 **Inteligência de Mercado (Fase 3).** A aba **Inteligência** mostra indicadores e gráficos (Apache ECharts) calculados de forma determinística sobre as mesmas empresas da lista e do mapa, com drill-down (clicar num município, CNAE, porte, faixa de capital ou período filtra Empresas, Mapa e Inteligência). Métricas, fórmulas, limites, decisão sobre DuckDB-Wasm e referência ao Apache Superset em [`docs/INTELIGENCIA_MERCADO.md`](docs/INTELIGENCIA_MERCADO.md). Validação local: `/dev/mapa?n=10000&view=inteligencia`.
 
 **IA Empresarial — “Pergunte ao BuscaCNAE” (Fase 4).** Botão flutuante no resultado da busca: perguntas em português sobre as empresas da busca (“Quais municípios têm mais empresas?”, “Compare Cascavel e Pato Branco”, “Mostre no mapa”, “Filtre somente ME”). O modelo de linguagem só escolhe uma ferramenta de leitura com argumentos validados; todo número é calculado pelo mesmo motor da Inteligência, e a resposta mostra filtros, universo, período e fonte, separando **Dado**, **Cálculo** e **Interpretação da IA**. Funciona sem chave (intérprete por regras); com `OPENAI_API_KEY`, usa o modelo para planejar e interpretar. Sem SQL gerado por IA. Detalhes, segurança e testes em [`docs/IA_EMPRESARIAL.md`](docs/IA_EMPRESARIAL.md). Validação local: `/dev/mapa?n=10000&view=inteligencia` → “Pergunte ao BuscaCNAE”.
+
+**Central de Prospecção (Fase 5).** Selecione empresas no resultado para criar listas; edite, exclua, filtre, pesquise, tagueie, anote, enriqueça com origem e exporte. O score é calculado deterministicamente por critérios configuráveis; a pesquisa assistida separa fato oficial, cálculo e hipótese. Execute [`sql/neon_prospecting.sql`](sql/neon_prospecting.sql) no Neon e leia [`docs/PROSPECCAO.md`](docs/PROSPECCAO.md) antes de publicar.
 
 ## 5) Variáveis de ambiente
 

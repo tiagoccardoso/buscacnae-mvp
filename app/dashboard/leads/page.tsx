@@ -3,22 +3,30 @@ import { getCurrentUser } from "@/lib/auth/server";
 import { createDbClient } from "@/lib/db-client";
 import { EmptyState } from "@/components/empty-state";
 import { LeadToggleForm } from "@/components/lead-toggle-form";
+import { ProspectingResearchButton } from "@/components/prospecting/research-button";
 import { formatCnpj, formatDateTime, formatMoney } from "@/lib/format";
 import { extractSingleObject } from "@/lib/utils";
 import {
   assignSavedLeadListAction,
   createSavedLeadListAction,
-  deleteSavedLeadListAction
+  deleteSavedLeadListAction,
+  removeEstablishmentFromListAction,
+  runProspectingEnrichmentAction,
+  updateSavedEstablishmentMetaAction,
+  updateSavedLeadListAction
 } from "@/app/dashboard/actions";
 import { buildDisplayEstablishment } from "@/lib/establishment-presenter";
+import { calculateLeadScore, normalizeScoreCriteria, scoreExplanation } from "@/lib/prospecting/score";
+import type { ProspectingStage, ScoreCriteria } from "@/lib/prospecting/types";
 
-type LeadsPageProps = {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-};
+type LeadsPageProps = { searchParams?: Promise<Record<string, string | string[] | undefined>> };
 
 type SavedListRecord = {
   id: string;
   name: string;
+  description?: string | null;
+  tags?: string[] | null;
+  score_criteria?: unknown;
   created_at?: string;
 };
 
@@ -34,17 +42,35 @@ type LeadView = {
   phone: string;
   website: string;
   companySize: string;
+  primaryCnaeCode: string;
+  openedAt: string;
   capitalSocial: number;
   status: string;
   listId: string;
   listName: string;
+  notes: string;
+  tags: string[];
+  stage: ProspectingStage;
   score: number;
+  scoreExplanation: string;
 };
+
+const STAGES: Array<{ value: ProspectingStage; label: string }> = [
+  { value: "new", label: "Novo" },
+  { value: "researching", label: "Em pesquisa" },
+  { value: "qualified", label: "Qualificado" },
+  { value: "lead", label: "Lead" },
+  { value: "discarded", label: "Descartado" }
+];
 
 function readStatusMessage(status: string) {
   if (status === "lista-criada") return "Lista salva criada com sucesso.";
+  if (status === "lista-editada") return "Configurações da lista atualizadas.";
   if (status === "lead-vinculado") return "Lead vinculado à lista salva.";
+  if (status === "lead-atualizado") return "Tags, notas e etapa atualizadas.";
+  if (status === "lead-removido") return "Empresa removida da lista; continua disponível na carteira.";
   if (status === "lista-excluida") return "Lista salva excluída com sucesso.";
+  if (status === "enriquecimento-concluido") return "Enriquecimento concluído com origem registrada.";
   return "";
 }
 
@@ -53,8 +79,11 @@ function readErrorMessage(error: string) {
   if (error === "lista-duplicada") return "Já existe uma lista salva com esse nome.";
   if (error === "lista-vinculo") return "Não foi possível vincular o lead à lista.";
   if (error === "lista-invalida") return "Lista salva inválida.";
-  if (error === "lista-exclusao") return "Não foi possível excluir a lista salva.";
+  if (error === "lista-edicao") return "Não foi possível editar a lista.";
+  if (error === "lista-exclusao") return "Não foi possível excluir a lista.";
+  if (error === "lead-atualizacao") return "Não foi possível atualizar o lead.";
   if (error === "lead-invalido") return "Lead inválido para operação.";
+  if (error === "enriquecimento-falhou") return "Não foi possível enriquecer a empresa agora.";
   return "";
 }
 
@@ -67,280 +96,109 @@ function toCapital(value: unknown) {
   return 0;
 }
 
-function buildLeadScore(record: ReturnType<typeof buildDisplayEstablishment>) {
-  let score = 0;
-  if (String(record.email ?? "").trim()) score += 30;
-  if (String(record.phone ?? "").trim()) score += 25;
-  if (String(record.website ?? "").trim()) score += 15;
-  if (String(record.address_line ?? "").trim()) score += 10;
-  if (String(record.registration_status ?? "").toUpperCase().includes("ATIVA")) score += 10;
-
-  const capital = toCapital(record.capital_social);
-  if (capital >= 1000000) score += 25;
-  else if (capital >= 250000) score += 18;
-  else if (capital >= 50000) score += 10;
-
-  const companySize = String(record.company_size ?? "").toLowerCase();
-  if (companySize.includes("grande")) score += 12;
-  else if (companySize.includes("medio") || companySize.includes("médio")) score += 8;
-  else if (companySize.includes("pequeno")) score += 5;
-
-  return score;
+function stringList(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
 }
 
-function rankingLabel(type: "promising" | "capital" | "contact") {
-  if (type === "promising") return "Melhor potencial comercial";
-  if (type === "capital") return "Maior capital social";
-  return "Mais canais de contato";
-}
-
-function rankingDescription(type: "promising" | "capital" | "contact") {
-  if (type === "promising") return "Pontuação baseada em contato, capital, status e presença digital.";
-  if (type === "capital") return "Empresas salvas com maior capital social declarado.";
-  return "Leads com maior densidade de canais comerciais disponíveis.";
+function valueOrEmpty(value: unknown) {
+  return String(value ?? "").trim();
 }
 
 export default async function LeadsPage({ searchParams }: LeadsPageProps) {
   const user = await getCurrentUser();
+  if (!user) return null;
+
   const db = createDbClient();
-
-  if (!user) {
-    return null;
-  }
-
   const params = searchParams ? await searchParams : {};
   const selectedListId = typeof params.list === "string" ? params.list : "";
+  const query = typeof params.q === "string" ? params.q.trim().toLowerCase() : "";
+  const selectedStage = typeof params.stage === "string" ? params.stage as ProspectingStage : "";
   const status = typeof params.status === "string" ? params.status : "";
   const error = typeof params.error === "string" ? params.error : "";
-  const statusMessage = readStatusMessage(status);
-  const errorMessage = readErrorMessage(error);
 
   const [{ data: listRows }, { data: rows }] = await Promise.all([
-    db.from("saved_lead_lists").select("id,name,created_at").eq("profile_id", user.id).order("name", { ascending: true }),
-    db
-      .from("saved_establishments")
-      .select("created_at, notes, list_id, saved_lead_lists(id,name), establishments(*)")
-      .eq("profile_id", user.id)
-      .order("created_at", { ascending: false })
+    db.from("saved_lead_lists").select("id,name,description,tags,score_criteria,created_at").eq("profile_id", user.id).order("name", { ascending: true }),
+    db.from("saved_establishments").select("created_at, notes, tags, stage, list_id, saved_lead_lists(id,name), establishments(*)").eq("profile_id", user.id).order("created_at", { ascending: false })
   ]);
 
   const savedLists = (listRows ?? []) as SavedListRecord[];
+  const listById = new Map(savedLists.map((list) => [list.id, list]));
   const leads = (rows ?? [])
     .map((row) => {
       const establishment = extractSingleObject(row.establishments);
       const list = extractSingleObject(row.saved_lead_lists);
       if (!establishment) return null;
       const display = buildDisplayEstablishment(establishment);
+      const listId = valueOrEmpty(row.list_id ?? list?.id);
+      const criteria: ScoreCriteria = normalizeScoreCriteria(listById.get(listId)?.score_criteria);
+      const score = calculateLeadScore({
+        registrationStatus: valueOrEmpty(display.registration_status),
+        companySize: valueOrEmpty(display.company_size),
+        stateCode: valueOrEmpty(display.state_code),
+        primaryCnaeCode: valueOrEmpty(display.primary_cnae_code),
+        openedAt: valueOrEmpty(display.opened_at),
+        website: valueOrEmpty(display.website),
+        email: valueOrEmpty(display.email),
+        phone: valueOrEmpty(display.phone)
+      }, criteria);
       return {
-        savedAt: row.created_at,
-        establishmentId: String(establishment.id),
-        cnpj: String(display.cnpj ?? ""),
-        companyName: String(display.company_name ?? "-"),
-        tradeName: String(display.trade_name ?? ""),
-        cityName: String(display.city_name ?? "-"),
-        stateCode: String(display.state_code ?? "-"),
-        email: String(display.email ?? "").trim(),
-        phone: String(display.phone ?? "").trim(),
-        website: String(display.website ?? "").trim(),
-        companySize: String(display.company_size ?? "").trim(),
+        savedAt: valueOrEmpty(row.created_at),
+        establishmentId: valueOrEmpty(establishment.id),
+        cnpj: valueOrEmpty(display.cnpj),
+        companyName: valueOrEmpty(display.company_name) || "-",
+        tradeName: valueOrEmpty(display.trade_name),
+        cityName: valueOrEmpty(display.city_name) || "-",
+        stateCode: valueOrEmpty(display.state_code) || "-",
+        email: valueOrEmpty(display.email),
+        phone: valueOrEmpty(display.phone),
+        website: valueOrEmpty(display.website),
+        companySize: valueOrEmpty(display.company_size),
+        primaryCnaeCode: valueOrEmpty(display.primary_cnae_code),
+        openedAt: valueOrEmpty(display.opened_at),
         capitalSocial: toCapital(display.capital_social),
-        status: String(display.registration_status ?? "").trim(),
-        listId: String(row.list_id ?? list?.id ?? ""),
-        listName: String(list?.name ?? ""),
-        score: buildLeadScore(display)
+        status: valueOrEmpty(display.registration_status),
+        listId,
+        listName: valueOrEmpty(list?.name),
+        notes: valueOrEmpty(row.notes),
+        tags: stringList(row.tags),
+        stage: STAGES.some((item) => item.value === row.stage) ? row.stage as ProspectingStage : "new",
+        score: score.score,
+        scoreExplanation: scoreExplanation(score)
       } satisfies LeadView;
     })
     .filter((item): item is LeadView => Boolean(item));
 
-  const filteredLeads = selectedListId ? leads.filter((item) => item.listId === selectedListId) : leads;
+  const filteredLeads = leads.filter((item) => {
+    if (selectedListId && item.listId !== selectedListId) return false;
+    if (selectedStage && item.stage !== selectedStage) return false;
+    if (!query) return true;
+    return [item.companyName, item.tradeName, item.cnpj, item.cityName, item.stateCode, item.email, item.website, item.notes, ...item.tags].join(" ").toLowerCase().includes(query);
+  });
 
-  if (leads.length === 0) {
-    return (
-      <EmptyState
-        title="Nenhum lead salvo"
-        description="Salve empresas a partir dos resultados das buscas para montar carteiras por nicho, região e potencial de prospecção."
-        ctaHref="/dashboard/search"
-        ctaLabel="Buscar empresas"
-      />
-    );
-  }
+  const statusMessage = readStatusMessage(status);
+  const errorMessage = readErrorMessage(error);
+  if (leads.length === 0) return <EmptyState title="Nenhum lead salvo" description="Salve empresas a partir dos resultados das buscas para montar carteiras por nicho, região e potencial de prospecção." ctaHref="/dashboard/search" ctaLabel="Buscar empresas" />;
 
+  const selectedList = savedLists.find((list) => list.id === selectedListId);
+  const selectedCriteria = normalizeScoreCriteria(selectedList?.score_criteria);
   const topPromising = [...filteredLeads].sort((a, b) => b.score - a.score).slice(0, 3);
   const topCapital = [...filteredLeads].sort((a, b) => b.capitalSocial - a.capitalSocial).slice(0, 3);
-  const topContact = [...filteredLeads]
-    .sort((a, b) => (Number(Boolean(b.email)) + Number(Boolean(b.phone)) + Number(Boolean(b.website))) - (Number(Boolean(a.email)) + Number(Boolean(a.phone)) + Number(Boolean(a.website))))
-    .slice(0, 3);
-
-  const rankingGroups = [
-    { type: "promising" as const, items: topPromising },
-    { type: "capital" as const, items: topCapital },
-    { type: "contact" as const, items: topContact }
-  ];
 
   return (
     <>
-      {statusMessage || errorMessage ? (
-        <div className="stack-sm">
-          {statusMessage ? <div className="notice success" role="status">{statusMessage}</div> : null}
-          {errorMessage ? <div className="notice danger" role="alert">{errorMessage}</div> : null}
-        </div>
-      ) : null}
-
+      {statusMessage || errorMessage ? <div className="stack-sm">{statusMessage ? <div className="notice success" role="status">{statusMessage}</div> : null}{errorMessage ? <div className="notice danger" role="alert">{errorMessage}</div> : null}</div> : null}
       <section className="section" aria-labelledby="leads-title">
-        <div className="section-header-row">
-          <div className="section-header">
-            <span className="eyebrow">Leads salvos</span>
-            <h2 id="leads-title" className="title-1">Carteira comercial e listas internas</h2>
-            <p className="section-copy">
-              Organize leads em listas como “Indústrias SP” ou “Contabilidade PR” e separe carteiras por campanha.
-            </p>
-          </div>
-
-          <form action={createSavedLeadListAction} className="inline-form" data-analytics-event="saved_list_created">
-            <label htmlFor="new-lead-list" className="sr-only">Nome da nova lista</label>
-            <input id="new-lead-list" name="name" className="input" placeholder="Nova lista, ex.: Indústrias SP" />
-            <button type="submit" className="button-secondary">Criar lista</button>
-          </form>
-        </div>
-
-        <nav className="list-filter" aria-label="Filtrar por lista salva">
-          <Link href="/dashboard/leads" className={`pill${selectedListId ? "" : " pill-active"}`} aria-current={selectedListId ? undefined : "page"}>
-            Todas ({leads.length})
-          </Link>
-          {savedLists.map((list) => {
-            const count = leads.filter((item) => item.listId === list.id).length;
-            const active = selectedListId === list.id;
-            return (
-              <div key={list.id} className="list-filter-item">
-                <Link
-                  href={`/dashboard/leads?list=${encodeURIComponent(list.id)}`}
-                  className={`pill${active ? " pill-active" : ""}`}
-                  aria-current={active ? "page" : undefined}
-                >
-                  {list.name} ({count})
-                </Link>
-                <form action={deleteSavedLeadListAction}>
-                  <input type="hidden" name="listId" value={list.id} />
-                  <button type="submit" className="button-icon list-filter-remove" aria-label={`Excluir lista ${list.name}`} title="Excluir lista">
-                    <span aria-hidden="true">×</span>
-                  </button>
-                </form>
-              </div>
-            );
-          })}
-        </nav>
+        <div className="section-header-row"><div className="section-header"><span className="eyebrow">Central de prospecção</span><h2 id="leads-title" className="title-1">Da busca ao lead, com origem auditável</h2><p className="section-copy">Listas referenciam o estabelecimento/CNPJ existente. Tags, notas, pesquisa e enriquecimentos ficam separados do cadastro oficial.</p></div><div className="cluster"><Link href={`/dashboard/leads/export${selectedListId ? `?list=${encodeURIComponent(selectedListId)}` : ""}`} className="button-ghost">Exportar CSV</Link><form action={createSavedLeadListAction} className="inline-form" data-analytics-event="saved_list_created"><label htmlFor="new-lead-list" className="sr-only">Nome da nova lista</label><input id="new-lead-list" name="name" className="input" placeholder="Nova lista de prospecção" /><button type="submit" className="button-secondary">Criar lista</button></form></div></div>
+        <nav className="list-filter" aria-label="Filtrar por lista salva"><Link href="/dashboard/leads" className={`pill${selectedListId ? "" : " pill-active"}`}>Todas ({leads.length})</Link>{savedLists.map((list) => { const count = leads.filter((item) => item.listId === list.id).length; return <div key={list.id} className="list-filter-item"><Link href={`/dashboard/leads?list=${encodeURIComponent(list.id)}`} className={`pill${selectedListId === list.id ? " pill-active" : ""}`}>{list.name} ({count})</Link><form action={deleteSavedLeadListAction}><input type="hidden" name="listId" value={list.id} /><button type="submit" className="button-icon list-filter-remove" aria-label={`Excluir lista ${list.name}`} title="Excluir lista">×</button></form></div>; })}</nav>
       </section>
 
-      <section className="rank-grid" aria-label="Rankings da carteira">
-        {rankingGroups.map((group) => (
-          <div key={group.type} className="stack-sm">
-            <div className="section-header">
-              <h3 className="title-3">{rankingLabel(group.type)}</h3>
-              <p className="footnote">{rankingDescription(group.type)}</p>
-            </div>
-            {group.items.length > 0 ? (
-              <ol className="rank-list">
-                {group.items.map((item) => (
-                  <li key={`${group.type}-${item.establishmentId}`}>
-                    <span className="rank-name">
-                      <strong title={item.companyName}>{item.companyName}</strong>
-                      <span>{item.cityName}/{item.stateCode}</span>
-                    </span>
-                    <span className="rank-value">
-                      {group.type === "promising" ? `Score ${item.score}` : null}
-                      {group.type === "capital" ? formatMoney(item.capitalSocial) : null}
-                      {group.type === "contact" ? `${[item.email, item.phone, item.website].filter(Boolean).length} canais` : null}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="footnote">Sem leads suficientes para este ranking.</p>
-            )}
-          </div>
-        ))}
-      </section>
+      {selectedList ? <section className="tile section" aria-labelledby="list-settings-title"><div className="section-header"><span className="eyebrow">Lista selecionada</span><h2 id="list-settings-title" className="title-2">Editar lista e critérios de score</h2><p className="footnote">O score é determinístico. A pesquisa assistida pode explicar o resultado, mas não altera a pontuação.</p></div><form action={updateSavedLeadListAction} className="grid-2"><input type="hidden" name="listId" value={selectedList.id} /><label className="field">Nome<input name="name" className="input" defaultValue={selectedList.name} maxLength={120} required /></label><label className="field">Tags da lista<input name="tags" className="input" defaultValue={stringList(selectedList.tags).join(", ")} placeholder="indústria, PR, campanha-abril" /></label><label className="field">Descrição<textarea name="description" className="input" defaultValue={selectedList.description ?? ""} maxLength={500} rows={2} /></label><div className="stack-sm"><strong>Alvos (opcionais)</strong><label className="field">UFs<input name="targetStates" className="input" defaultValue={selectedCriteria.targetStates.join(", ")} placeholder="PR, SP" /></label><label className="field">CNAEs<input name="targetCnaeCodes" className="input" defaultValue={selectedCriteria.targetCnaeCodes.join(", ")} placeholder="6920601, 6201501" /></label><label className="field">Portes<input name="targetCompanySizes" className="input" defaultValue={selectedCriteria.targetCompanySizes.join(", ")} placeholder="small, medium" /></label><label className="field">Mínimo de anos ativo<input name="minYearsActive" type="number" min="0" max="200" className="input" defaultValue={selectedCriteria.minYearsActive ?? ""} /></label></div><div className="stack-sm"><strong>Pesos (0–100)</strong>{(["activeStatus", "companySize", "location", "cnae", "tenure", "digitalPresence"] as const).map((key) => <label className="field" key={key}>{key}<input name={`weight${key.charAt(0).toUpperCase()}${key.slice(1)}`} type="number" min="0" max="100" className="input" defaultValue={selectedCriteria.weights[key]} /></label>)}</div><div className="cluster"><button type="submit" className="button-secondary">Salvar critérios</button><span className="footnote">{filteredLeads.length} empresa(s) no recorte atual.</span></div></form></section> : null}
 
-      <section className="section" aria-labelledby="leads-table-title">
-        <div className="section-header">
-          <span className="eyebrow">Carteira filtrada</span>
-          <h2 id="leads-table-title" className="title-2">Leads prontos para organização e próxima ação</h2>
-          <p className="section-copy">
-            Filtre por lista salva, reclassifique leads e mantenha uma carteira operacional de prospecção dentro do dashboard.
-          </p>
-        </div>
+      <section className="section" aria-labelledby="filters-title"><div className="section-header"><span className="eyebrow">Operação</span><h2 id="filters-title" className="title-2">Pesquisar e qualificar</h2></div><form method="get" className="cluster">{selectedListId ? <input type="hidden" name="list" value={selectedListId} /> : null}<label className="field">Pesquisa<input name="q" className="input" defaultValue={query} placeholder="empresa, CNPJ, cidade, tag ou nota" /></label><label className="field">Etapa<select name="stage" className="input" defaultValue={selectedStage}><option value="">Todas</option>{STAGES.map((stage) => <option key={stage.value} value={stage.value}>{stage.label}</option>)}</select></label><button type="submit" className="button-secondary">Filtrar</button><Link href={selectedListId ? `/dashboard/leads?list=${encodeURIComponent(selectedListId)}` : "/dashboard/leads"} className="button-ghost">Limpar</Link></form></section>
 
-        <div className="table-wrap">
-          <table className="table table-responsive">
-            <caption className="sr-only">Leads salvos na carteira</caption>
-            <thead>
-              <tr>
-                <th scope="col">Empresa</th>
-                <th scope="col">CNPJ</th>
-                <th scope="col">Localidade</th>
-                <th scope="col">Ranking</th>
-                <th scope="col">Lista salva</th>
-                <th scope="col">Contato</th>
-                <th scope="col" className="cell-num">Capital</th>
-                <th scope="col">Salvo em</th>
-                <th scope="col" className="cell-actions">
-                  <span className="sr-only">Ações</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLeads.map((lead) => (
-                <tr key={lead.establishmentId}>
-                  <td data-label="Empresa">
-                    <div className="cell-stack">
-                      <strong>{lead.companyName}</strong>
-                      <span className="muted">{lead.tradeName || "Nome fantasia não informado"}</span>
-                    </div>
-                  </td>
-                  <td data-label="CNPJ" className="cell-nowrap">{formatCnpj(lead.cnpj)}</td>
-                  <td data-label="Localidade" className="cell-nowrap">{lead.cityName}/{lead.stateCode}</td>
-                  <td data-label="Ranking">
-                    <div className="cell-stack">
-                      <span className="cell-strong">Score {lead.score}</span>
-                      <span className="muted">{lead.companySize || "Porte não informado"}</span>
-                    </div>
-                  </td>
-                  <td data-label="Lista salva">
-                    <form action={assignSavedLeadListAction} className="cell-form" data-analytics-event="saved_lead_list_updated">
-                      <input type="hidden" name="establishmentId" value={lead.establishmentId} />
-                      <select name="listId" defaultValue={lead.listId} className="input" aria-label={`Lista salva de ${lead.companyName}`}>
-                        <option value="">Sem lista</option>
-                        {savedLists.map((list) => (
-                          <option key={list.id} value={list.id}>{list.name}</option>
-                        ))}
-                      </select>
-                      <input name="newListName" className="input" placeholder="Nova lista (opcional)" aria-label={`Criar nova lista para ${lead.companyName}`} />
-                      <button type="submit" className="button-secondary button-sm">Salvar</button>
-                    </form>
-                  </td>
-                  <td data-label="Contato">
-                    <div className="cell-stack">
-                      <span className={lead.email ? undefined : "subtle"}>{lead.email || "Sem e-mail"}</span>
-                      <span className={lead.phone ? undefined : "subtle"}>{lead.phone || "Sem telefone"}</span>
-                      <span className={lead.website ? undefined : "subtle"}>{lead.website || "Sem site"}</span>
-                    </div>
-                  </td>
-                  <td data-label="Capital" className="cell-num">{lead.capitalSocial > 0 ? formatMoney(lead.capitalSocial) : "—"}</td>
-                  <td data-label="Salvo em" className="cell-nowrap">{formatDateTime(lead.savedAt)}</td>
-                  <td data-label="" className="cell-actions">
-                    <div className="table-actions">
-                      <Link href={`/dashboard/companies/${encodeURIComponent(lead.cnpj)}`} className="button-ghost button-sm">
-                        Ver ficha
-                      </Link>
-                      <LeadToggleForm establishmentId={lead.establishmentId} isSaved size="sm" />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <section className="rank-grid" aria-label="Rankings da carteira"><div className="stack-sm"><div className="section-header"><h3 className="title-3">Maior score determinístico</h3><p className="footnote">Critérios configurados na lista, sem score inventado por LLM.</p></div><ol className="rank-list">{topPromising.map((item) => <li key={item.establishmentId}><span className="rank-name"><strong>{item.companyName}</strong><span>{item.cityName}/{item.stateCode}</span></span><span className="rank-value">{item.score}/100</span></li>)}</ol></div><div className="stack-sm"><div className="section-header"><h3 className="title-3">Maior capital declarado</h3><p className="footnote">Dado oficial, não enriquecido.</p></div><ol className="rank-list">{topCapital.map((item) => <li key={item.establishmentId}><span className="rank-name"><strong>{item.companyName}</strong><span>{item.cityName}/{item.stateCode}</span></span><span className="rank-value">{item.capitalSocial > 0 ? formatMoney(item.capitalSocial) : "—"}</span></li>)}</ol></div></section>
+
+      <section className="section" aria-labelledby="leads-table-title"><div className="section-header"><span className="eyebrow">Carteira filtrada</span><h2 id="leads-table-title" className="title-2">{filteredLeads.length} empresa(s) na prospecção</h2><p className="section-copy">Dados oficiais aparecem separados dos metadados operacionais e do enriquecimento derivado.</p></div>{filteredLeads.length === 0 ? <div className="notice info">Nenhuma empresa corresponde aos filtros atuais.</div> : <div className="table-wrap"><table className="table table-responsive"><caption className="sr-only">Empresas na carteira de prospecção</caption><thead><tr><th>Empresa</th><th>CNPJ/local</th><th>Score</th><th>Lista</th><th>Tags/notas/etapa</th><th>Pesquisa/enriquecimento</th><th>Ações</th></tr></thead><tbody>{filteredLeads.map((lead) => <tr key={lead.establishmentId}><td data-label="Empresa"><div className="cell-stack"><strong>{lead.companyName}</strong><span className="muted">{lead.tradeName || "Nome fantasia não informado"}</span><span className="muted">Fonte oficial: Casa dos Dados</span></div></td><td data-label="CNPJ/local"><div className="cell-stack"><span>{formatCnpj(lead.cnpj)}</span><span>{lead.cityName}/{lead.stateCode}</span><span className="muted">{lead.primaryCnaeCode || "CNAE não informado"}</span></div></td><td data-label="Score"><div className="cell-stack"><strong>{lead.score}/100</strong><span className="muted" title={lead.scoreExplanation}>{lead.scoreExplanation || "Sem pontos positivos"}</span></div></td><td data-label="Lista"><form action={assignSavedLeadListAction} className="cell-form"><input type="hidden" name="establishmentId" value={lead.establishmentId} /><select name="listId" defaultValue={lead.listId} className="input" aria-label={`Lista de ${lead.companyName}`}><option value="">Sem lista</option>{savedLists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select><input name="newListName" className="input" placeholder="Nova lista" /><button type="submit" className="button-secondary button-sm">Salvar</button></form></td><td data-label="Tags/notas/etapa"><form action={updateSavedEstablishmentMetaAction} className="cell-form"><input type="hidden" name="establishmentId" value={lead.establishmentId} /><input name="tags" className="input" defaultValue={lead.tags.join(", ")} placeholder="tags" aria-label={`Tags de ${lead.companyName}`} /><textarea name="notes" className="input" defaultValue={lead.notes} placeholder="Nota operacional" rows={2} aria-label={`Notas de ${lead.companyName}`} /><select name="stage" className="input" defaultValue={lead.stage} aria-label={`Etapa de ${lead.companyName}`}>{STAGES.map((stage) => <option key={stage.value} value={stage.value}>{stage.label}</option>)}</select><button type="submit" className="button-secondary button-sm">Atualizar</button></form></td><td data-label="Pesquisa/enriquecimento"><div className="cell-stack"><ProspectingResearchButton establishmentId={lead.establishmentId} /><form action={runProspectingEnrichmentAction}><input type="hidden" name="establishmentId" value={lead.establishmentId} /><button type="submit" className="button-ghost button-sm">Derivar domínio/presença</button></form><span className="footnote">Enriquecimento separado; sem coleta automática de dados pessoais.</span></div></td><td data-label="Ações"><div className="table-actions"><Link href={`/dashboard/companies/${encodeURIComponent(lead.cnpj)}`} className="button-ghost button-sm">Ver ficha</Link>{lead.listId ? <form action={removeEstablishmentFromListAction}><input type="hidden" name="establishmentId" value={lead.establishmentId} /><button type="submit" className="button-ghost button-sm">Remover da lista</button></form> : null}<LeadToggleForm establishmentId={lead.establishmentId} isSaved size="sm" /></div><span className="footnote">Salvo em {formatDateTime(lead.savedAt)}</span></td></tr>)}</tbody></table></div>}</section>
     </>
   );
 }

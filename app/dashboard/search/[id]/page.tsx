@@ -21,7 +21,7 @@ import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
 import { toCompanyListItem, type CompanyListItem } from "@/lib/company-model";
 import { getAiFormatPricingTable, getAiFormattingPriceSummary } from "@/lib/ai-format-pricing";
 import { CompanyResultsTable } from "@/components/results/company-results-table";
-import { saveSelectedEstablishmentsAction, toggleSavedEstablishmentAction } from "@/app/dashboard/actions";
+import { createSavedLeadListFromSelectionAction, saveSelectedEstablishmentsAction, toggleSavedEstablishmentAction } from "@/app/dashboard/actions";
 import { ResultsViewToggle, type ResultsView } from "@/components/map/results-view-toggle";
 import { BusinessMapWorkspace } from "@/components/map/business-map-workspace";
 import { parseCompanyFilters, writeCompanyFilters } from "@/lib/results/filter-params";
@@ -474,6 +474,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
             caption={`Empresas da busca: ${summary.headline}`}
             showCompanyLink
             saveSelectionAction={saveSelectedEstablishmentsAction}
+            createListFromSelectionAction={createSavedLeadListFromSelectionAction}
             toggleSavedAction={toggleSavedEstablishmentAction}
             csvFileName={`buscacnae-selecao-${id.slice(0, 8)}`}
             initialFilters={sharedFilters}

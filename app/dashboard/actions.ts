@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createDbClient } from "@/lib/db-client";
 import { getCurrentUser } from "@/lib/auth/server";
+import { extractSingleObject } from "@/lib/utils";
+import { buildDisplayEstablishment } from "@/lib/establishment-presenter";
+import { deriveEnrichmentFacts } from "@/lib/prospecting/enrichment";
+import { normalizeScoreCriteria } from "@/lib/prospecting/score";
+import type { ProspectingStage } from "@/lib/prospecting/types";
 
 export async function toggleSavedEstablishmentAction(formData: FormData) {
   const establishmentId = String(formData.get("establishmentId") ?? "");
@@ -160,6 +165,152 @@ export async function createSavedLeadListAction(formData: FormData) {
   redirect("/dashboard/leads?status=lista-criada");
 }
 
+function parseTags(value: FormDataEntryValue | null) {
+  return Array.from(new Set(String(value ?? "").split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean))).slice(0, 20);
+}
+
+function parseIdList(values: string[]) {
+  return Array.from(new Set(values.map((value) => String(value).trim()).filter((value) => ESTABLISHMENT_ID_PATTERN.test(value)))).slice(0, MAX_BULK_SAVE);
+}
+
+export async function createSavedLeadListFromSelectionAction(
+  establishmentIds: string[],
+  name: string
+): Promise<{ ok: boolean; saved: number; error?: string; listId?: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, saved: 0, error: "Faça login para criar uma lista." };
+
+  const ids = parseIdList(Array.isArray(establishmentIds) ? establishmentIds : []);
+  const cleanName = String(name ?? "").trim().slice(0, 120);
+  if (!cleanName) return { ok: false, saved: 0, error: "Informe um nome para a lista." };
+  if (ids.length === 0) return { ok: false, saved: 0, error: "Nenhuma empresa válida selecionada." };
+
+  const db = createDbClient();
+  const { data: ownedEstablishments, error: establishmentError } = await db.from("establishments").select("id").in("id", ids);
+  if (establishmentError) return { ok: false, saved: 0, error: "Não foi possível validar a seleção." };
+  const validIds = parseIdList(((ownedEstablishments ?? []) as Array<{ id: unknown }>).map((item) => String(item.id ?? "")));
+  if (validIds.length === 0) return { ok: false, saved: 0, error: "As empresas selecionadas não estão disponíveis." };
+
+  const { data: list, error: listError } = await db
+    .from("saved_lead_lists")
+    .upsert({ profile_id: user.id, name: cleanName }, { onConflict: "profile_id,name" })
+    .select("id")
+    .single();
+  if (listError || !list) return { ok: false, saved: 0, error: "Não foi possível criar a lista." };
+
+  const { error: saveError } = await db.from("saved_establishments").upsert(
+    validIds.map((establishmentId) => ({ profile_id: user.id, establishment_id: establishmentId, list_id: list.id })),
+    { onConflict: "profile_id,establishment_id" }
+  );
+  if (saveError) return { ok: false, saved: 0, error: "Não foi possível adicionar as empresas à lista." };
+
+  revalidateLeadPaths();
+  return { ok: true, saved: validIds.length, listId: String(list.id) };
+}
+
+export async function updateSavedLeadListAction(formData: FormData) {
+  const user = await getCurrentUser();
+  const db = createDbClient();
+  if (!user) redirect("/sign-in");
+
+  const listId = String(formData.get("listId") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim().slice(0, 120);
+  if (!listId || !name) redirect("/dashboard/leads?error=lista-invalida");
+
+  const criteria = normalizeScoreCriteria({
+    targetStates: String(formData.get("targetStates") ?? "").split(","),
+    targetCnaeCodes: String(formData.get("targetCnaeCodes") ?? "").split(","),
+    targetCompanySizes: String(formData.get("targetCompanySizes") ?? "").split(","),
+    minYearsActive: formData.get("minYearsActive"),
+    weights: {
+      activeStatus: formData.get("weightActiveStatus"),
+      companySize: formData.get("weightCompanySize"),
+      location: formData.get("weightLocation"),
+      cnae: formData.get("weightCnae"),
+      tenure: formData.get("weightTenure"),
+      digitalPresence: formData.get("weightDigitalPresence")
+    }
+  });
+
+  const { error } = await db.from("saved_lead_lists").update({
+    name,
+    description: String(formData.get("description") ?? "").trim().slice(0, 500) || null,
+    tags: parseTags(formData.get("tags")),
+    score_criteria: criteria,
+    updated_at: new Date().toISOString()
+  }).eq("id", listId).eq("profile_id", user.id);
+  if (error) {
+    console.error("Falha ao editar lista", error);
+    redirect("/dashboard/leads?error=lista-edicao");
+  }
+  revalidateLeadPaths();
+  redirect(`/dashboard/leads?list=${encodeURIComponent(listId)}&status=lista-editada`);
+}
+
+export async function updateSavedEstablishmentMetaAction(formData: FormData) {
+  const user = await getCurrentUser();
+  const db = createDbClient();
+  if (!user) redirect("/sign-in");
+
+  const establishmentId = String(formData.get("establishmentId") ?? "").trim();
+  const stage = String(formData.get("stage") ?? "new") as ProspectingStage;
+  const validStages: ProspectingStage[] = ["new", "researching", "qualified", "lead", "discarded"];
+  if (!ESTABLISHMENT_ID_PATTERN.test(establishmentId) || !validStages.includes(stage)) {
+    redirect("/dashboard/leads?error=lead-invalido");
+  }
+
+  const { error } = await db.from("saved_establishments").update({
+    notes: String(formData.get("notes") ?? "").trim().slice(0, 2000) || null,
+    tags: parseTags(formData.get("tags")),
+    stage,
+    updated_at: new Date().toISOString()
+  }).eq("profile_id", user.id).eq("establishment_id", establishmentId);
+  if (error) {
+    console.error("Falha ao atualizar metadados do lead", error);
+    redirect("/dashboard/leads?error=lead-atualizacao");
+  }
+  revalidateLeadPaths();
+  redirect("/dashboard/leads?status=lead-atualizado");
+}
+
+export async function removeEstablishmentFromListAction(formData: FormData) {
+  const user = await getCurrentUser();
+  const db = createDbClient();
+  if (!user) redirect("/sign-in");
+  const establishmentId = String(formData.get("establishmentId") ?? "").trim();
+  if (!ESTABLISHMENT_ID_PATTERN.test(establishmentId)) redirect("/dashboard/leads?error=lead-invalido");
+  const { error } = await db.from("saved_establishments").update({ list_id: null, updated_at: new Date().toISOString() }).eq("profile_id", user.id).eq("establishment_id", establishmentId);
+  if (error) redirect("/dashboard/leads?error=lista-vinculo");
+  revalidateLeadPaths();
+  redirect("/dashboard/leads?status=lead-removido");
+}
+
+export async function runProspectingEnrichmentAction(formData: FormData) {
+  const user = await getCurrentUser();
+  const db = createDbClient();
+  if (!user) redirect("/sign-in");
+  const establishmentId = String(formData.get("establishmentId") ?? "").trim();
+  if (!ESTABLISHMENT_ID_PATTERN.test(establishmentId)) redirect("/dashboard/leads?error=lead-invalido");
+
+  const { data: row } = await db.from("saved_establishments").select("establishment_id, establishments(*)").eq("profile_id", user.id).eq("establishment_id", establishmentId).maybeSingle();
+  const establishment = extractSingleObject(row?.establishments);
+  if (!establishment) redirect("/dashboard/leads?error=lead-invalido");
+  const display = buildDisplayEstablishment(establishment);
+  const collectedAt = new Date().toISOString();
+  const facts = deriveEnrichmentFacts({ website: String(display.website ?? ""), email: String(display.email ?? ""), phone: String(display.phone ?? "") }, collectedAt);
+
+  const { error } = await db.from("prospecting_enrichments").upsert(
+    facts.map((fact) => ({ profile_id: user.id, establishment_id: establishmentId, field_key: fact.fieldKey, value: fact.value, source: fact.source, collected_at: fact.collectedAt, confidence: fact.confidence, is_personal: fact.isPersonal, updated_at: collectedAt })),
+    { onConflict: "profile_id,establishment_id,field_key" }
+  );
+  if (error) {
+    console.error("Falha no enriquecimento da prospecção", error);
+    redirect("/dashboard/leads?error=enriquecimento-falhou");
+  }
+  revalidateLeadPaths();
+  redirect("/dashboard/leads?status=enriquecimento-concluido");
+}
+
 export async function assignSavedLeadListAction(formData: FormData) {
   const user = await getCurrentUser();
   const db = createDbClient();
@@ -197,6 +348,16 @@ export async function assignSavedLeadListAction(formData: FormData) {
     }
 
     resolvedListId = createdList.id;
+  }
+
+  if (resolvedListId) {
+    const { data: ownedList } = await db
+      .from("saved_lead_lists")
+      .select("id")
+      .eq("id", resolvedListId)
+      .eq("profile_id", user.id)
+      .maybeSingle();
+    if (!ownedList) redirect("/dashboard/leads?error=lista-invalida");
   }
 
   const { error } = await db

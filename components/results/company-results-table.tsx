@@ -66,6 +66,7 @@ type CompanyResultsTableProps = {
    * para manter este componente desacoplado do servidor (e testável).
    */
   saveSelectionAction?: (establishmentIds: string[]) => Promise<{ ok: boolean; saved: number; error?: string }>;
+  createListFromSelectionAction?: (establishmentIds: string[], name: string) => Promise<{ ok: boolean; saved: number; error?: string; listId?: string }>;
   toggleSavedAction?: (formData: FormData) => Promise<void>;
   /** Nome base do arquivo CSV da seleção. */
   csvFileName?: string;
@@ -190,6 +191,7 @@ export function CompanyResultsTable({
   caption,
   showCompanyLink = false,
   saveSelectionAction,
+  createListFromSelectionAction,
   toggleSavedAction,
   csvFileName = "empresas-selecionadas",
   initialFilters,
@@ -408,6 +410,18 @@ export function CompanyResultsTable({
     });
   }
 
+  function createListFromSelection() {
+    if (!createListFromSelectionAction || selectedItems.length === 0) return;
+    const name = window.prompt("Nome da lista de prospecção:")?.trim();
+    if (!name) return;
+    startSaving(async () => {
+      const result = await createListFromSelectionAction(selectedItems.map((item) => item.id), name);
+      setFeedback(result.ok
+        ? { tone: "success", text: `${numberFormatter.format(result.saved)} empresa(s) adicionada(s) à lista “${name}”.` }
+        : { tone: "danger", text: result.error ?? "Não foi possível criar a lista." });
+    });
+  }
+
   const totalColumns = 10;
   const filtersActive = hasActiveFilters(filters);
   const pageCount = table.getPageCount();
@@ -494,6 +508,11 @@ export function CompanyResultsTable({
           {saveSelectionAction ? (
             <button type="button" className="button-secondary button-sm" onClick={saveSelection} aria-busy={isSaving} disabled={isSaving}>
               Salvar na carteira
+            </button>
+          ) : null}
+          {createListFromSelectionAction ? (
+            <button type="button" className="button-secondary button-sm" onClick={createListFromSelection} aria-busy={isSaving} disabled={isSaving}>
+              Criar lista com seleção
             </button>
           ) : null}
           <button type="button" className="button-secondary button-sm" onClick={downloadCsv}>
