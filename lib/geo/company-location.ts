@@ -6,12 +6,17 @@ import { normalizeCep as normalizeCepValue } from "@/lib/data-quality/normalize"
 /**
  * Estratégia de localização (ordem de preferência):
  *
- * 1. coordenadas do próprio estabelecimento, se a fonte algum dia as fornecer → address;
- * 2. cache interno de CEP (tabela postal_code_locations)                      → postal_code;
- * 3. coordenadas IBGE do município devolvidas pela Casa dos Dados
+ * 1. coordenada confiável já existente: coordenadas do próprio endereço na fonte
+ *    (hoje a Casa dos Dados não as envia; se enviar, entram aqui)             → address;
+ * 2. cache por empresa (tabela establishment_locations): coordenadas já
+ *    verificadas (exact) ou geocodificadas a partir do endereço (address)      → exact | address;
+ * 3. endereço geocodificado: só alimenta o cache do passo 2 (não há geocodificador
+ *    de endereço ligado por padrão — ver docs/MAPA_EMPRESARIAL.md);
+ * 4. cache interno de CEP (tabela postal_code_locations)                      → postal_code;
+ * 5. coordenadas IBGE do município devolvidas pela Casa dos Dados
  *    (endereco.ibge.latitude/longitude)                                        → city;
- * 4. sede do município pelo código IBGE / nome + UF (base local)               → city;
- * 5. centro da UF                                                              → approximate.
+ *    sede do município pelo código IBGE / nome + UF (base local)               → city;
+ * 6. centro da UF                                                              → approximate.
  *
  * Nenhuma chamada externa acontece aqui. A geocodificação de CEP é feita à parte,
  * de forma controlada (lib/geo/postal-code-geocoder.ts), e só alimenta o cache.
@@ -26,6 +31,11 @@ export type LocationInput = {
 };
 
 export type PostalCodeLookup = (cep: string) => { latitude: number; longitude: number } | null;
+
+/** Coordenada por empresa já conhecida (cache). Só aceita precisões de ponto. */
+export type CompanyLocationLookup = (
+  cnpj: string
+) => { latitude: number; longitude: number; precision: "exact" | "address" } | null;
 
 type Coordinates = { latitude: number; longitude: number };
 
@@ -84,9 +94,25 @@ function build(input: LocationInput, coordinates: Coordinates, precision: Locati
   };
 }
 
-export function resolveCompanyLocation(input: LocationInput, lookupPostalCode?: PostalCodeLookup): CompanyLocation | null {
+export function resolveCompanyLocation(
+  input: LocationInput,
+  lookupPostalCode?: PostalCodeLookup,
+  lookupCompanyLocation?: CompanyLocationLookup
+): CompanyLocation | null {
   const provider = extractProviderCoordinates(input.payload);
   if (provider.address) return build(input, provider.address, "address", "provider");
+
+  if (lookupCompanyLocation && input.cnpj) {
+    const cached = lookupCompanyLocation(input.cnpj);
+    if (
+      cached &&
+      (cached.precision === "exact" || cached.precision === "address") &&
+      isFiniteCoordinate(cached.latitude, cached.longitude) &&
+      isWithinBrazil(cached.latitude, cached.longitude)
+    ) {
+      return build(input, cached, cached.precision, "company_cache");
+    }
+  }
 
   const cep = normalizeCep(input.cep);
   if (cep && lookupPostalCode) {

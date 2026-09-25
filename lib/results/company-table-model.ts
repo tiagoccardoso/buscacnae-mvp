@@ -42,48 +42,84 @@ export function isActiveStatus(status: string | null | undefined) {
   return foldText(status) === "ativa";
 }
 
+/**
+ * Sujeito mínimo dos filtros. Lista (CompanyListItem) e Mapa (MapCompany) são
+ * convertidos para este formato, então as MESMAS regras valem nas duas visões.
+ */
+export type CompanyFilterSubject = {
+  cnpj: string;
+  status: string | null;
+  state: string | null;
+  headquartersOrBranch: CompanyListItem["headquartersOrBranch"];
+  hasPhone: boolean;
+  hasMobilePhone: boolean;
+  hasEmail: boolean;
+  /** Texto pesquisável já concatenado (razão social, fantasia, cidade, CNAE…). */
+  searchText: string;
+};
+
 function searchableText(item: CompanyListItem) {
-  return foldText(
-    [
-      item.legalName,
-      item.tradeName,
-      item.cnpj,
-      item.city,
-      item.state,
-      item.neighborhood,
-      item.primaryCnae,
-      item.primaryCnaeDescription,
-      item.email,
-      item.phone
-    ]
-      .filter(Boolean)
-      .join(" ")
-  );
+  return [
+    item.legalName,
+    item.tradeName,
+    item.cnpj,
+    item.city,
+    item.state,
+    item.neighborhood,
+    item.primaryCnae,
+    item.primaryCnaeDescription,
+    item.email,
+    item.phone
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function listItemToFilterSubject(item: CompanyListItem): CompanyFilterSubject {
+  return {
+    cnpj: item.cnpj,
+    status: item.status,
+    state: item.state,
+    headquartersOrBranch: item.headquartersOrBranch,
+    hasPhone: Boolean(item.phone),
+    hasMobilePhone: Boolean(item.phone && item.phoneIsMobile),
+    hasEmail: Boolean(item.email),
+    searchText: searchableText(item)
+  };
+}
+
+function subjectMatchesQuery(subject: CompanyFilterSubject, query: string) {
+  const folded = foldText(query);
+  if (!folded) return true;
+  const haystack = foldText(subject.searchText);
+  const digitsQuery = folded.replace(/[^0-9a-z]/g, "");
+  if (digitsQuery.length >= 4 && /\d/.test(digitsQuery) && subject.cnpj.toLowerCase().includes(digitsQuery)) return true;
+  return folded.split(" ").every((term) => haystack.includes(term));
 }
 
 /** Busca livre: todos os termos precisam aparecer (sem acento, sem caixa). CNPJ aceita máscara. */
 export function matchesQuery(item: CompanyListItem, query: string) {
-  const folded = foldText(query);
-  if (!folded) return true;
-  const haystack = searchableText(item);
-  const digitsQuery = folded.replace(/[^0-9a-z]/g, "");
-  if (digitsQuery.length >= 4 && /\d/.test(digitsQuery) && item.cnpj.toLowerCase().includes(digitsQuery)) return true;
-  return folded.split(" ").every((term) => haystack.includes(term));
+  return subjectMatchesQuery(listItemToFilterSubject(item), query);
+}
+
+/** Regra única de filtros (Lista e Mapa). */
+export function subjectMatchesFilters(subject: CompanyFilterSubject, filters: CompanyTableFilters) {
+  if (filters.status === "active" && !isActiveStatus(subject.status)) return false;
+  if (filters.status === "inactive" && isActiveStatus(subject.status)) return false;
+
+  if (filters.contact === "any" && !subject.hasPhone && !subject.hasEmail) return false;
+  if (filters.contact === "phone" && !subject.hasPhone) return false;
+  if (filters.contact === "mobile" && !subject.hasMobilePhone) return false;
+  if (filters.contact === "email" && !subject.hasEmail) return false;
+
+  if (filters.state !== "all" && (subject.state ?? "") !== filters.state) return false;
+  if (filters.branch !== "all" && subject.headquartersOrBranch !== filters.branch) return false;
+
+  return subjectMatchesQuery(subject, filters.query);
 }
 
 export function matchesFilters(item: CompanyListItem, filters: CompanyTableFilters) {
-  if (filters.status === "active" && !isActiveStatus(item.status)) return false;
-  if (filters.status === "inactive" && isActiveStatus(item.status)) return false;
-
-  if (filters.contact === "any" && !item.phone && !item.email) return false;
-  if (filters.contact === "phone" && !item.phone) return false;
-  if (filters.contact === "mobile" && !(item.phone && item.phoneIsMobile)) return false;
-  if (filters.contact === "email" && !item.email) return false;
-
-  if (filters.state !== "all" && (item.state ?? "") !== filters.state) return false;
-  if (filters.branch !== "all" && item.headquartersOrBranch !== filters.branch) return false;
-
-  return matchesQuery(item, filters.query);
+  return subjectMatchesFilters(listItemToFilterSubject(item), filters);
 }
 
 export function filterCompanyListItems(items: CompanyListItem[], filters: CompanyTableFilters) {

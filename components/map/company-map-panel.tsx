@@ -21,7 +21,8 @@ function formatCnae(code: string | null) {
 
 /**
  * Resumo da empresa selecionada no mapa. "Ver empresa" abre a ficha existente
- * (/dashboard/companies/[cnpj]); salvar na carteira usa a mesma server action da lista.
+ * (/dashboard/companies/[cnpj]); "Ver na lista" abre a lista da mesma busca filtrada
+ * pelo CNPJ; salvar na carteira usa a mesma server action da lista.
  */
 export function CompanyMapPanel({ company, searchId, onClose, onSavedChange }: CompanyMapPanelProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -133,6 +134,13 @@ export function CompanyMapPanel({ company, searchId, onClose, onSavedChange }: C
           className="button"
         >
           Ver empresa
+        </Link>
+        <Link
+          href={`/dashboard/search/${encodeURIComponent(searchId)}?q=${encodeURIComponent(company.cnpj)}`}
+          className="button-ghost"
+          prefetch={false}
+        >
+          Ver na lista
         </Link>
         <button
           type="button"

@@ -96,7 +96,7 @@ Erros transitórios têm retry conservador; HTTP 429 não é repetido agressivam
 
 ## 4.1) Mapa Empresarial
 
-`/dashboard/mapa` e a aba **Mapa** do resultado da busca mostram os mesmos resultados da lista em um mapa CesiumJS (clusters, densidade, "Buscar nesta área"). Funciona sem chaves pagas (OpenStreetMap + textura offline do Cesium). Detalhes, variáveis `MAP_*`/`NEXT_PUBLIC_MAP_*` e migração opcional `sql/neon_map_locations.sql` em [`docs/MAPA_EMPRESARIAL.md`](docs/MAPA_EMPRESARIAL.md).
+`/dashboard/mapa` e as abas **Lista / Mapa / Inteligência** do resultado da busca mostram os mesmos resultados e filtros da lista. Mapa 2D operacional com MapLibre GL + deck.gl (clusters, empresas, "Buscar nesta área"), inteligência territorial com H3 (concentração por células, municípios e indicadores) e globo 3D opcional com CesiumJS. Funciona sem chaves pagas (OpenStreetMap). Validação local sem login/banco: `npm run dev` e abra `/dev/mapa?n=10000`. Detalhes, variáveis `MAP_*`/`NEXT_PUBLIC_MAP_*` e migração opcional `sql/neon_map_locations.sql` em [`docs/MAPA_EMPRESARIAL.md`](docs/MAPA_EMPRESARIAL.md).
 
 ## 5) Variáveis de ambiente
 

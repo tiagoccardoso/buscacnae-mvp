@@ -1,5 +1,5 @@
 import type * as Cesium from "cesium";
-import type { CesiumModule } from "@/lib/map/engine/cesium-loader";
+import type { CesiumModule } from "@/lib/map/cesium/cesium-loader";
 
 /**
  * Providers de mapa base, desacoplados do restante do mapa.
@@ -16,13 +16,9 @@ import type { CesiumModule } from "@/lib/map/engine/cesium-loader";
  *   osm (padrão, sem chave) · carto-light · carto-dark · ion (exige token) · offline.
  * - Opcional: Google Photorealistic 3D Tiles quando houver chave (Map Tiles API) ou token ion.
  */
-export type BasemapId = "osm" | "carto-light" | "carto-dark" | "ion" | "offline";
+import type { BasemapId, PublicMapConfig } from "@/lib/map/config";
 
-export type PublicMapConfig = {
-  basemap: BasemapId;
-  cesiumIonToken: string;
-  googleMapTilesKey: string;
-};
+export type { BasemapId, PublicMapConfig };
 
 export type BasemapHandle = {
   id: BasemapId;

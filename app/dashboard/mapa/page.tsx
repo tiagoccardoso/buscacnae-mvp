@@ -6,6 +6,8 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getPublicMapConfig } from "@/lib/env";
 import { isUuid, listMapSearchOptions } from "@/lib/map/service";
+import { mapLayerFromParam } from "@/lib/map/types";
+import { parseCompanyFilters, writeCompanyFilters } from "@/lib/results/filter-params";
 
 export const metadata = {
   title: "Mapa empresarial"
@@ -29,6 +31,16 @@ export default async function BusinessMapPage({ searchParams }: MapPageProps) {
   const requested = typeof params.search === "string" && isUuid(params.search) ? params.search : "";
   const options = await listMapSearchOptions(user.id);
   const searchId = requested || options[0]?.id || "";
+  const view = params.view === "inteligencia" ? "inteligencia" : "mapa";
+  const filters = parseCompanyFilters(params);
+  const company = typeof params.empresa === "string" && isUuid(params.empresa) ? params.empresa : null;
+  const viewHref = (target: "mapa" | "inteligencia") => {
+    const query = writeCompanyFilters(new URLSearchParams(), filters);
+    if (searchId) query.set("search", searchId);
+    if (target === "inteligencia") query.set("view", target);
+    const text = query.toString();
+    return `/dashboard/mapa${text ? `?${text}` : ""}`;
+  };
 
   return (
     <section className="section" aria-labelledby="map-page-title">
@@ -47,7 +59,31 @@ export default async function BusinessMapPage({ searchParams }: MapPageProps) {
       </div>
 
       {searchId ? (
-        <BusinessMapWorkspace searchId={searchId} config={getPublicMapConfig()} variant="page" searchOptions={options} />
+        <nav className="segmented" aria-label="Modo do mapa">
+          <Link href={viewHref("mapa")} className="segmented-item" aria-current={view === "mapa" ? "page" : undefined} scroll={false}>
+            Mapa
+          </Link>
+          <Link
+            href={viewHref("inteligencia")}
+            className="segmented-item"
+            aria-current={view === "inteligencia" ? "page" : undefined}
+            scroll={false}
+          >
+            Inteligência
+          </Link>
+        </nav>
+      ) : null}
+
+      {searchId ? (
+        <BusinessMapWorkspace
+          key={view}
+          searchId={searchId}
+          config={getPublicMapConfig()}
+          variant="page"
+          view={view}
+          searchOptions={options}
+          initialState={{ filters, layer: mapLayerFromParam(params.camada), companyId: company }}
+        />
       ) : (
         <EmptyState
           title="Nenhuma busca para exibir no mapa"

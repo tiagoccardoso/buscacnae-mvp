@@ -85,3 +85,25 @@ test("estado vazio de filtros não quebra com lista vazia", () => {
   const html = render([]);
   assert.ok(html.includes("Nenhuma empresa corresponde aos filtros."));
 });
+
+test("lista → mapa: cada linha leva ao mapa da mesma busca com a empresa e os filtros atuais", () => {
+  const html = render([item(0), item(1)], {
+    variant: "dashboard",
+    mapHrefBase: "/dashboard/search/abc?view=mapa",
+    initialFilters: { query: "", status: "active", contact: "all", state: "SP", branch: "all" }
+  });
+  const links = Array.from(html.matchAll(/<a[^>]*href="([^"]*)"[^>]*>Ver no mapa<\/a>/g)).map((match) => match[1].replace(/&amp;/g, "&"));
+  assert.deepEqual(links, [
+    "/dashboard/search/abc?view=mapa&empresa=id-0&situacao=active&uf=SP",
+    "/dashboard/search/abc?view=mapa&empresa=id-1&situacao=active&uf=SP"
+  ]);
+});
+
+test("mapa → lista: filtros vindos da URL (ex.: ?q=CNPJ) já chegam aplicados no HTML inicial", () => {
+  const items = Array.from({ length: 30 }, (_, i) => item(i));
+  const html = render(items, { initialFilters: { query: String(10000000000100 + 7), status: "all", contact: "all", state: "all", branch: "all" } });
+  const rows = html.match(/aria-rowindex="/g) ?? [];
+  assert.equal(rows.length, 1);
+  assert.ok(html.includes("EMPRESA 7 LTDA"));
+  assert.ok(html.includes("1 de 30 empresas"));
+});

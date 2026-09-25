@@ -52,6 +52,7 @@ Thumbs.db
 *.pem
 *.key
 
-# Cesium (copiado de node_modules em predev/prebuild)
+# Cesium e worker do MapLibre (copiados de node_modules em predev/prebuild)
 public/cesium/
+public/maplibre/
 *.tsbuildinfo

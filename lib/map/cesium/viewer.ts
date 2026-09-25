@@ -1,5 +1,5 @@
 import type * as Cesium from "cesium";
-import type { CesiumModule } from "@/lib/map/engine/cesium-loader";
+import type { CesiumModule } from "@/lib/map/cesium/cesium-loader";
 
 /**
  * Criação do viewer e gestos.

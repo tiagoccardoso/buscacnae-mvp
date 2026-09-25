@@ -4,9 +4,9 @@
   "private": true,
   "description": "MVP SaaS para descoberta de empresas por CNAE e cidade.",
   "scripts": {
-    "predev": "node scripts/copy-cesium-assets.mjs",
+    "predev": "node scripts/copy-cesium-assets.mjs && node scripts/copy-maplibre-worker.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/copy-cesium-assets.mjs",
+    "prebuild": "node scripts/copy-cesium-assets.mjs && node scripts/copy-maplibre-worker.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -14,10 +14,15 @@
     "test": "tsx --test tests/*.test.mts"
   },
   "dependencies": {
+    "@deck.gl/core": "~9.4.0",
+    "@deck.gl/layers": "~9.4.0",
+    "@deck.gl/maplibre": "~9.4.0",
     "@neondatabase/serverless": "^1.0.2",
     "@tanstack/react-table": "^9.2.4",
     "@tanstack/react-virtual": "^3.14.13",
     "cesium": "^1.145.0",
+    "h3-js": "^4.5.0",
+    "maplibre-gl": "^6.11.2",
     "next": "16.2.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",

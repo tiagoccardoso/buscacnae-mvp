@@ -1,7 +1,7 @@
 /**
  * Copia o build oficial do CesiumJS para public/cesium.
  *
- * O Mapa Empresarial carrega o Cesium sob demanda (lib/map/engine/cesium-loader.ts) a partir
+ * O Mapa Empresarial carrega o Cesium sob demanda (lib/map/cesium/cesium-loader.ts) a partir
  * do próprio domínio: Cesium.js, Workers, Assets (inclui a textura offline Natural Earth II),
  * ThirdParty e Widgets. Executado automaticamente em `predev` e `prebuild`; a pasta gerada
  * não é versionada (.gitignore).

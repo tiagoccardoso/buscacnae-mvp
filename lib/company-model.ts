@@ -121,6 +121,9 @@ export type CompanySummary = {
   capitalSocial: number | null;
   email: string | null;
   phone: string | null;
+  phoneIsMobile: boolean;
+  headquartersOrBranch: HeadquartersOrBranch | null;
+  neighborhood: string | null;
   cityName: string | null;
   cityIbge: string | null;
   stateCode: string | null;
@@ -373,6 +376,9 @@ export function toCompanySummary(company: Company): CompanySummary {
     capitalSocial: company.shareCapital,
     email: company.contacts.email,
     phone: company.contacts.phone,
+    phoneIsMobile: company.contacts.phoneIsMobile,
+    headquartersOrBranch: company.headquartersOrBranch,
+    neighborhood: company.address.neighborhood,
     cityName: company.address.city,
     cityIbge: company.address.cityIbge,
     stateCode: company.address.state,

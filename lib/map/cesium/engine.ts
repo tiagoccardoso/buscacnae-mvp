@@ -1,65 +1,35 @@
 import type * as Cesium from "cesium";
 import { CLUSTER_MAX_ZOOM, createCompanyClusterIndex, type CompanyClusterIndex, type MapCluster, type MapPoint } from "@/lib/map/clustering";
-import { BRAZIL_BOUNDS, boundsContain, heightToZoom, viewScaleForHeight, zoomToHeight, type ViewScale } from "@/lib/map/geo";
-import type { GeoBounds, MapCompany } from "@/lib/map/types";
-import { loadCesium, type CesiumModule } from "@/lib/map/engine/cesium-loader";
-import { createDisposerStack, debounce } from "@/lib/map/engine/lifecycle";
-import { detectTheme, readMapPalette } from "@/lib/map/engine/palette";
-import { applyBasemap, canUsePhotorealistic3D, loadPhotorealistic3D, type PublicMapConfig } from "@/lib/map/engine/providers";
-import { createBusinessViewer, installTrackpadPinchZoom } from "@/lib/map/engine/viewer";
-import { createClustersLayer } from "@/lib/map/engine/layers/clusters-layer";
-import { createCompaniesLayer } from "@/lib/map/engine/layers/companies-layer";
-import { createDensityLayer } from "@/lib/map/engine/layers/density-layer";
-import type { LayerContext, MapLayer, PickTarget, RenderFrame, ViewState } from "@/lib/map/engine/layers/types";
+import type { BusinessMapEngine, MapEngineFactory, MapLegend } from "@/lib/map/engine-contract";
+import { BRAZIL_BOUNDS, boundsContain, heightToZoom, viewScaleForHeight, zoomToHeight } from "@/lib/map/geo";
+import { aggregateCompaniesByH3, describeCellArea, maxResolutionForPrecision, resolutionForZoom, type H3Cell } from "@/lib/map/intelligence/h3-grid";
+import type { GeoBounds, MapCompany, MapLayerMode, MapPrecisionStats } from "@/lib/map/types";
+import { loadCesium, type CesiumModule } from "@/lib/map/cesium/cesium-loader";
+import { createDisposerStack, debounce } from "@/lib/map/lifecycle";
+import { detectTheme, readMapPalette } from "@/lib/map/palette";
+import { applyBasemap, canUsePhotorealistic3D, loadPhotorealistic3D } from "@/lib/map/cesium/providers";
+import { createBusinessViewer, installTrackpadPinchZoom } from "@/lib/map/cesium/viewer";
+import { createClustersLayer } from "@/lib/map/cesium/layers/clusters-layer";
+import { createCompaniesLayer } from "@/lib/map/cesium/layers/companies-layer";
+import { createH3ColumnsLayer } from "@/lib/map/cesium/layers/h3-columns-layer";
+import type { LayerContext, MapLayer, PickTarget, RenderFrame, ViewState } from "@/lib/map/cesium/layers/types";
+import { computeDataBounds, legendFromBins, visibleCompanies } from "@/lib/map/view-model";
 
 /**
- * Motor do Mapa Empresarial (somente navegador).
+ * Motor 3D OPCIONAL do Mapa Empresarial (CesiumJS, somente navegador).
  *
- * Responsabilidades: criar/destruir o viewer, orquestrar camadas, índice de clusters,
- * câmera, seleção e eventos. Os componentes React só chamam esta API — o viewer é
- * criado uma única vez e sobrevive a trocas de dados, filtros e modo de camada.
+ * O mapa operacional é o 2D (MapLibre + deck.gl). Este motor só é carregado quando o
+ * usuário pede o globo 3D: cria/destrói o viewer, orquestra camadas, índice de clusters,
+ * câmera, seleção e eventos pelo mesmo contrato do 2D (lib/map/engine-contract.ts).
+ * Camadas: Empresas (clusters + pontos) e Concentração (colunas H3 extrudadas).
  */
-export type MapLayerMode = "companies" | "density";
-export type SceneModeOption = "3d" | "2d";
-
-export type MapViewInfo = {
-  bounds: GeoBounds;
-  cameraHeight: number;
-  scale: ViewScale;
-  visibleCompanyCount: number;
-  /** Primeiras empresas na área visível (alternativa textual acessível ao mapa). */
-  visibleCompanyIds: string[];
-  clusterCount: number;
-};
-
-export type BusinessMapEngineOptions = {
-  container: HTMLElement;
-  creditContainer: HTMLElement;
-  config: PublicMapConfig;
-  onSelect(companyId: string | null): void;
-  onViewChange(info: MapViewInfo): void;
-  /** Cluster que não se separa com zoom (empresas no mesmo ponto). */
-  onGroupSelect?(companyIds: string[]): void;
-};
-
-export type BusinessMapEngine = {
-  setCompanies(companies: MapCompany[], options?: { fit?: boolean }): void;
-  setMode(mode: MapLayerMode): void;
-  setSelected(companyId: string | null): void;
-  focusCompany(companyId: string): void;
-  zoomIn(): void;
-  zoomOut(): void;
-  resetView(): void;
-  fitToData(): void;
-  setSceneMode(mode: SceneModeOption): void;
-  setPhotorealistic(enabled: boolean): Promise<boolean>;
-  supportsPhotorealistic: boolean;
-  getViewBounds(): GeoBounds;
-  destroy(): void;
-};
-
 const MAX_RENDERED_POINTS = 3000;
-const ACCESSIBLE_LIST_LIMIT = 50;
+
+function precisionStats(companies: readonly MapCompany[]): MapPrecisionStats {
+  const stats: MapPrecisionStats = { exact: 0, address: 0, postal_code: 0, city: 0, approximate: 0 };
+  for (const company of companies) if (company.location) stats[company.location.precision] += 1;
+  return stats;
+}
 
 function rectangleToBounds(C: CesiumModule, rectangle: Cesium.Rectangle | undefined): GeoBounds {
   if (!rectangle) return { west: -180, south: -85, east: 180, north: 85 };
@@ -71,7 +41,7 @@ function rectangleToBounds(C: CesiumModule, rectangle: Cesium.Rectangle | undefi
   };
 }
 
-export async function createBusinessMapEngine(options: BusinessMapEngineOptions, signal: AbortSignal): Promise<BusinessMapEngine> {
+export const createCesiumEngine: MapEngineFactory = async (options, signal) => {
   const C = await loadCesium();
   signal.throwIfAborted();
 
@@ -97,10 +67,10 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
     viewer.scene.globe.baseColor = C.Color.fromCssColorString(palette.theme === "dark" ? "#1c1c1e" : "#dfe6ee");
 
     const layerContext: LayerContext = { C, viewer, palette, requestRender };
-    const density = createDensityLayer(layerContext);
+    const h3Columns = createH3ColumnsLayer(layerContext);
     const clusters = createClustersLayer(layerContext);
     const companiesLayer = createCompaniesLayer(layerContext);
-    const layers: MapLayer[] = [density, clusters, companiesLayer];
+    const layers: MapLayer[] = [h3Columns, clusters, companiesLayer];
     stack.defer(() => {
       for (const layer of layers) layer.destroy();
     });
@@ -109,9 +79,19 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
     let companiesById = new Map<string, MapCompany>();
     let index: CompanyClusterIndex = createCompanyClusterIndex([]);
     let selectedId: string | null = null;
+    let selectedRegionId: string | null = null;
     let mode: MapLayerMode = "companies";
     let dataBounds: GeoBounds | null = null;
     let photoreal: Cesium.Cesium3DTileset | null = null;
+    let maxH3Resolution = 6;
+    let h3Resolution: number | null = null;
+    let h3Cells: H3Cell[] = [];
+    let h3Legend: MapLegend | null = null;
+    // Movimentos de câmera feitos pelo código (enquadrar, focar) não contam como "usuário mexeu".
+    let programmaticUntil = 0;
+    const markProgrammatic = (seconds: number) => {
+      programmaticUntil = Math.max(programmaticUntil, performance.now() + seconds * 1000 + 600);
+    };
 
     const camera = viewer.camera;
 
@@ -208,23 +188,37 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
       clusters.render?.(frame);
       companiesLayer.render?.(frame);
 
-      const visibleIds: string[] = [];
-      let visibleCount = 0;
-      for (const company of companies) {
-        const location = company.location;
-        if (!location || !boundsContain(view.bounds, location.displayLatitude, location.displayLongitude)) continue;
-        visibleCount += 1;
-        if (visibleIds.length < ACCESSIBLE_LIST_LIMIT) visibleIds.push(company.id);
-      }
+      const zoom = heightToZoom(view.cameraHeight);
+      if (mode === "concentration") updateH3(zoom);
 
+      const visible = visibleCompanies(companies, view.bounds);
       options.onViewChange({
         bounds: view.bounds,
-        cameraHeight: view.cameraHeight,
+        zoom,
         scale: viewScaleForHeight(view.cameraHeight),
-        visibleCompanyCount: visibleCount,
-        visibleCompanyIds: visibleIds,
-        clusterCount: clusterItems.length
+        visibleCompanyCount: visible.count,
+        visibleCompanyIds: visible.ids,
+        clusterCount: showMarkers ? clusterItems.length : 0,
+        h3Resolution: mode === "concentration" ? h3Resolution : null,
+        legend: mode === "concentration" ? h3Legend : null
       });
+    }
+
+    /** Recalcula as colunas H3 só quando a resolução (ou os dados) mudam. */
+    function updateH3(zoom: number, force = false) {
+      const wanted = Math.min(resolutionForZoom(zoom), maxH3Resolution);
+      if (!force && wanted === h3Resolution) return;
+      h3Resolution = wanted;
+      h3Cells = aggregateCompaniesByH3(companies, wanted);
+      const bins = h3Columns.setCells(h3Cells);
+      const limited = wanted < resolutionForZoom(zoom);
+      h3Legend = legendFromBins(
+        `Empresas por célula H3 (resolução ${wanted})`,
+        bins,
+        limited
+          ? `Colunas de ~${describeCellArea(h3Cells[0]?.areaKm2 ?? 36)}: a maioria das empresas tem localização aproximada, então não dividimos em áreas menores.`
+          : `Células H3 de ~${describeCellArea(h3Cells[0]?.areaKm2 ?? 0)}; a altura é proporcional à quantidade de empresas.`
+      );
     }
 
     const scheduleRefresh = debounce(refresh, 90);
@@ -233,20 +227,16 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
     camera.percentageChanged = 0.15;
     stack.defer(camera.moveEnd.addEventListener(() => scheduleRefresh()));
     stack.defer(camera.changed.addEventListener(() => scheduleRefresh()));
-    // Após trocar 2D/3D o Cesium reposiciona a câmera; voltamos à área que o usuário via.
-    let boundsBeforeMorph: GeoBounds | null = null;
+    // Movimento iniciado pelo usuário (não por enquadramento automático) → "Buscar nesta área".
     stack.defer(
-      viewer.scene.morphComplete.addEventListener(() => {
-        if (boundsBeforeMorph) {
-          const target = boundsBeforeMorph;
-          boundsBeforeMorph = null;
-          camera.setView({ destination: C.Rectangle.fromDegrees(target.west, target.south, target.east, target.north) });
-        }
-        scheduleRefresh();
+      camera.moveStart.addEventListener(() => {
+        if (performance.now() < programmaticUntil) return;
+        options.onUserMove?.();
       })
     );
 
     function flyToBounds(bounds: GeoBounds, duration = 1.1) {
+      markProgrammatic(duration);
       camera.flyTo({
         destination: C.Rectangle.fromDegrees(bounds.west, bounds.south, bounds.east, bounds.north),
         duration,
@@ -255,6 +245,7 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
     }
 
     function flyToPoint(latitude: number, longitude: number, height: number, duration = 0.9) {
+      markProgrammatic(duration);
       camera.flyTo({
         destination: C.Cartesian3.fromDegrees(longitude, latitude, Math.max(height, 400)),
         duration,
@@ -262,9 +253,29 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
       });
     }
 
-    camera.setView({
-      destination: C.Rectangle.fromDegrees(BRAZIL_BOUNDS.west, BRAZIL_BOUNDS.south, BRAZIL_BOUNDS.east, BRAZIL_BOUNDS.north)
-    });
+    /**
+     * Vista inicial. Vindo do 2D, o globo abre inclinado (~50°) sobre a mesma área, para
+     * que as colunas H3 e o relevo apareçam em perspectiva; em escala nacional fica de cima.
+     */
+    function setInitialView(bounds: GeoBounds, oblique: boolean) {
+      markProgrammatic(0.5);
+      const rectangle = C.Rectangle.fromDegrees(bounds.west, bounds.south, bounds.east, bounds.north);
+      const straight = C.Cartographic.fromCartesian(camera.getRectangleCameraCoordinates(rectangle));
+      const height = straight?.height ?? 0;
+      if (!oblique || !Number.isFinite(height) || height <= 0 || height > 2_500_000) {
+        camera.setView({ destination: rectangle });
+        return;
+      }
+      const center = C.Rectangle.center(rectangle);
+      const tilt = C.Math.toRadians(40);
+      const back = (height * 0.9 * Math.tan(tilt)) / 6_371_000;
+      camera.setView({
+        destination: C.Cartesian3.fromRadians(center.longitude, center.latitude - back, height * 0.9),
+        orientation: { heading: 0, pitch: -(Math.PI / 2 - tilt), roll: 0 }
+      });
+    }
+
+    setInitialView(options.initialBounds ?? BRAZIL_BOUNDS, Boolean(options.initialBounds));
 
     // Seleção e hover (um único handler, removido no descarte).
     const handler = new C.ScreenSpaceEventHandler(viewer.scene.canvas);
@@ -275,7 +286,7 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
     function pickTarget(position: Cesium.Cartesian2): PickTarget | null {
       const picked = viewer.scene.pick(position) as { id?: unknown } | undefined;
       const id = picked?.id as PickTarget | undefined;
-      if (id && typeof id === "object" && (id.kind === "cluster" || id.kind === "company")) return id;
+      if (id && typeof id === "object" && (id.kind === "cluster" || id.kind === "company" || id.kind === "h3")) return id;
       return null;
     }
 
@@ -283,10 +294,25 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
       const target = pickTarget(event.position);
       if (!target) {
         if (selectedId) options.onSelect(null);
+        if (selectedRegionId) options.onRegionSelect(null);
         return;
       }
       if (target.kind === "company") {
         options.onSelect(target.companyId);
+        return;
+      }
+      if (target.kind === "h3") {
+        const cell = h3Cells.find((item) => item.id === target.cellId);
+        if (cell) {
+          options.onRegionSelect({
+            kind: "h3",
+            id: cell.id,
+            resolution: cell.resolution,
+            companyIds: cell.companyIds,
+            latitude: cell.latitude,
+            longitude: cell.longitude
+          });
+        }
         return;
       }
       const expansionZoom = index.expansionZoom(target.clusterId);
@@ -294,7 +320,7 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
       // Empresas no mesmo ponto (mesmo prédio/CEP) nunca se separam com zoom:
       // entregamos a lista para o painel em vez de aproximar indefinidamente.
       if (expansionZoom > CLUSTER_MAX_ZOOM || zoomNow >= CLUSTER_MAX_ZOOM) {
-        options.onGroupSelect?.(index.leaves(target.clusterId, 100));
+        options.onGroupSelect(index.leaves(target.clusterId, 100));
         return;
       }
       flyToPoint(target.latitude, target.longitude, Math.min(zoomToHeight(expansionZoom + 0.5), currentHeight() * 0.6));
@@ -340,10 +366,12 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
           break;
         case "Escape":
           options.onSelect(null);
+          options.onRegionSelect(null);
           return;
         default:
           return;
       }
+      options.onUserMove?.();
       event.preventDefault();
       requestRender();
       scheduleRefresh();
@@ -368,44 +396,37 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
     stack.defer(() => resizeObserver?.disconnect());
 
     const engine: BusinessMapEngine = {
-      supportsPhotorealistic: canUsePhotorealistic3D(options.config),
-      setCompanies(next, { fit = false } = {}) {
-        companies = next;
-        companiesById = new Map(next.map((company) => [company.id, company]));
-        index = createCompanyClusterIndex(next);
-        density.setCompanies?.(next);
+      capabilities: { kind: "3d", modes: ["companies", "concentration"], photorealistic: canUsePhotorealistic3D(options.config) },
+      setData(next, { fit = false } = {}) {
+        companies = next.companies;
+        companiesById = new Map(companies.map((company) => [company.id, company]));
+        index = createCompanyClusterIndex(companies);
+        maxH3Resolution = maxResolutionForPrecision(precisionStats(companies));
         if (selectedId && !companiesById.has(selectedId)) selectedId = null;
-
-        const located = next.filter((company) => company.location);
-        if (located.length > 0) {
-          let west = Infinity;
-          let east = -Infinity;
-          let south = Infinity;
-          let north = -Infinity;
-          for (const company of located) {
-            west = Math.min(west, company.location!.displayLongitude);
-            east = Math.max(east, company.location!.displayLongitude);
-            south = Math.min(south, company.location!.displayLatitude);
-            north = Math.max(north, company.location!.displayLatitude);
-          }
-          const pad = Math.max((east - west) * 0.12, (north - south) * 0.12, 0.05);
-          dataBounds = { west: west - pad, east: east + pad, south: south - pad, north: north + pad };
-        } else {
-          dataBounds = null;
-        }
-
+        dataBounds = computeDataBounds(companies);
+        if (mode === "concentration") updateH3(heightToZoom(currentHeight()), true);
         if (fit && dataBounds) flyToBounds(dataBounds, 1.2);
         refresh();
       },
       setMode(next) {
-        mode = next;
-        density.setVisible(next === "density");
+        // "Regiões" não existe no 3D (capabilities.modes): mostra as empresas.
+        const effective: MapLayerMode = next === "regions" ? "companies" : next;
+        if (mode === effective) return;
+        mode = effective;
+        selectedRegionId = null;
+        h3Columns.setSelectedCell(null);
+        h3Columns.setVisible(effective === "concentration");
+        if (effective === "concentration") updateH3(heightToZoom(currentHeight()), true);
         refresh();
       },
       setSelected(companyId) {
         if (selectedId === companyId) return;
         selectedId = companyId;
         refresh();
+      },
+      setSelectedRegion(regionId) {
+        selectedRegionId = regionId;
+        h3Columns.setSelectedCell(regionId);
       },
       focusCompany(companyId) {
         const company = companiesById.get(companyId);
@@ -414,6 +435,9 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
         const precise = company.location.precision === "exact" || company.location.precision === "address";
         flyToPoint(company.location.displayLatitude, company.location.displayLongitude, precise ? 1_500 : 9_000);
         refresh();
+      },
+      focusPoint(latitude, longitude, zoom) {
+        flyToPoint(latitude, longitude, zoomToHeight(zoom));
       },
       zoomIn() {
         camera.zoomIn(currentHeight() * 0.45);
@@ -430,15 +454,6 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
       },
       fitToData() {
         flyToBounds(dataBounds ?? BRAZIL_BOUNDS);
-      },
-      setSceneMode(next) {
-        const scene = viewer.scene;
-        const wanted = next === "2d" ? C.SceneMode.SCENE2D : C.SceneMode.SCENE3D;
-        if (scene.mode === wanted) return;
-        boundsBeforeMorph = computeVisibleBounds();
-        if (next === "2d") scene.morphTo2D(0.6);
-        else scene.morphTo3D(0.6);
-        requestRender();
       },
       async setPhotorealistic(enabled) {
         if (!enabled) {
@@ -481,4 +496,4 @@ export async function createBusinessMapEngine(options: BusinessMapEngineOptions,
     stack.dispose();
     throw error;
   }
-}
+};

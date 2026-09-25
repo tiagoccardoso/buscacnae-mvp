@@ -1,38 +1,68 @@
 "use client";
 
+import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
-import type { BusinessMapEngine, MapViewInfo } from "@/lib/map/engine/engine";
-import type { PublicMapConfig } from "@/lib/map/engine/providers";
+import type { PublicMapConfig } from "@/lib/map/config";
+import type { BusinessMapEngine, MapEngineCallbacks, MapEngineFactory } from "@/lib/map/engine-contract";
+import type { GeoBounds, MapEngineKind } from "@/lib/map/types";
 
-type BusinessMapCanvasProps = {
+type BusinessMapCanvasProps = MapEngineCallbacks & {
+  kind: MapEngineKind;
   config: PublicMapConfig;
   label: string;
   describedBy?: string;
+  /** Área inicial (ex.: a que o usuário via no outro motor). Lida só na criação. */
+  initialBounds?: GeoBounds | null;
   onReady(engine: BusinessMapEngine | null): void;
-  onSelect(companyId: string | null): void;
-  onViewChange(info: MapViewInfo): void;
-  onGroupSelect(companyIds: string[]): void;
 };
 
 /**
- * Hospeda o viewer do Cesium. Criado uma única vez por montagem; os dados chegam
- * pela API do engine (sem recriar o viewer). No desmonte, aborta a inicialização
- * pendente e destrói viewer, handlers, listeners e timers (engine.destroy()).
+ * Cada motor é um chunk separado, carregado sob demanda:
+ * - 2D: MapLibre GL + deck.gl (padrão);
+ * - 3D: CesiumJS (só quando o usuário pede o globo).
  */
-export default function BusinessMapCanvas({ config, label, describedBy, onReady, onSelect, onViewChange, onGroupSelect }: BusinessMapCanvasProps) {
+const ENGINE_LOADERS: Record<MapEngineKind, () => Promise<MapEngineFactory>> = {
+  "2d": () => import("@/lib/map/maplibre/engine").then((module) => module.createMapLibreEngine),
+  "3d": () => import("@/lib/map/cesium/engine").then((module) => module.createCesiumEngine)
+};
+
+const LOADING_LABEL: Record<MapEngineKind, string> = {
+  "2d": "Preparando o mapa…",
+  "3d": "Preparando o globo 3D…"
+};
+
+/**
+ * Hospeda o motor do mapa. Criado uma única vez por montagem (e por troca 2D/3D); os
+ * dados chegam pela API do motor. No desmonte, aborta a inicialização pendente e
+ * destrói mapa, overlays, handlers, listeners e timers (engine.destroy()).
+ */
+export default function BusinessMapCanvas({
+  kind,
+  config,
+  label,
+  describedBy,
+  initialBounds,
+  onReady,
+  onSelect,
+  onViewChange,
+  onGroupSelect,
+  onRegionSelect,
+  onUserMove
+}: BusinessMapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const creditsRef = useRef<HTMLDivElement>(null);
-  const callbacks = useRef({ onReady, onSelect, onViewChange, onGroupSelect });
+  const callbacks = useRef({ onReady, onSelect, onViewChange, onGroupSelect, onRegionSelect, onUserMove });
+  const initialBoundsRef = useRef(initialBounds ?? null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [attempt, setAttempt] = useState(0);
 
-  // Mantém os callbacks mais recentes sem recriar o viewer.
+  // Mantém os callbacks mais recentes sem recriar o motor.
   useEffect(() => {
-    callbacks.current = { onReady, onSelect, onViewChange, onGroupSelect };
+    callbacks.current = { onReady, onSelect, onViewChange, onGroupSelect, onRegionSelect, onUserMove };
   });
 
   // A configuração pública é estável durante a sessão da página.
-  const configKey = `${config.basemap}|${config.cesiumIonToken ? 1 : 0}|${config.googleMapTilesKey ? 1 : 0}`;
+  const configKey = `${config.basemap}|${config.styleUrl}|${config.cesiumIonToken ? 1 : 0}|${config.googleMapTilesKey ? 1 : 0}`;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -43,16 +73,19 @@ export default function BusinessMapCanvas({ config, label, describedBy, onReady,
     let engine: BusinessMapEngine | null = null;
     setStatus("loading");
 
-    import("@/lib/map/engine/engine")
-      .then(({ createBusinessMapEngine }) =>
-        createBusinessMapEngine(
+    ENGINE_LOADERS[kind]()
+      .then((factory) =>
+        factory(
           {
             container,
             creditContainer,
             config,
+            initialBounds: initialBoundsRef.current,
             onSelect: (id) => callbacks.current.onSelect(id),
             onViewChange: (info) => callbacks.current.onViewChange(info),
-            onGroupSelect: (ids) => callbacks.current.onGroupSelect(ids)
+            onGroupSelect: (ids) => callbacks.current.onGroupSelect(ids),
+            onRegionSelect: (region) => callbacks.current.onRegionSelect(region),
+            onUserMove: () => callbacks.current.onUserMove?.()
           },
           controller.signal
         )
@@ -80,25 +113,25 @@ export default function BusinessMapCanvas({ config, label, describedBy, onReady,
       engine = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [configKey, attempt]);
+  }, [configKey, attempt, kind]);
 
   return (
-    <div className="map-canvas-shell">
+    <div className={`map-canvas-shell map-engine-${kind}`}>
       <div
         ref={containerRef}
         className="map-canvas"
         role="application"
-        aria-roledescription="mapa"
+        aria-roledescription={kind === "3d" ? "globo 3D" : "mapa"}
         aria-label={label}
         aria-describedby={describedBy}
         tabIndex={0}
       />
-      <div ref={creditsRef} className="map-credits" />
+      <div ref={creditsRef} className="map-credits" hidden={kind !== "3d"} />
 
       {status === "loading" ? (
         <div className="map-canvas-state" role="status">
           <span className="spinner" aria-hidden="true" />
-          <span>Preparando o mapa…</span>
+          <span>{LOADING_LABEL[kind]}</span>
         </div>
       ) : null}
 

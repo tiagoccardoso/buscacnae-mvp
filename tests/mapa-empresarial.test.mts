@@ -16,7 +16,6 @@ const geo = await import("../lib/map/geo.ts");
 const { resolveCompanyLocation, spreadSharedLocations, extractProviderCoordinates, normalizeCep } = await import("../lib/geo/company-location.ts");
 const { findMunicipality, municipalitiesInBounds, findStateCentroid } = await import("../lib/geo/municipalities.ts");
 const { createCompanyClusterIndex, formatClusterCount } = await import("../lib/map/clustering.ts");
-const { buildDensityGrid } = await import("../lib/map/density.ts");
 const { planAreaSearch, describeAreaSearchPlan } = await import("../lib/map/area-search.ts");
 const { resolvePostalCodes, __resetPostalCodeMemoryCache } = await import("../lib/geo/postal-code-geocoder.ts");
 const { buildMapCompanies, summarizeMapCompanies, getSearchMapData, MapSearchNotFoundError } = await import("../lib/map/service.ts");
@@ -41,6 +40,9 @@ function summary(overrides: Partial<CompanySummary> = {}): CompanySummary {
     capitalSocial: 10000,
     email: null,
     phone: null,
+    phoneIsMobile: false,
+    headquartersOrBranch: null,
+    neighborhood: null,
     cityName: "Campinas",
     cityIbge: null,
     stateCode: "SP",
@@ -233,21 +235,6 @@ test("grandes volumes: 20.000 empresas indexadas e consultadas rapidamente", () 
   assert.ok(index.query(geo.BRAZIL_BOUNDS, 3).length < 200);
 });
 
-/* ---------------------------------------------------------------- densidade */
-
-test("densidade: grade normalizada com pico onde há concentração", () => {
-  const points = [
-    ...Array.from({ length: 200 }, () => ({ latitude: -23.55, longitude: -46.63 })),
-    { latitude: -15.8, longitude: -47.9 }
-  ];
-  const bounds = geo.boundsFromPoints(points, 0.1)!;
-  const grid = buildDensityGrid(points, bounds, { resolution: 64 })!;
-  assert.ok(grid);
-  const max = Math.max(...grid.values);
-  assert.ok(max <= 1 && max > 0.99);
-  assert.equal(buildDensityGrid([], bounds), null);
-});
-
 /* ---------------------------------------------------------------- geo / câmera */
 
 test("altura da câmera → zoom e escala de visão são monotônicos", () => {
@@ -351,20 +338,29 @@ test("busca inexistente ou id inválido não chega ao banco", async () => {
   await assert.rejects(() => getSearchMapData("nao-e-uuid", "user"), (error: unknown) => error instanceof MapSearchNotFoundError);
 });
 
-test("troca Lista/Mapa aponta para a mesma busca salva, preservando filtros", () => {
+test("troca Lista/Mapa/Inteligência aponta para a mesma busca salva, preservando filtros", () => {
   const anchors = (html: string) =>
     Array.from(html.matchAll(/<a([^>]*)>([^<]*)<\/a>/g)).map((match) => ({
       label: match[2],
-      href: /href="([^"]*)"/.exec(match[1])?.[1],
+      href: /href="([^"]*)"/.exec(match[1])?.[1]?.replace(/&amp;/g, "&"),
       current: /aria-current="page"/.test(match[1])
     }));
   const list = anchors(renderToStaticMarkup(createElement(ResultsViewToggle, { searchId: "abc", view: "lista" })));
   assert.deepEqual(list, [
     { label: "Lista", href: "/dashboard/search/abc", current: true },
-    { label: "Mapa", href: "/dashboard/search/abc?view=mapa", current: false }
+    { label: "Mapa", href: "/dashboard/search/abc?view=mapa", current: false },
+    { label: "Inteligência", href: "/dashboard/search/abc?view=inteligencia", current: false }
   ]);
-  const map = anchors(renderToStaticMarkup(createElement(ResultsViewToggle, { searchId: "abc", view: "mapa" })));
+  const map = anchors(renderToStaticMarkup(createElement(ResultsViewToggle, { searchId: "abc", view: "mapa", filterQuery: "situacao=active&uf=SP" })));
   assert.equal(map.find((item) => item.current)?.label, "Mapa");
+  assert.deepEqual(
+    map.map((item) => item.href),
+    [
+      "/dashboard/search/abc?situacao=active&uf=SP",
+      "/dashboard/search/abc?situacao=active&uf=SP&view=mapa",
+      "/dashboard/search/abc?situacao=active&uf=SP&view=inteligencia"
+    ]
+  );
 });
 
 test("rótulos de precisão nunca chamam localização aproximada de exata", () => {

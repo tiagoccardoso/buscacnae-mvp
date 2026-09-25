@@ -1,4 +1,5 @@
 import { DiscoveryProvider } from "@/lib/types";
+import { BASEMAP_IDS, sanitizeStyleUrl, type BasemapId, type PublicMapConfig } from "@/lib/map/config";
 
 function getEnv(name: string): string {
   return process.env[name]?.trim() ?? "";
@@ -161,7 +162,7 @@ export function getPostalDirectoryConfig() {
 
 /** Teto de marcadores enviados ao navegador por busca. */
 export function getMapMaxMarkers() {
-  return readBoundedInt("MAP_MAX_MARKERS", 5000, 100, 20000);
+  return readBoundedInt("MAP_MAX_MARKERS", 10000, 100, 50000);
 }
 
 /** Máximo de municípios convertidos a partir da área visível em "Buscar nesta área". */
@@ -169,18 +170,16 @@ export function getMapAreaSearchMaxCities() {
   return readBoundedInt("MAP_AREA_SEARCH_MAX_CITIES", 12, 1, 40);
 }
 
-export type MapBasemapId = "osm" | "carto-light" | "carto-dark" | "ion" | "offline";
-
 /**
  * Configuração PÚBLICA do mapa (enviada ao navegador). Somente valores que podem
  * ser expostos: o token do Cesium ion e a chave do Google Map Tiles são chaves de
  * navegador e devem ser restritas por domínio no painel de cada fornecedor.
  */
-export function getPublicMapConfig() {
+export function getPublicMapConfig(): PublicMapConfig {
   const basemap = getEnv("NEXT_PUBLIC_MAP_BASEMAP").toLowerCase();
-  const allowed: MapBasemapId[] = ["osm", "carto-light", "carto-dark", "ion", "offline"];
   return {
-    basemap: (allowed.includes(basemap as MapBasemapId) ? basemap : "osm") as MapBasemapId,
+    basemap: (BASEMAP_IDS as readonly string[]).includes(basemap) ? (basemap as BasemapId) : "osm",
+    styleUrl: sanitizeStyleUrl(getEnv("NEXT_PUBLIC_MAP_STYLE_URL")),
     cesiumIonToken: getEnv("NEXT_PUBLIC_CESIUM_ION_TOKEN"),
     googleMapTilesKey: getEnv("NEXT_PUBLIC_GOOGLE_MAP_TILES_KEY")
   };

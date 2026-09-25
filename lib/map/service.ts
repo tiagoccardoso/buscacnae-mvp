@@ -1,11 +1,13 @@
 import { createDbClient } from "@/lib/db-client";
 import { getLatestSearchAccessOrderBySearchQueryId } from "@/lib/billing";
 import { companySummaryFromSearchRow, type CompanySummary } from "@/lib/company-model";
-import { normalizeCep, resolveCompanyLocation, spreadSharedLocations } from "@/lib/geo/company-location";
+import { normalizeCep, resolveCompanyLocation, spreadSharedLocations, type CompanyLocationLookup } from "@/lib/geo/company-location";
+import { loadCompanyLocationCache, type CachedCompanyLocation } from "@/lib/geo/company-location-cache";
+import { findMunicipality } from "@/lib/geo/municipalities";
 import { resolvePostalCodes, type PostalCodeResolution } from "@/lib/geo/postal-code-geocoder";
 import { getMapMaxMarkers } from "@/lib/env";
 import { boundsFromPoints } from "@/lib/map/geo";
-import type { LocationPrecision, MapCompany, MapSearchData, MapSearchOption } from "@/lib/map/types";
+import type { LocationPrecision, MapCompany, MapRegionSeat, MapSearchData, MapSearchOption } from "@/lib/map/types";
 import { getSearchSummary } from "@/lib/search-summary";
 
 /**
@@ -32,12 +34,44 @@ export function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
+/**
+ * Chave canônica do município = código IBGE, resolvido pela base local (por código ou
+ * por nome + UF). Assim "3509502" e "CAMPINAS/SP" caem na MESMA região. Município que
+ * não existe na base → null (fica fora da camada Regiões, continua na lista).
+ */
+export function municipalityKey(input: { cityIbge?: string | null; cityName?: string | null; stateCode?: string | null }) {
+  return findMunicipality({ ibge: input.cityIbge, name: input.cityName, stateCode: input.stateCode })?.ibge ?? null;
+}
+
+/**
+ * Sedes (IBGE) dos municípios presentes no resultado. Usa a base local de municípios;
+ * município não identificado na base fica fora da camada Regiões (continua na lista).
+ */
+export function buildRegionSeats(summaries: CompanySummary[]): MapRegionSeat[] {
+  const seats = new Map<string, MapRegionSeat>();
+  for (const summary of summaries) {
+    const municipality = findMunicipality({ ibge: summary.cityIbge, name: summary.cityName, stateCode: summary.stateCode });
+    if (!municipality || seats.has(municipality.ibge)) continue;
+    seats.set(municipality.ibge, {
+      key: municipality.ibge,
+      ibge: municipality.ibge,
+      name: municipality.name,
+      stateCode: municipality.stateCode,
+      latitude: municipality.latitude,
+      longitude: municipality.longitude
+    });
+  }
+  return Array.from(seats.values());
+}
+
 /** Monta os marcadores a partir dos resumos (função pura, testável). */
 export function buildMapCompanies(
   summaries: CompanySummary[],
   savedIds: Set<string>,
-  postalCodes: Map<string, { latitude: number; longitude: number }>
+  postalCodes: Map<string, { latitude: number; longitude: number }>,
+  companyLocations: Map<string, CachedCompanyLocation> = new Map()
 ): MapCompany[] {
+  const lookupCompany: CompanyLocationLookup = (cnpj) => companyLocations.get(cnpj) ?? null;
   const companies = summaries.map<MapCompany>((summary) => ({
     id: summary.id,
     cnpj: summary.cnpj,
@@ -52,6 +86,12 @@ export function buildMapCompanies(
     capitalSocial: summary.capitalSocial,
     openedAt: summary.openedAt,
     companySize: summary.companySize,
+    headquartersOrBranch: summary.headquartersOrBranch ?? null,
+    neighborhood: summary.neighborhood ?? null,
+    hasPhone: Boolean(summary.phone),
+    hasMobilePhone: Boolean(summary.phone && summary.phoneIsMobile),
+    hasEmail: Boolean(summary.email),
+    regionKey: municipalityKey(summary),
     saved: savedIds.has(summary.id),
     location: summary.cnpj
       ? resolveCompanyLocation(
@@ -63,7 +103,8 @@ export function buildMapCompanies(
             stateCode: summary.stateCode,
             payload: summary.payload
           },
-          (cep) => postalCodes.get(cep) ?? null
+          (cep) => postalCodes.get(cep) ?? null,
+          lookupCompany
         )
       : null
   }));
@@ -156,9 +197,12 @@ export async function getSearchMapData(
   const savedIds = new Set(((savedRows ?? []) as Array<{ establishment_id: string }>).map((row) => String(row.establishment_id)));
 
   const ceps = summaries.map((item) => normalizeCep(item.postalCode)).filter((cep): cep is string => Boolean(cep));
-  const postal = await (options.resolvePostal ?? resolvePostalCodes)(ceps);
+  const [postal, companyLocations] = await Promise.all([
+    (options.resolvePostal ?? resolvePostalCodes)(ceps),
+    loadCompanyLocationCache(summaries.map((item) => item.cnpj))
+  ]);
 
-  const companies = buildMapCompanies(summaries, savedIds, postal.points);
+  const companies = buildMapCompanies(summaries, savedIds, postal.points, companyLocations);
   const stats = summarizeMapCompanies(companies);
   const located = companies
     .filter((company) => company.location)
@@ -184,6 +228,7 @@ export async function getSearchMapData(
       tooManyResults: truncated || hitFetchLimit || totalResults > Math.max(storedCount, companies.length)
     },
     bounds: boundsFromPoints(located),
+    regions: buildRegionSeats(summaries),
     geocoding: { enabled: postal.enabled, pendingPostalCodes: postal.pending }
   };
 }

@@ -1,7 +1,7 @@
 import type * as Cesium from "cesium";
-import { ICON_SCALE, createIconCache, type IconCache } from "@/lib/map/engine/layers/icons";
-import type { LayerContext, MapLayer, PickTarget, RenderFrame } from "@/lib/map/engine/layers/types";
-import type { MapPalette } from "@/lib/map/engine/palette";
+import { ICON_SCALE, createIconCache, type IconCache } from "@/lib/map/cesium/layers/icons";
+import type { LayerContext, MapLayer, PickTarget, RenderFrame } from "@/lib/map/cesium/layers/types";
+import type { MapPalette } from "@/lib/map/palette";
 import { isPreciseLocation } from "@/lib/map/types";
 
 /**

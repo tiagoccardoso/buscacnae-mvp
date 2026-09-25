@@ -1,6 +1,6 @@
 import type * as Cesium from "cesium";
-import type { CesiumModule } from "@/lib/map/engine/cesium-loader";
-import type { MapPalette } from "@/lib/map/engine/palette";
+import type { CesiumModule } from "@/lib/map/cesium/cesium-loader";
+import type { MapPalette } from "@/lib/map/palette";
 import type { MapCluster, MapPoint } from "@/lib/map/clustering";
 import type { GeoBounds, MapCompany } from "@/lib/map/types";
 
@@ -34,10 +34,13 @@ export type RenderFrame = {
   selectedId: string | null;
 };
 
-export type PickTarget = { kind: "cluster"; clusterId: number; latitude: number; longitude: number } | { kind: "company"; companyId: string };
+export type PickTarget =
+  | { kind: "cluster"; clusterId: number; latitude: number; longitude: number }
+  | { kind: "company"; companyId: string }
+  | { kind: "h3"; cellId: string };
 
 export interface MapLayer {
-  readonly id: "companies" | "clusters" | "density" | "boundaries";
+  readonly id: "companies" | "clusters" | "h3";
   setVisible(visible: boolean): void;
   render?(frame: RenderFrame): void;
   setCompanies?(companies: MapCompany[]): void;

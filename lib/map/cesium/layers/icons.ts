@@ -1,4 +1,4 @@
-import type { MapPalette } from "@/lib/map/engine/palette";
+import type { MapPalette } from "@/lib/map/palette";
 import { formatClusterCount } from "@/lib/map/clustering";
 
 /**

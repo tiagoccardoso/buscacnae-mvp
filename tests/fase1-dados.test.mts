@@ -131,11 +131,17 @@ test("Company: CNAEs secundários de objetos ou texto, sem duplicatas", () => {
   ]);
 });
 
-test("CompanySummary (mapa) continua com o mesmo formato", () => {
+test("CompanySummary (mapa) mantém o formato da Fase 1 e só acrescenta campos da Fase 2", () => {
   const summary = companyModel.toCompanySummary(buildCompany());
   assert.deepEqual(Object.keys(summary).sort(), [
-    "capitalSocial", "cityIbge", "cityName", "cnpj", "companySize", "displayName", "email", "id", "legalName",
-    "openedAt", "payload", "phone", "postalCode", "primaryCnaeCode", "primaryCnaeDescription", "stateCode", "status", "tradeName"
+    "capitalSocial", "cityIbge", "cityName", "cnpj", "companySize", "displayName", "email",
+    // Fase 2: filtros compartilhados Lista/Mapa (unidade, bairro na busca textual, celular)
+    "headquartersOrBranch",
+    "id", "legalName",
+    "neighborhood",
+    "openedAt", "payload", "phone",
+    "phoneIsMobile",
+    "postalCode", "primaryCnaeCode", "primaryCnaeDescription", "stateCode", "status", "tradeName"
   ]);
 });
 

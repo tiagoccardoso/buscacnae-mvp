@@ -17,16 +17,18 @@ type Settled = {
  * uma resposta antiga sobrescreva a atual. Enquanto a nova busca carrega, os dados
  * anteriores continuam visíveis (sem piscar o mapa).
  */
-export function useMapSearchData(searchId: string | null) {
+export function useMapSearchData(searchId: string | null, options: { staticData?: MapSearchData | null; endpoint?: string | null } = {}) {
+  const { staticData, endpoint } = options;
   const [reloadToken, setReloadToken] = useState(0);
   const [settled, setSettled] = useState<Settled | null>(null);
-  const requestKey = searchId ? `${searchId}#${reloadToken}` : null;
+  const url = endpoint || (searchId ? `/api/map/searches/${encodeURIComponent(searchId)}` : null);
+  const requestKey = searchId && url && !staticData ? `${url}#${reloadToken}` : null;
 
   useEffect(() => {
-    if (!searchId || !requestKey) return;
+    if (!url || !requestKey) return;
     const controller = new AbortController();
 
-    fetch(`/api/map/searches/${encodeURIComponent(searchId)}`, {
+    fetch(url, {
       signal: controller.signal,
       headers: { Accept: "application/json" },
       cache: "no-store"
@@ -48,9 +50,12 @@ export function useMapSearchData(searchId: string | null) {
       });
 
     return () => controller.abort();
-  }, [searchId, requestKey]);
+  }, [url, requestKey]);
 
   const reload = useCallback(() => setReloadToken((value) => value + 1), []);
+
+  // Dados já prontos (ambiente de validação local): sem requisição.
+  if (staticData) return { status: "ready" as MapDataStatus, data: staticData, error: null, reload };
 
   let status: MapDataStatus = "idle";
   if (requestKey) {

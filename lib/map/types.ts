@@ -15,6 +15,7 @@ export type LocationPrecision = "exact" | "address" | "postal_code" | "city" | "
 
 export type LocationSource =
   | "provider"
+  | "company_cache"
   | "provider_municipality"
   | "postal_code_cache"
   | "postal_code_geocoder"
@@ -59,9 +60,60 @@ export type MapCompany = {
   capitalSocial: number | null;
   openedAt: string | null;
   companySize: string | null;
+  /** Campos usados pelos filtros compartilhados com a lista (sem expor contatos). */
+  headquartersOrBranch: "matriz" | "filial" | null;
+  neighborhood: string | null;
+  hasPhone: boolean;
+  hasMobilePhone: boolean;
+  hasEmail: boolean;
+  /** Código IBGE do município (base local, por código ou nome + UF); null se não identificado. Camada Regiões. */
+  regionKey: string | null;
   saved: boolean;
   location: CompanyLocation | null;
 };
+
+/**
+ * Município referenciado pelas empresas da busca, com a coordenada da SEDE (IBGE).
+ * A camada Regiões desenha um marcador por município nessa coordenada.
+ */
+export type MapRegionSeat = {
+  key: string;
+  ibge: string | null;
+  name: string;
+  stateCode: string;
+  latitude: number;
+  longitude: number;
+};
+
+/**
+ * Camadas do mapa.
+ * - companies: empresas (clusters + pontos);
+ * - concentration: células H3 com contagem de empresas;
+ * - regions: agregação por município (sede IBGE).
+ */
+export type MapLayerMode = "companies" | "concentration" | "regions";
+
+export const MAP_LAYER_LABELS: Record<MapLayerMode, string> = {
+  companies: "Empresas",
+  concentration: "Concentração",
+  regions: "Regiões"
+};
+
+/** Nome da camada na URL (?camada=). */
+export const MAP_LAYER_PARAM: Record<MapLayerMode, string> = { companies: "empresas", concentration: "concentracao", regions: "regioes" };
+
+export function mapLayerFromParam(value: unknown): MapLayerMode | null {
+  if (typeof value !== "string") return null;
+  const entry = (Object.entries(MAP_LAYER_PARAM) as Array<[MapLayerMode, string]>).find(([, param]) => param === value);
+  return entry ? entry[0] : null;
+}
+
+/** Região selecionada no mapa (célula H3 ou município). */
+export type MapRegionSelection =
+  | { kind: "h3"; id: string; resolution: number; companyIds: string[]; latitude: number; longitude: number }
+  | { kind: "municipality"; id: string; name: string; stateCode: string; companyIds: string[]; latitude: number; longitude: number };
+
+export type MapEngineKind = "2d" | "3d";
 
 export type MapPrecisionStats = Record<LocationPrecision, number>;
 
@@ -91,6 +143,8 @@ export type MapSearchData = {
     tooManyResults: boolean;
   };
   bounds: GeoBounds | null;
+  /** Sedes dos municípios presentes no resultado (camada Regiões). */
+  regions: MapRegionSeat[];
   geocoding: {
     enabled: boolean;
     pendingPostalCodes: number;

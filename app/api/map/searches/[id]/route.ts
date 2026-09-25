@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
+import { mapJsonResponse } from "@/lib/map/json-response";
 import { getSearchMapData, MapSearchNotFoundError } from "@/lib/map/service";
 
 export const runtime = "nodejs";
@@ -16,7 +17,7 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
  * Lê o que a busca oficial (Casa dos Dados) já gravou; não dispara nova consulta
  * à Casa dos Dados. Respeita a regra de liberação da lista (amostra antes da compra).
  */
-export async function GET(_request: Request, { params }: RouteProps) {
+export async function GET(request: Request, { params }: RouteProps) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Faça login para ver o mapa." }, { status: 401, headers: NO_STORE });
@@ -26,7 +27,7 @@ export async function GET(_request: Request, { params }: RouteProps) {
 
   try {
     const data = await getSearchMapData(id, user.id);
-    return NextResponse.json(data, { headers: NO_STORE });
+    return await mapJsonResponse(request, data, { headers: NO_STORE });
   } catch (error) {
     if (error instanceof MapSearchNotFoundError) {
       return NextResponse.json({ error: "Busca não encontrada." }, { status: 404, headers: NO_STORE });

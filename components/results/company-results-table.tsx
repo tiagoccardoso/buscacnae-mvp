@@ -13,6 +13,7 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { CompanyListItem } from "@/lib/company-model";
+import { replaceUrlParams, writeCompanyFilters } from "@/lib/results/filter-params";
 import {
   DEFAULT_COMPANY_TABLE_FILTERS,
   PAGE_SIZE_OPTIONS,
@@ -65,6 +66,12 @@ type CompanyResultsTableProps = {
   toggleSavedAction?: (formData: FormData) => Promise<void>;
   /** Nome base do arquivo CSV da seleção. */
   csvFileName?: string;
+  /** Filtros iniciais (lidos da URL: mesmos nomes do Mapa). */
+  initialFilters?: CompanyTableFilters;
+  /** Reflete os filtros na URL (sem navegar), para Lista ↔ Mapa manterem o recorte. */
+  syncFiltersToUrl?: boolean;
+  /** Link "Ver no mapa" por linha (ex.: /dashboard/search/{id}?view=mapa). */
+  mapHrefBase?: string;
 };
 
 const numberFormatter = new Intl.NumberFormat("pt-BR");
@@ -176,10 +183,22 @@ export function CompanyResultsTable({
   showCompanyLink = false,
   saveSelectionAction,
   toggleSavedAction,
-  csvFileName = "empresas-selecionadas"
+  csvFileName = "empresas-selecionadas",
+  initialFilters,
+  syncFiltersToUrl = false,
+  mapHrefBase
 }: CompanyResultsTableProps) {
   const baseId = useId();
-  const [filters, setFilters] = useState<CompanyTableFilters>(DEFAULT_COMPANY_TABLE_FILTERS);
+  const [filters, setFilters] = useState<CompanyTableFilters>(initialFilters ?? DEFAULT_COMPANY_TABLE_FILTERS);
+
+  useEffect(() => {
+    if (!syncFiltersToUrl) return;
+    replaceUrlParams((params) => {
+      writeCompanyFilters(params, filters);
+    });
+  }, [filters, syncFiltersToUrl]);
+
+  const mapFilterQuery = useMemo(() => writeCompanyFilters(new URLSearchParams(), filters).toString(), [filters]);
   // A busca textual é "adiada" para não travar a digitação em listas grandes.
   const deferredQuery = useDeferredValue(filters.query);
   const effectiveFilters = useMemo(() => ({ ...filters, query: deferredQuery }), [filters, deferredQuery]);
@@ -606,6 +625,15 @@ export function CompanyResultsTable({
                       {showCompanyLink ? (
                         <Link href={`/dashboard/companies/${encodeURIComponent(item.cnpj)}`} className="button-ghost button-sm" prefetch={false}>
                           Ver ficha
+                        </Link>
+                      ) : null}
+                      {mapHrefBase ? (
+                        <Link
+                          href={`${mapHrefBase}&empresa=${encodeURIComponent(item.id)}${mapFilterQuery ? `&${mapFilterQuery}` : ""}`}
+                          className="button-ghost button-sm"
+                          prefetch={false}
+                        >
+                          Ver no mapa
                         </Link>
                       ) : null}
                       {toggleSavedAction && variant === "dashboard" ? (

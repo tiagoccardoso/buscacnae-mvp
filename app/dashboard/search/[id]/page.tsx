@@ -22,8 +22,11 @@ import { companyFromSearchRow, toCompanyListItem, type CompanyListItem } from "@
 import { getAiFormatPricingTable, getAiFormattingPriceSummary } from "@/lib/ai-format-pricing";
 import { CompanyResultsTable } from "@/components/results/company-results-table";
 import { saveSelectedEstablishmentsAction, toggleSavedEstablishmentAction } from "@/app/dashboard/actions";
-import { ResultsViewToggle } from "@/components/map/results-view-toggle";
+import { ResultsViewToggle, type ResultsView } from "@/components/map/results-view-toggle";
 import { BusinessMapWorkspace } from "@/components/map/business-map-workspace";
+import { parseCompanyFilters, writeCompanyFilters } from "@/lib/results/filter-params";
+import { isUuid } from "@/lib/map/service";
+import { mapLayerFromParam } from "@/lib/map/types";
 import { getPublicMapConfig } from "@/lib/env";
 
 type SearchResultPageProps = {
@@ -64,8 +67,14 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const aiFormatState = typeof resolvedSearchParams.ai_format === "string" ? resolvedSearchParams.ai_format : "";
-  // Lista e Mapa compartilham a mesma busca salva: nenhum filtro precisa ser reconstruído.
-  const view = resolvedSearchParams.view === "mapa" ? "mapa" : "lista";
+  // Lista, Mapa e Inteligência compartilham a mesma busca salva e os mesmos filtros da URL.
+  const view: ResultsView =
+    resolvedSearchParams.view === "mapa" ? "mapa" : resolvedSearchParams.view === "inteligencia" ? "inteligencia" : "lista";
+  const isMapView = view !== "lista";
+  const sharedFilters = parseCompanyFilters(resolvedSearchParams);
+  const filterQuery = writeCompanyFilters(new URLSearchParams(), sharedFilters).toString();
+  const requestedLayer = mapLayerFromParam(resolvedSearchParams.camada);
+  const requestedCompany = typeof resolvedSearchParams.empresa === "string" && isUuid(resolvedSearchParams.empresa) ? resolvedSearchParams.empresa : null;
   const user = await getCurrentUser();
   const db = createDbClient();
 
@@ -157,7 +166,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const hiddenResultsCount = Math.max(0, (rows?.length ?? 0) - unlockedRows.length);
   // Modelo normalizado (Company → CompanyListItem): só campos exibidos vão ao navegador,
   // nunca o payload bruto da Casa dos Dados.
-  const listItems: CompanyListItem[] = view === "mapa"
+  const listItems: CompanyListItem[] = isMapView
     ? []
     : unlockedRows
         .map((row) => {
@@ -193,7 +202,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
             </p>
           </div>
           <div className="cluster">
-            <Link href={`/dashboard/search?reuse=${id}${view === "mapa" ? "&view=mapa" : ""}`} className="button-secondary">
+            <Link href={`/dashboard/search?reuse=${id}${isMapView ? "&view=mapa" : ""}`} className="button-secondary">
               Repetir busca
             </Link>
             <Link href="/dashboard/search" className="button-ghost">
@@ -234,9 +243,10 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
         ) : null}
 
         <div className="results-view-toggle">
-          <ResultsViewToggle searchId={id} view={view} />
-          {view === "mapa" ? (
-            <p className="footnote">Mesmos resultados e filtros da lista, no mapa.</p>
+          <ResultsViewToggle searchId={id} view={view} filterQuery={filterQuery} />
+          {view === "mapa" ? <p className="footnote">Mesmos resultados e filtros da lista, no mapa.</p> : null}
+          {view === "inteligencia" ? (
+            <p className="footnote">Concentração territorial (H3), municípios e indicadores dos mesmos resultados.</p>
           ) : null}
         </div>
 
@@ -257,13 +267,20 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
         ) : null}
       </section>
 
-      {view === "mapa" ? (
-        <section className="section" aria-label="Mapa dos resultados">
-          <BusinessMapWorkspace searchId={id} config={getPublicMapConfig()} variant="embedded" />
+      {isMapView ? (
+        <section className="section" aria-label={view === "inteligencia" ? "Inteligência territorial dos resultados" : "Mapa dos resultados"}>
+          <BusinessMapWorkspace
+            key={view}
+            searchId={id}
+            config={getPublicMapConfig()}
+            variant="embedded"
+            view={view}
+            initialState={{ filters: sharedFilters, layer: requestedLayer, companyId: requestedCompany }}
+          />
         </section>
       ) : null}
 
-      {view === "mapa" ? null : order ? (
+      {isMapView ? null : order ? (
         <section className="order-layout" aria-label="Compra da lista">
           <div className="stack-xl">
             {pricingSummary ? (
@@ -405,7 +422,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
         </div>
       )}
 
-      {view === "mapa" ? null : !rows || rows.length === 0 ? (
+      {isMapView ? null : !rows || rows.length === 0 ? (
         <EmptyState
           title="Nenhum estabelecimento retornado"
           description="Tente outro recorte de CNAEs ou ajuste a região da busca. O resultado continua salvo no dashboard para você revisar depois."
@@ -440,6 +457,9 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
             saveSelectionAction={saveSelectedEstablishmentsAction}
             toggleSavedAction={toggleSavedEstablishmentAction}
             csvFileName={`buscacnae-selecao-${id.slice(0, 8)}`}
+            initialFilters={sharedFilters}
+            syncFiltersToUrl
+            mapHrefBase={`/dashboard/search/${id}?view=mapa`}
           />
         </section>
       )}

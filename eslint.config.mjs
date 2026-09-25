@@ -9,7 +9,7 @@ const config = [
   ...nextCoreWebVitals,
   ...nextTypescript,
   {
-    ignores: [".next/**", "node_modules/**", "public/cesium/**", "next-env.d.ts"]
+    ignores: [".next/**", "node_modules/**", "public/cesium/**", "public/maplibre/**", "next-env.d.ts"]
   },
   {
     // Código anterior à adoção do ESLint 9 (o script `next lint` não existia mais no Next 16,
