@@ -21,6 +21,7 @@
     "@tanstack/react-table": "^9.2.4",
     "@tanstack/react-virtual": "^3.14.13",
     "cesium": "^1.145.0",
+    "echarts": "6.1.0",
     "h3-js": "^4.5.0",
     "maplibre-gl": "^6.11.2",
     "next": "16.2.2",

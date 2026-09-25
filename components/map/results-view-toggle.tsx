@@ -14,7 +14,7 @@ type ResultsViewToggleProps = {
 };
 
 const VIEWS: Array<{ id: ResultsView; label: string }> = [
-  { id: "lista", label: "Lista" },
+  { id: "lista", label: "Empresas" },
   { id: "mapa", label: "Mapa" },
   { id: "inteligencia", label: "Inteligência" }
 ];
@@ -27,7 +27,7 @@ export function resultsViewHref(searchId: string, view: ResultsView, filterQuery
 }
 
 /**
- * Alternância Lista / Mapa / Inteligência do resultado da busca. As três visões leem a
+ * Alternância Empresas / Mapa / Inteligência do resultado da busca. As três visões leem a
  * mesma busca salva (mesmos CNAEs, UF, município, situação, porte e datas) e os mesmos
  * filtros da URL (q, situacao, contato, uf, unidade): trocar de visão nunca refaz a
  * pesquisa na Casa dos Dados. Filtros alterados no cliente entram nos links na hora.

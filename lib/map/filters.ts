@@ -1,8 +1,10 @@
 import {
   subjectMatchesFilters,
   type CompanyFilterSubject,
-  type CompanyTableFilters
+  type CompanyTableFilters,
+  type FilterContext
 } from "@/lib/results/company-table-model";
+import { analysisReferenceDate, computeFacetKeys } from "@/lib/analytics/dimensions";
 import type { MapCompany } from "@/lib/map/types";
 
 /**
@@ -31,24 +33,37 @@ export function mapCompanyToFilterSubject(company: MapCompany): CompanyFilterSub
       company.primaryCnaeDescription
     ]
       .filter(Boolean)
-      .join(" ")
+      .join(" "),
+    municipalityKey: company.regionKey,
+    cnae: company.primaryCnaeCode,
+    size: company.companySize,
+    shareCapital: company.capitalSocial,
+    openedAt: company.openedAt
   };
 }
 
 export type IndexedMapCompany = { company: MapCompany; subject: CompanyFilterSubject };
 
 export function indexMapCompanies(companies: readonly MapCompany[]): IndexedMapCompany[] {
-  return companies.map((company) => ({ company, subject: mapCompanyToFilterSubject(company) }));
+  return companies.map((company) => {
+    const subject = mapCompanyToFilterSubject(company);
+    return { company, subject: { ...subject, keys: computeFacetKeys(subject) } };
+  });
 }
 
-export function filterIndexedMapCompanies(indexed: readonly IndexedMapCompany[], filters: CompanyTableFilters): MapCompany[] {
+export function filterIndexedMapCompanies(
+  indexed: readonly IndexedMapCompany[],
+  filters: CompanyTableFilters,
+  context: FilterContext = {}
+): MapCompany[] {
+  const resolved = { referenceDate: context.referenceDate ?? analysisReferenceDate() };
   const result: MapCompany[] = [];
-  for (const item of indexed) if (subjectMatchesFilters(item.subject, filters)) result.push(item.company);
+  for (const item of indexed) if (subjectMatchesFilters(item.subject, filters, resolved)) result.push(item.company);
   return result;
 }
 
-export function filterMapCompanies(companies: readonly MapCompany[], filters: CompanyTableFilters) {
-  return filterIndexedMapCompanies(indexMapCompanies(companies), filters);
+export function filterMapCompanies(companies: readonly MapCompany[], filters: CompanyTableFilters, context: FilterContext = {}) {
+  return filterIndexedMapCompanies(indexMapCompanies(companies), filters, context);
 }
 
 export function listMapStates(companies: readonly MapCompany[]) {

@@ -1,3 +1,4 @@
+import { CAPITAL_BAND_KEYS, NOT_INFORMED, isOpenedFilterValue } from "@/lib/analytics/dimensions";
 import {
   DEFAULT_COMPANY_TABLE_FILTERS,
   type BranchFilter,
@@ -18,12 +19,31 @@ export const FILTER_PARAM_KEYS = {
   status: "situacao",
   contact: "contato",
   state: "uf",
-  branch: "unidade"
+  branch: "unidade",
+  municipality: "municipio",
+  cnae: "cnae",
+  size: "porte",
+  capital: "capital",
+  opened: "abertura"
 } as const satisfies Record<keyof CompanyTableFilters, string>;
 
 type ParamSource = URLSearchParams | Record<string, string | string[] | undefined>;
 
 const STATUS_VALUES: StatusFilter[] = ["all", "active", "inactive"];
+/** Situação exata (chave de statusKey): "baixada", "inapta", "suspensa", "nula", "na"… */
+const STATUS_KEY = /^[a-z][a-z0-9-]{1,39}$/;
+const SLUG_KEY = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+function statusValue(value: string): StatusFilter {
+  const lowered = value.trim().toLowerCase();
+  if ((STATUS_VALUES as string[]).includes(lowered)) return lowered as StatusFilter;
+  return STATUS_KEY.test(lowered) ? lowered : "all";
+}
+
+function dimension(value: string, valid: (value: string) => boolean) {
+  const trimmed = value.trim().toLowerCase();
+  return trimmed && valid(trimmed) ? trimmed : "all";
+}
 const CONTACT_VALUES: ContactFilter[] = ["all", "any", "phone", "mobile", "email"];
 const BRANCH_VALUES: BranchFilter[] = ["all", "matriz", "filial"];
 
@@ -41,10 +61,15 @@ export function parseCompanyFilters(source: ParamSource): CompanyTableFilters {
   const state = read(source, FILTER_PARAM_KEYS.state).trim().toUpperCase();
   return {
     query: read(source, FILTER_PARAM_KEYS.query).slice(0, 120),
-    status: oneOf(read(source, FILTER_PARAM_KEYS.status), STATUS_VALUES, "all"),
+    status: statusValue(read(source, FILTER_PARAM_KEYS.status)),
     contact: oneOf(read(source, FILTER_PARAM_KEYS.contact), CONTACT_VALUES, "all"),
     state: /^[A-Z]{2}$/.test(state) ? state : "all",
-    branch: oneOf(read(source, FILTER_PARAM_KEYS.branch), BRANCH_VALUES, "all")
+    branch: oneOf(read(source, FILTER_PARAM_KEYS.branch), BRANCH_VALUES, "all"),
+    municipality: dimension(read(source, FILTER_PARAM_KEYS.municipality), (value) => value === NOT_INFORMED || /^\d{7}$/.test(value)),
+    cnae: dimension(read(source, FILTER_PARAM_KEYS.cnae).replace(/[^0-9a-z]/gi, ""), (value) => value === NOT_INFORMED || /^\d{7}$/.test(value)),
+    size: dimension(read(source, FILTER_PARAM_KEYS.size), (value) => SLUG_KEY.test(value)),
+    capital: dimension(read(source, FILTER_PARAM_KEYS.capital), (value) => value === NOT_INFORMED || CAPITAL_BAND_KEYS.has(value)),
+    opened: dimension(read(source, FILTER_PARAM_KEYS.opened), isOpenedFilterValue)
   };
 }
 

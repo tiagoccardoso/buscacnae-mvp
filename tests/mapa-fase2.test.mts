@@ -174,7 +174,14 @@ test("filtros: o mapa recebe só indicadores de contato, nunca o contato", () =>
 
 test("filtros na URL: mesmos nomes na Lista e no Mapa; valores inválidos voltam ao padrão", () => {
   const parsed = filterParams.parseCompanyFilters(new URLSearchParams("q=padaria&situacao=active&contato=mobile&uf=sp&unidade=matriz"));
-  assert.deepEqual(parsed, { query: "padaria", status: "active", contact: "mobile", state: "SP", branch: "matriz" });
+  assert.deepEqual(parsed, {
+    ...tableModel.DEFAULT_COMPANY_TABLE_FILTERS,
+    query: "padaria",
+    status: "active",
+    contact: "mobile",
+    state: "SP",
+    branch: "matriz"
+  });
   assert.deepEqual(
     filterParams.parseCompanyFilters({ situacao: "x", contato: "fax", uf: "São Paulo", unidade: ["filial", "matriz"] }),
     { ...tableModel.DEFAULT_COMPANY_TABLE_FILTERS, branch: "filial" }

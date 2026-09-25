@@ -18,14 +18,18 @@ import { formatDateTime, formatMoney } from "@/lib/format";
 import { getSearchSummary } from "@/lib/search-summary";
 import { readLeadPricingSummary } from "@/lib/lead-pricing";
 import { LeadPricingBreakdown } from "@/components/lead-pricing-breakdown";
-import { companyFromSearchRow, toCompanyListItem, type CompanyListItem } from "@/lib/company-model";
+import { toCompanyListItem, type CompanyListItem } from "@/lib/company-model";
 import { getAiFormatPricingTable, getAiFormattingPriceSummary } from "@/lib/ai-format-pricing";
 import { CompanyResultsTable } from "@/components/results/company-results-table";
 import { saveSelectedEstablishmentsAction, toggleSavedEstablishmentAction } from "@/app/dashboard/actions";
 import { ResultsViewToggle, type ResultsView } from "@/components/map/results-view-toggle";
 import { BusinessMapWorkspace } from "@/components/map/business-map-workspace";
 import { parseCompanyFilters, writeCompanyFilters } from "@/lib/results/filter-params";
-import { isUuid } from "@/lib/map/service";
+import { isUuid, municipalityKey } from "@/lib/map/service";
+import { loadSearchUniverse } from "@/lib/analytics/universe-server";
+import { analysisReferenceDate } from "@/lib/analytics/dimensions";
+import { UniverseSummary } from "@/components/analytics/universe-summary";
+import { MarketIntelligenceWorkspace } from "@/components/intelligence/market-intelligence-workspace";
 import { mapLayerFromParam } from "@/lib/map/types";
 import { getPublicMapConfig } from "@/lib/env";
 
@@ -67,10 +71,13 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const aiFormatState = typeof resolvedSearchParams.ai_format === "string" ? resolvedSearchParams.ai_format : "";
-  // Lista, Mapa e Inteligência compartilham a mesma busca salva e os mesmos filtros da URL.
+  // Empresas, Mapa e Inteligência compartilham a mesma busca salva, o mesmo universo
+  // analisado (lib/analytics/universe.ts) e os mesmos filtros da URL.
   const view: ResultsView =
     resolvedSearchParams.view === "mapa" ? "mapa" : resolvedSearchParams.view === "inteligencia" ? "inteligencia" : "lista";
-  const isMapView = view !== "lista";
+  const isMapView = view === "mapa";
+  const isIntelligenceView = view === "inteligencia";
+  const isListView = view === "lista";
   const sharedFilters = parseCompanyFilters(resolvedSearchParams);
   const filterQuery = writeCompanyFilters(new URLSearchParams(), sharedFilters).toString();
   const requestedLayer = mapLayerFromParam(resolvedSearchParams.camada);
@@ -134,13 +141,16 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const orderUnlocked = order?.status === "paid" || order?.status === "free";
   const effectiveResultCount = order?.result_count ?? Math.max(0, Number(search.data.total_results ?? 0));
 
-  const { data: rows } = await db
-    .from("search_results")
-    .select("position, establishment_id, provider_payload, establishments(*)")
-    .eq("search_query_id", id)
-    .order("position", { ascending: true });
+  // Universo analisado: mesma função usada por GET /api/map/searches/[id] (Mapa e Inteligência).
+  const universe = await loadSearchUniverse(
+    { searchId: id, unlocked: orderUnlocked, reported: Math.max(0, Number(search.data.total_results ?? 0) || 0) },
+    db
+  );
+  const universeCounts = universe.counts;
+  const referenceDate = analysisReferenceDate();
+  const hasStoredRows = universeCounts.stored > 0;
 
-  const establishmentIds = (rows ?? []).map((row) => row.establishment_id);
+  const establishmentIds = isListView ? universe.companies.map((item) => item.establishmentId) : [];
   const { data: savedRows } = establishmentIds.length
     ? await db
         .from("saved_establishments")
@@ -153,7 +163,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const aiFormatMessage = readAiFormatMessage(aiFormatState);
 
   let aiFormatOrder: SearchAiFormatOrderRecord | null = null;
-  if (orderUnlocked && (rows?.length ?? 0) > 0) {
+  if (orderUnlocked && hasStoredRows) {
     const existingAiOrder = await getSearchAiFormatOrderBySearchQueryId(id);
     aiFormatOrder = existingAiOrder ? await syncSearchAiFormatOrderPaymentStatus(existingAiOrder) : null;
   }
@@ -162,22 +172,18 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
   const aiFormatProcessingStatus = aiFormatOrder ? readSearchAiFormatProcessingStatus(aiFormatOrder) : "idle";
   const aiFormatInitialError = aiFormatProcessingStatus === "error" ? aiFormatOrder?.format_error ?? null : null;
   const autoStartAiProcessing = aiFormatState === "success" && aiFormatUnlocked && aiFormatProcessingStatus === "idle";
-  const unlockedRows = orderUnlocked ? rows ?? [] : (rows ?? []).slice(0, 1);
-  const hiddenResultsCount = Math.max(0, (rows?.length ?? 0) - unlockedRows.length);
+  const hiddenResultsCount = universeCounts.locked;
   // Modelo normalizado (Company → CompanyListItem): só campos exibidos vão ao navegador,
-  // nunca o payload bruto da Casa dos Dados.
-  const listItems: CompanyListItem[] = isMapView
-    ? []
-    : unlockedRows
-        .map((row) => {
-          const company = companyFromSearchRow(row);
-          if (!company || !company.cnpj) return null;
-          return toCompanyListItem(company, {
-            position: Number(row.position ?? 0),
-            saved: savedSet.has(String(row.establishment_id ?? company.id))
-          });
+  // nunca o payload bruto da Casa dos Dados. Mesmas empresas do Mapa e da Inteligência.
+  const listItems: CompanyListItem[] = isListView
+    ? universe.companies.map(({ company, position, establishmentId }) =>
+        toCompanyListItem(company, {
+          position,
+          saved: savedSet.has(establishmentId),
+          municipalityKey: municipalityKey({ cityIbge: company.address.cityIbge, cityName: company.address.city, stateCode: company.address.state })
         })
-        .filter((item): item is CompanyListItem => item !== null);
+      )
+    : [];
 
   return (
     <>
@@ -202,7 +208,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
             </p>
           </div>
           <div className="cluster">
-            <Link href={`/dashboard/search?reuse=${id}${isMapView ? "&view=mapa" : ""}`} className="button-secondary">
+            <Link href={`/dashboard/search?reuse=${id}${isListView ? "" : `&view=${view}`}`} className="button-secondary">
               Repetir busca
             </Link>
             <Link href="/dashboard/search" className="button-ghost">
@@ -244,11 +250,13 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
 
         <div className="results-view-toggle">
           <ResultsViewToggle searchId={id} view={view} filterQuery={filterQuery} />
-          {view === "mapa" ? <p className="footnote">Mesmos resultados e filtros da lista, no mapa.</p> : null}
+          {view === "mapa" ? <p className="footnote">Mesmas empresas e filtros, no mapa.</p> : null}
           {view === "inteligencia" ? (
-            <p className="footnote">Concentração territorial (H3), municípios e indicadores dos mesmos resultados.</p>
+            <p className="footnote">Indicadores e gráficos das mesmas empresas. Clique em um segmento para filtrar.</p>
           ) : null}
         </div>
+
+        <UniverseSummary counts={universeCounts} />
 
         {autoRefinementSuggested && suggestedActivityStartYear ? (
           <div className="notice warning">
@@ -268,19 +276,25 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
       </section>
 
       {isMapView ? (
-        <section className="section" aria-label={view === "inteligencia" ? "Inteligência territorial dos resultados" : "Mapa dos resultados"}>
+        <section className="section" aria-label="Mapa dos resultados">
           <BusinessMapWorkspace
             key={view}
             searchId={id}
             config={getPublicMapConfig()}
             variant="embedded"
-            view={view}
+            view="mapa"
             initialState={{ filters: sharedFilters, layer: requestedLayer, companyId: requestedCompany }}
           />
         </section>
       ) : null}
 
-      {isMapView ? null : order ? (
+      {isIntelligenceView ? (
+        <section className="section" aria-label="Inteligência de mercado dos resultados">
+          <MarketIntelligenceWorkspace searchId={id} initialFilters={sharedFilters} />
+        </section>
+      ) : null}
+
+      {!isListView ? null : order ? (
         <section className="order-layout" aria-label="Compra da lista">
           <div className="stack-xl">
             {pricingSummary ? (
@@ -293,7 +307,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
               </div>
             )}
 
-            {orderUnlocked && (rows?.length ?? 0) > 0 ? (
+            {orderUnlocked && hasStoredRows ? (
               <div className="tile stack-lg">
                 <div className="section-header">
                   <span className="eyebrow">Lista pronta para prospecção com IA</span>
@@ -422,7 +436,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
         </div>
       )}
 
-      {isMapView ? null : !rows || rows.length === 0 ? (
+      {!isListView ? null : !hasStoredRows ? (
         <EmptyState
           title="Nenhum estabelecimento retornado"
           description="Tente outro recorte de CNAEs ou ajuste a região da busca. O resultado continua salvo no dashboard para você revisar depois."
@@ -434,7 +448,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
           <div className="section-header">
             <span className="eyebrow">{orderUnlocked ? "Estabelecimentos" : "Amostra da lista"}</span>
             <h2 id="sample-title" className="title-2">
-              {orderUnlocked ? `${unlockedRows.length} empresas liberadas` : "Uma prévia do que você recebe"}
+              {orderUnlocked ? `${listItems.length} empresas liberadas` : "Uma prévia do que você recebe"}
             </h2>
             <p className="section-copy">
               {orderUnlocked
@@ -458,6 +472,7 @@ export default async function SearchResultPage({ params, searchParams }: SearchR
             toggleSavedAction={toggleSavedEstablishmentAction}
             csvFileName={`buscacnae-selecao-${id.slice(0, 8)}`}
             initialFilters={sharedFilters}
+            referenceDate={referenceDate}
             syncFiltersToUrl
             mapHrefBase={`/dashboard/search/${id}?view=mapa`}
           />

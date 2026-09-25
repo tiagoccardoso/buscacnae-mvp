@@ -31,13 +31,21 @@ export default async function BusinessMapPage({ searchParams }: MapPageProps) {
   const requested = typeof params.search === "string" && isUuid(params.search) ? params.search : "";
   const options = await listMapSearchOptions(user.id);
   const searchId = requested || options[0]?.id || "";
-  const view = params.view === "inteligencia" ? "inteligencia" : "mapa";
+  // Fase 3: a Inteligência de Mercado vive no resultado da busca (Empresas | Mapa | Inteligência).
+  if (params.view === "inteligencia" && searchId) {
+    const query = writeCompanyFilters(new URLSearchParams({ view: "inteligencia" }), parseCompanyFilters(params));
+    redirect(`/dashboard/search/${searchId}?${query.toString()}`);
+  }
+  const view = "mapa" as const;
   const filters = parseCompanyFilters(params);
   const company = typeof params.empresa === "string" && isUuid(params.empresa) ? params.empresa : null;
   const viewHref = (target: "mapa" | "inteligencia") => {
     const query = writeCompanyFilters(new URLSearchParams(), filters);
+    if (target === "inteligencia") {
+      query.set("view", target);
+      return `/dashboard/search/${searchId}?${query.toString()}`;
+    }
     if (searchId) query.set("search", searchId);
-    if (target === "inteligencia") query.set("view", target);
     const text = query.toString();
     return `/dashboard/mapa${text ? `?${text}` : ""}`;
   };
@@ -63,12 +71,7 @@ export default async function BusinessMapPage({ searchParams }: MapPageProps) {
           <Link href={viewHref("mapa")} className="segmented-item" aria-current={view === "mapa" ? "page" : undefined} scroll={false}>
             Mapa
           </Link>
-          <Link
-            href={viewHref("inteligencia")}
-            className="segmented-item"
-            aria-current={view === "inteligencia" ? "page" : undefined}
-            scroll={false}
-          >
+          <Link href={viewHref("inteligencia")} className="segmented-item">
             Inteligência
           </Link>
         </nav>

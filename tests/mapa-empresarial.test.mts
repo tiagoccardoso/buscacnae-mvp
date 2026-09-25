@@ -338,7 +338,7 @@ test("busca inexistente ou id inválido não chega ao banco", async () => {
   await assert.rejects(() => getSearchMapData("nao-e-uuid", "user"), (error: unknown) => error instanceof MapSearchNotFoundError);
 });
 
-test("troca Lista/Mapa/Inteligência aponta para a mesma busca salva, preservando filtros", () => {
+test("troca Empresas/Mapa/Inteligência aponta para a mesma busca salva, preservando filtros", () => {
   const anchors = (html: string) =>
     Array.from(html.matchAll(/<a([^>]*)>([^<]*)<\/a>/g)).map((match) => ({
       label: match[2],
@@ -347,18 +347,20 @@ test("troca Lista/Mapa/Inteligência aponta para a mesma busca salva, preservand
     }));
   const list = anchors(renderToStaticMarkup(createElement(ResultsViewToggle, { searchId: "abc", view: "lista" })));
   assert.deepEqual(list, [
-    { label: "Lista", href: "/dashboard/search/abc", current: true },
+    { label: "Empresas", href: "/dashboard/search/abc", current: true },
     { label: "Mapa", href: "/dashboard/search/abc?view=mapa", current: false },
     { label: "Inteligência", href: "/dashboard/search/abc?view=inteligencia", current: false }
   ]);
-  const map = anchors(renderToStaticMarkup(createElement(ResultsViewToggle, { searchId: "abc", view: "mapa", filterQuery: "situacao=active&uf=SP" })));
+  const map = anchors(
+    renderToStaticMarkup(createElement(ResultsViewToggle, { searchId: "abc", view: "mapa", filterQuery: "situacao=active&uf=SP&municipio=3509502" }))
+  );
   assert.equal(map.find((item) => item.current)?.label, "Mapa");
   assert.deepEqual(
     map.map((item) => item.href),
     [
-      "/dashboard/search/abc?situacao=active&uf=SP",
-      "/dashboard/search/abc?situacao=active&uf=SP&view=mapa",
-      "/dashboard/search/abc?situacao=active&uf=SP&view=inteligencia"
+      "/dashboard/search/abc?situacao=active&uf=SP&municipio=3509502",
+      "/dashboard/search/abc?situacao=active&uf=SP&municipio=3509502&view=mapa",
+      "/dashboard/search/abc?situacao=active&uf=SP&municipio=3509502&view=inteligencia"
     ]
   );
 });

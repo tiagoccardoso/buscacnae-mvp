@@ -96,7 +96,9 @@ Erros transitórios têm retry conservador; HTTP 429 não é repetido agressivam
 
 ## 4.1) Mapa Empresarial
 
-`/dashboard/mapa` e as abas **Lista / Mapa / Inteligência** do resultado da busca mostram os mesmos resultados e filtros da lista. Mapa 2D operacional com MapLibre GL + deck.gl (clusters, empresas, "Buscar nesta área"), inteligência territorial com H3 (concentração por células, municípios e indicadores) e globo 3D opcional com CesiumJS. Funciona sem chaves pagas (OpenStreetMap). Validação local sem login/banco: `npm run dev` e abra `/dev/mapa?n=10000`. Detalhes, variáveis `MAP_*`/`NEXT_PUBLIC_MAP_*` e migração opcional `sql/neon_map_locations.sql` em [`docs/MAPA_EMPRESARIAL.md`](docs/MAPA_EMPRESARIAL.md).
+`/dashboard/mapa` e as abas **Empresas / Mapa / Inteligência** do resultado da busca mostram o mesmo universo analisado e os mesmos filtros. Mapa 2D operacional com MapLibre GL + deck.gl (clusters, empresas, "Buscar nesta área"), inteligência territorial com H3 (concentração por células, municípios e indicadores) e globo 3D opcional com CesiumJS. Funciona sem chaves pagas (OpenStreetMap). Validação local sem login/banco: `npm run dev` e abra `/dev/mapa?n=10000`. Detalhes, variáveis `MAP_*`/`NEXT_PUBLIC_MAP_*` e migração opcional `sql/neon_map_locations.sql` em [`docs/MAPA_EMPRESARIAL.md`](docs/MAPA_EMPRESARIAL.md).
+
+**Inteligência de Mercado (Fase 3).** A aba **Inteligência** mostra indicadores e gráficos (Apache ECharts) calculados de forma determinística sobre as mesmas empresas da lista e do mapa, com drill-down (clicar num município, CNAE, porte, faixa de capital ou período filtra Empresas, Mapa e Inteligência). Métricas, fórmulas, limites, decisão sobre DuckDB-Wasm e referência ao Apache Superset em [`docs/INTELIGENCIA_MERCADO.md`](docs/INTELIGENCIA_MERCADO.md). Validação local: `/dev/mapa?n=10000&view=inteligencia`.
 
 ## 5) Variáveis de ambiente
 

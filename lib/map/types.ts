@@ -2,6 +2,7 @@
  * Tipos compartilhados (servidor + cliente) do Mapa Empresarial.
  * Este arquivo não pode importar nada de Node nem do Cesium.
  */
+import type { UniverseCounts } from "@/lib/analytics/universe";
 
 /**
  * Precisão da coordenada exibida.
@@ -130,6 +131,13 @@ export type MapSearchData = {
   unlocked: boolean;
   /** Registros ocultos até a compra (o mapa segue a mesma regra da lista). */
   lockedCount: number;
+  /**
+   * Reconciliação do universo analisado (mesma da Lista e da Inteligência).
+   * `companies.length === universe.analyzed`.
+   */
+  universe: UniverseCounts;
+  /** Data de referência (AAAA-MM-DD, America/Sao_Paulo) de "novas empresas" e do filtro de abertura. */
+  referenceDate: string;
   companies: MapCompany[];
   stats: {
     loaded: number;

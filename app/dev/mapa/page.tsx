@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { BusinessMapWorkspace } from "@/components/map/business-map-workspace";
+import { MarketIntelligenceWorkspace } from "@/components/intelligence/market-intelligence-workspace";
 import { getPublicMapConfig } from "@/lib/env";
 import { mapLayerFromParam } from "@/lib/map/types";
 import { parseCompanyFilters } from "@/lib/results/filter-params";
@@ -40,9 +41,19 @@ export default async function DevMapPage({ searchParams }: DevMapPageProps) {
           </a>
         ))}
         <a className="button-ghost button-sm" href={`/dev/mapa?n=${size}&view=${view === "mapa" ? "inteligencia" : "mapa"}`}>
-          {view === "mapa" ? "Inteligência" : "Mapa"}
+          {view === "mapa" ? "Inteligência (ECharts)" : "Mapa"}
         </a>
       </nav>
+      {view === "inteligencia" ? (
+        <MarketIntelligenceWorkspace
+          key={`${size}-${view}`}
+          searchId={searchId}
+          dataEndpoint={`/api/dev/map-data?n=${size}`}
+          resultsHref={`/dev/mapa?n=${size}`}
+          listView="mapa"
+          initialFilters={parseCompanyFilters(params)}
+        />
+      ) : (
       <BusinessMapWorkspace
         key={`${size}-${view}`}
         searchId={searchId}
@@ -56,6 +67,7 @@ export default async function DevMapPage({ searchParams }: DevMapPageProps) {
           companyId: typeof params.empresa === "string" ? params.empresa : null
         }}
       />
+      )}
     </main>
   );
 }

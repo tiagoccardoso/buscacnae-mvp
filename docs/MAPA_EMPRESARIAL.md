@@ -8,6 +8,8 @@ Módulo geográfico do BuscaCNAE. Mostra os **mesmos resultados, filtros e regra
 
 Status (Fase 2, 25/09/2026): lint (0 erros), typecheck, 106 testes e build verdes.
 
+> **Fase 3 (Inteligência de Mercado):** a aba "Lista" passou a se chamar **Empresas** e a aba **Inteligência** virou um painel de indicadores e gráficos (Apache ECharts) com drill-down — ver [`INTELIGENCIA_MERCADO.md`](INTELIGENCIA_MERCADO.md). As camadas Concentração (H3) e Regiões continuam no **Mapa**. As três abas agora usam o mesmo **universo analisado** (`lib/analytics/universe.ts`) e os filtros de drill-down (`municipio`, `cnae`, `porte`, `capital`, `abertura`) também valem no mapa.
+
 ## 1. Arquitetura
 
 ```

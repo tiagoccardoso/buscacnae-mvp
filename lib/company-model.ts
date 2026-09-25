@@ -163,6 +163,11 @@ export type CompanyListItem = {
   phoneIsMobile: boolean;
   website: string | null;
   saved: boolean;
+  /**
+   * Código IBGE do município resolvido pela base local (mesma chave `regionKey` do mapa).
+   * Calculado no servidor (lib/analytics/universe.ts); usado pelo filtro de município.
+   */
+  municipalityKey?: string | null;
 };
 
 const cleanText = cleanString;
@@ -392,7 +397,10 @@ function formatCnaeLabel(cnae: CompanyCnae) {
   return cnae.description ?? cnae.code ?? "";
 }
 
-export function toCompanyListItem(company: Company, extra: { position: number; saved?: boolean }): CompanyListItem {
+export function toCompanyListItem(
+  company: Company,
+  extra: { position: number; saved?: boolean; municipalityKey?: string | null }
+): CompanyListItem {
   return {
     id: company.id,
     position: extra.position,
@@ -419,7 +427,8 @@ export function toCompanyListItem(company: Company, extra: { position: number; s
     phone: company.contacts.phone,
     phoneIsMobile: company.contacts.phoneIsMobile,
     website: company.contacts.website,
-    saved: extra.saved === true
+    saved: extra.saved === true,
+    municipalityKey: extra.municipalityKey ?? null
   };
 }
 

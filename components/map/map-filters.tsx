@@ -1,6 +1,7 @@
 "use client";
 
 import { DEFAULT_COMPANY_TABLE_FILTERS, type CompanyTableFilters } from "@/lib/results/company-table-model";
+import { ActiveFilterChips, ExactStatusOption, type FilterLabelLookup } from "@/components/analytics/active-filter-chips";
 
 type MapFiltersProps = {
   idPrefix: string;
@@ -11,6 +12,10 @@ type MapFiltersProps = {
   totalCount: number;
   active: boolean;
   onChange(next: CompanyTableFilters): void;
+  /** Rótulos dos filtros de drill-down (município, CNAE, porte, situação exata). */
+  lookup?: FilterLabelLookup;
+  /** Rótulo do contador (padrão: "empresas"). */
+  unitLabel?: string;
 };
 
 const numberFormat = new Intl.NumberFormat("pt-BR");
@@ -20,7 +25,18 @@ const numberFormat = new Intl.NumberFormat("pt-BR");
  * e mesma regra em lib/results/company-table-model.ts). Atuam sobre os resultados já
  * carregados da busca — não disparam nova consulta à Casa dos Dados.
  */
-export function MapFilters({ idPrefix, filters, states, hasBranchData, resultCount, totalCount, active, onChange }: MapFiltersProps) {
+export function MapFilters({
+  idPrefix,
+  filters,
+  states,
+  hasBranchData,
+  resultCount,
+  totalCount,
+  active,
+  onChange,
+  lookup,
+  unitLabel = "empresas"
+}: MapFiltersProps) {
   function update<K extends keyof CompanyTableFilters>(key: K, value: CompanyTableFilters[K]) {
     onChange({ ...filters, [key]: value });
   }
@@ -56,6 +72,7 @@ export function MapFilters({ idPrefix, filters, states, hasBranchData, resultCou
             <option value="all">Todas</option>
             <option value="active">Ativas</option>
             <option value="inactive">Outras situações</option>
+            <ExactStatusOption status={filters.status} lookup={lookup} />
           </select>
         </div>
         <div className="field">
@@ -108,9 +125,12 @@ export function MapFilters({ idPrefix, filters, states, hasBranchData, resultCou
           </div>
         ) : null}
       </div>
+      <ActiveFilterChips filters={filters} onChange={onChange} lookup={lookup} />
       <div className="map-filters-foot" aria-live="polite">
         <span className="footnote">
-          {active ? `${numberFormat.format(resultCount)} de ${numberFormat.format(totalCount)} empresas` : `${numberFormat.format(totalCount)} empresas`}
+          {active
+            ? `${numberFormat.format(resultCount)} de ${numberFormat.format(totalCount)} ${unitLabel}`
+            : `${numberFormat.format(totalCount)} ${unitLabel}`}
         </span>
         {active ? (
           <button type="button" className="button-ghost button-sm" onClick={() => onChange(DEFAULT_COMPANY_TABLE_FILTERS)}>

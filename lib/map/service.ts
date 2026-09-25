@@ -1,11 +1,12 @@
 import { createDbClient } from "@/lib/db-client";
 import { getLatestSearchAccessOrderBySearchQueryId } from "@/lib/billing";
-import { companySummaryFromSearchRow, type CompanySummary } from "@/lib/company-model";
+import { toCompanySummary, type CompanySummary } from "@/lib/company-model";
+import { analysisReferenceDate } from "@/lib/analytics/dimensions";
+import { loadSearchUniverse } from "@/lib/analytics/universe-server";
 import { normalizeCep, resolveCompanyLocation, spreadSharedLocations, type CompanyLocationLookup } from "@/lib/geo/company-location";
 import { loadCompanyLocationCache, type CachedCompanyLocation } from "@/lib/geo/company-location-cache";
 import { findMunicipality } from "@/lib/geo/municipalities";
 import { resolvePostalCodes, type PostalCodeResolution } from "@/lib/geo/postal-code-geocoder";
-import { getMapMaxMarkers } from "@/lib/env";
 import { boundsFromPoints } from "@/lib/map/geo";
 import type { LocationPrecision, MapCompany, MapRegionSeat, MapSearchData, MapSearchOption } from "@/lib/map/types";
 import { getSearchSummary } from "@/lib/search-summary";
@@ -170,25 +171,13 @@ export async function getSearchMapData(
 
   const order = await getLatestSearchAccessOrderBySearchQueryId(searchId);
   const unlocked = Boolean(order && UNLOCKED_STATUSES.has(String(order.status)));
-  const maxMarkers = getMapMaxMarkers();
-
-  const { data: rows } = await db
-    .from("search_results")
-    .select("position, establishment_id, provider_payload, establishments(*)")
-    .eq("search_query_id", searchId)
-    .order("position", { ascending: true })
-    .limit(unlocked ? maxMarkers + 1 : 1);
-
-  const loadedRows = (rows ?? []) as Array<Record<string, unknown>>;
-  const truncated = unlocked && loadedRows.length > maxMarkers;
-  const visibleRows = truncated ? loadedRows.slice(0, maxMarkers) : loadedRows;
-  const summaries = visibleRows
-    .map((row) => companySummaryFromSearchRow(row))
-    .filter((item): item is CompanySummary => Boolean(item && item.cnpj));
-
   const totalResults = Math.max(0, Number(search.total_results ?? 0) || 0);
-  const storedCount = Number(queryPayload.mergedResults ?? totalResults) || 0;
-  const lockedCount = unlocked ? 0 : Math.max(0, storedCount - summaries.length);
+
+  // Universo analisado: MESMA regra da Lista e da Inteligência (lib/analytics/universe.ts).
+  const universe = await loadSearchUniverse({ searchId, unlocked, reported: totalResults }, db);
+  const summaries = universe.companies.map((item) => toCompanySummary(item.company));
+  const storedCount = universe.counts.stored;
+  const truncated = universe.counts.overLimit > 0;
 
   const ids = summaries.map((item) => item.id).filter(Boolean);
   const { data: savedRows } = ids.length
@@ -219,11 +208,13 @@ export async function getSearchMapData(
     createdAt: typeof search.created_at === "string" ? search.created_at : search.created_at instanceof Date ? search.created_at.toISOString() : null,
     totalResults,
     unlocked,
-    lockedCount,
+    lockedCount: universe.counts.locked,
+    universe: universe.counts,
+    referenceDate: analysisReferenceDate(),
     companies,
     stats,
     limits: {
-      maxMarkers,
+      maxMarkers: universe.counts.maxCompanies,
       truncated,
       tooManyResults: truncated || hitFetchLimit || totalResults > Math.max(storedCount, companies.length)
     },

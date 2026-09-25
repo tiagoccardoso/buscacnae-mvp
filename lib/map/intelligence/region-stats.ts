@@ -1,4 +1,12 @@
-import { isActiveStatus } from "@/lib/results/company-table-model";
+import {
+  NEW_COMPANY_WINDOW_MONTHS,
+  analysisReferenceDate,
+  formatCnaeCode,
+  isActiveStatus,
+  isNewCompany,
+  newCompanyWindowStart,
+  parseIsoDay
+} from "@/lib/analytics/dimensions";
 import type { LocationPrecision, MapCompany, MapPrecisionStats, MapRegionSeat } from "@/lib/map/types";
 
 /**
@@ -11,7 +19,7 @@ import type { LocationPrecision, MapCompany, MapPrecisionStats, MapRegionSeat } 
  *   considerando só empresas com data de abertura conhecida;
  * - nada é estimado para empresas fora da busca (a base é o resultado carregado).
  */
-export const NEW_COMPANY_WINDOW_MONTHS = 12;
+export { NEW_COMPANY_WINDOW_MONTHS };
 
 export type RankedValue = { key: string; label: string; count: number };
 
@@ -35,25 +43,6 @@ function emptyPrecision(): MapPrecisionStats {
   return { exact: 0, address: 0, postal_code: 0, city: 0, approximate: 0 };
 }
 
-function subtractMonths(date: Date, months: number) {
-  const copy = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  copy.setUTCMonth(copy.getUTCMonth() - months);
-  return copy;
-}
-
-function parseIsoDate(value: string | null) {
-  if (!value) return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  if (!match) return null;
-  const time = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  return Number.isFinite(time) ? time : null;
-}
-
-function formatCnaeCode(code: string) {
-  const digits = code.replace(/\D/g, "");
-  return digits.length === 7 ? `${digits.slice(0, 4)}-${digits.slice(4, 5)}/${digits.slice(5)}` : code;
-}
-
 function rank(counter: Map<string, RankedValue>, limit: number) {
   return Array.from(counter.values())
     .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, "pt-BR"))
@@ -62,12 +51,11 @@ function rank(counter: Map<string, RankedValue>, limit: number) {
 
 export function summarizeCompanies(
   companies: readonly MapCompany[],
-  options: { now?: Date; topCnaes?: number } = {}
+  options: { now?: Date; referenceDate?: string; topCnaes?: number } = {}
 ): RegionStats {
-  const now = options.now ?? new Date();
-  const sinceDate = subtractMonths(now, NEW_COMPANY_WINDOW_MONTHS);
-  const since = sinceDate.getTime();
-  const nowTime = now.getTime();
+  // Mesma regra de "novas empresas" da Inteligência de Mercado (lib/analytics/dimensions.ts).
+  const referenceDate = options.referenceDate ?? analysisReferenceDate(options.now ?? new Date());
+  const since = newCompanyWindowStart(referenceDate);
 
   const status = { active: 0, inactive: 0, unknown: 0 };
   const newCompanies = { count: 0, known: 0 };
@@ -83,10 +71,9 @@ export function summarizeCompanies(
     else if (isActiveStatus(company.status)) status.active += 1;
     else status.inactive += 1;
 
-    const opened = parseIsoDate(company.openedAt);
-    if (opened !== null) {
+    if (parseIsoDay(company.openedAt)) {
       newCompanies.known += 1;
-      if (opened >= since && opened <= nowTime) newCompanies.count += 1;
+      if (isNewCompany(company.openedAt, referenceDate, since)) newCompanies.count += 1;
     }
 
     const code = company.primaryCnaeCode?.replace(/\D/g, "") || "";
@@ -122,7 +109,7 @@ export function summarizeCompanies(
     newCompanies: {
       ...newCompanies,
       windowMonths: NEW_COMPANY_WINDOW_MONTHS,
-      since: sinceDate.toISOString().slice(0, 10)
+      since
     },
     topCnaes: rank(cnaes, options.topCnaes ?? 5),
     distinctCnaes: cnaes.size,

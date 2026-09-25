@@ -1,4 +1,5 @@
 import type { CompanySummary } from "@/lib/company-model";
+import { analysisReferenceDate } from "@/lib/analytics/dimensions";
 import { listMunicipalities } from "@/lib/geo/municipalities";
 import { boundsFromPoints } from "@/lib/map/geo";
 import { buildMapCompanies, buildRegionSeats, summarizeMapCompanies } from "@/lib/map/service";
@@ -40,6 +41,17 @@ function random(seed: number) {
 
 function pad(value: number, size: number) {
   return String(value).padStart(size, "0");
+}
+
+/**
+ * Capital social sintético: ~6% não informado, ~6% R$ 0 e o restante log-uniforme entre
+ * R$ 1 mil e R$ 100 mi (a distribuição real é muito assimétrica). Consome UM número
+ * aleatório, como a versão anterior, para não alterar o restante da sequência.
+ */
+function syntheticCapital(value: number) {
+  if (value < 0.06) return null;
+  if (value < 0.12) return 0;
+  return Math.round(Math.pow(10, 3 + ((value - 0.12) / 0.88) * 5));
 }
 
 export function buildSyntheticSummaries(count: number, seed = 42): { summaries: CompanySummary[]; postal: Map<string, { latitude: number; longitude: number }> } {
@@ -88,7 +100,7 @@ export function buildSyntheticSummaries(count: number, seed = 42): { summaries: 
       primaryCnaeCode: cnae,
       primaryCnaeDescription: description,
       companySize: next() < 0.08 ? null : SIZES[Math.floor(Math.pow(next(), 2) * SIZES.length)],
-      capitalSocial: Math.round(next() * 500_000),
+      capitalSocial: syntheticCapital(next()),
       email: next() < 0.4 ? `contato${index}@exemplo.com.br` : null,
       phone: next() < 0.6 ? "(11) 98765-4321" : null,
       phoneIsMobile: next() < 0.5,
@@ -118,6 +130,18 @@ export function buildSyntheticMapData(count: number, seed = 42): MapSearchData {
     totalResults: count,
     unlocked: true,
     lockedCount: 0,
+    universe: {
+      reported: count,
+      stored: count,
+      unlocked: true,
+      locked: 0,
+      overLimit: 0,
+      invalid: 0,
+      duplicates: 0,
+      analyzed: companies.length,
+      maxCompanies: Math.max(count, 1)
+    },
+    referenceDate: analysisReferenceDate(),
     companies,
     stats: summarizeMapCompanies(companies),
     limits: { maxMarkers: count, truncated: false, tooManyResults: false },

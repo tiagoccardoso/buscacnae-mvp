@@ -14,6 +14,8 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { CompanyListItem } from "@/lib/company-model";
 import { replaceUrlParams, writeCompanyFilters } from "@/lib/results/filter-params";
+import { buildFilterLabelMaps } from "@/lib/analytics/labels";
+import { ActiveFilterChips, ExactStatusOption } from "@/components/analytics/active-filter-chips";
 import {
   DEFAULT_COMPANY_TABLE_FILTERS,
   PAGE_SIZE_OPTIONS,
@@ -72,6 +74,11 @@ type CompanyResultsTableProps = {
   syncFiltersToUrl?: boolean;
   /** Link "Ver no mapa" por linha (ex.: /dashboard/search/{id}?view=mapa). */
   mapHrefBase?: string;
+  /**
+   * Data de referência (AAAA-MM-DD) do filtro "abertas nos últimos 12 meses", calculada no
+   * servidor — a mesma do Mapa e da Inteligência.
+   */
+  referenceDate?: string;
 };
 
 const numberFormatter = new Intl.NumberFormat("pt-BR");
@@ -186,7 +193,8 @@ export function CompanyResultsTable({
   csvFileName = "empresas-selecionadas",
   initialFilters,
   syncFiltersToUrl = false,
-  mapHrefBase
+  mapHrefBase,
+  referenceDate
 }: CompanyResultsTableProps) {
   const baseId = useId();
   const [filters, setFilters] = useState<CompanyTableFilters>(initialFilters ?? DEFAULT_COMPANY_TABLE_FILTERS);
@@ -202,7 +210,21 @@ export function CompanyResultsTable({
   // A busca textual é "adiada" para não travar a digitação em listas grandes.
   const deferredQuery = useDeferredValue(filters.query);
   const effectiveFilters = useMemo(() => ({ ...filters, query: deferredQuery }), [filters, deferredQuery]);
-  const filtered = useMemo(() => filterCompanyListItems(items, effectiveFilters), [items, effectiveFilters]);
+  const filtered = useMemo(() => filterCompanyListItems(items, effectiveFilters, { referenceDate }), [items, effectiveFilters, referenceDate]);
+  const labelLookup = useMemo(
+    () =>
+      buildFilterLabelMaps(
+        items.map((item) => ({
+          municipalityKey: item.municipalityKey,
+          municipalityLabel: [item.city, item.state].filter(Boolean).join("/") || null,
+          cnae: item.primaryCnae,
+          cnaeDescription: item.primaryCnaeDescription,
+          size: item.size,
+          status: item.status
+        }))
+      ),
+    [items]
+  );
   const states = useMemo(() => listStates(items), [items]);
   const hasBranchData = useMemo(() => items.some((item) => item.headquartersOrBranch !== null), [items]);
 
@@ -409,6 +431,7 @@ export function CompanyResultsTable({
             <option value="all">Todas</option>
             <option value="active">Ativas</option>
             <option value="inactive">Outras situações</option>
+            <ExactStatusOption status={filters.status} lookup={labelLookup} />
           </select>
         </div>
         <div className="field">
@@ -445,6 +468,8 @@ export function CompanyResultsTable({
           </div>
         ) : null}
       </div>
+
+      <ActiveFilterChips filters={filters} onChange={setFilters} lookup={labelLookup} />
 
       <div className="results-summary cluster-between">
         <p className="footnote" aria-live="polite" aria-atomic="true">

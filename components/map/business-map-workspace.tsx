@@ -29,6 +29,9 @@ import { CompanyMapPanel } from "@/components/map/company-map-panel";
 import { MapFilters } from "@/components/map/map-filters";
 import { RegionInsights } from "@/components/map/region-insights";
 import { useMapSearchData } from "@/components/map/use-map-search-data";
+import { UniverseSummary } from "@/components/analytics/universe-summary";
+import { buildFilterLabelMaps } from "@/lib/analytics/labels";
+import { toAnalyticsRecords } from "@/lib/analytics/records";
 
 // Os motores (MapLibre/deck.gl e Cesium) só existem no navegador.
 const BusinessMapCanvas = dynamic(() => import("@/components/map/business-map-canvas"), {
@@ -142,10 +145,17 @@ export function BusinessMapWorkspace({
   const indexed = useMemo(() => indexMapCompanies(companies), [companies]);
   const deferredQuery = useDeferredValue(filters.query);
   const effectiveFilters = useMemo(() => ({ ...filters, query: deferredQuery }), [filters, deferredQuery]);
-  const filtered = useMemo(() => filterIndexedMapCompanies(indexed, effectiveFilters), [indexed, effectiveFilters]);
+  // Data de referência do servidor: "abertas nos últimos 12 meses" igual na Lista e na Inteligência.
+  const referenceDate = data?.referenceDate;
+  const filtered = useMemo(
+    () => filterIndexedMapCompanies(indexed, effectiveFilters, { referenceDate }),
+    [indexed, effectiveFilters, referenceDate]
+  );
+  const labelLookup = useMemo(() => buildFilterLabelMaps(toAnalyticsRecords(companies, data?.regions ?? [])), [companies, data]);
   const states = useMemo(() => listMapStates(companies), [companies]);
   const hasBranchData = useMemo(() => companies.some((company) => company.headquartersOrBranch !== null), [companies]);
   const filtersActive = hasActiveFilters(filters);
+  const listFilterQuery = useMemo(() => writeCompanyFilters(new URLSearchParams(), filters).toString(), [filters]);
 
   const companiesById = useMemo(() => new Map(companies.map((company) => [company.id, company])), [companies]);
   const filteredIds = useMemo(() => new Set(filtered.map((company) => company.id)), [filtered]);
@@ -293,8 +303,14 @@ export function BusinessMapWorkspace({
     () => (region ? region.companyIds.map((id) => companiesById.get(id)).filter((item): item is MapCompany => Boolean(item && filteredIds.has(item.id))) : []),
     [companiesById, filteredIds, region]
   );
-  const regionStats = useMemo(() => (region ? summarizeCompanies(regionCompanies) : null), [region, regionCompanies]);
-  const datasetStats = useMemo(() => (view === "inteligencia" ? summarizeCompanies(filtered) : null), [filtered, view]);
+  const regionStats = useMemo(
+    () => (region ? summarizeCompanies(regionCompanies, { referenceDate }) : null),
+    [region, regionCompanies, referenceDate]
+  );
+  const datasetStats = useMemo(
+    () => (view === "inteligencia" ? summarizeCompanies(filtered, { referenceDate }) : null),
+    [filtered, view, referenceDate]
+  );
   const topMunicipalities = useMemo(
     () => (view === "inteligencia" && data ? aggregateByMunicipality(filtered, data.regions).regions.slice(0, 8) : []),
     [data, filtered, view]
@@ -371,11 +387,12 @@ export function BusinessMapWorkspace({
               Editar busca
             </Link>
             {variant === "page" ? (
-              <Link href={`/dashboard/search/${searchId}`} className="button-ghost button-sm">
+              <Link href={`/dashboard/search/${searchId}${listFilterQuery ? `?${listFilterQuery}` : ""}`} className="button-ghost button-sm">
                 Ver em lista
               </Link>
             ) : null}
           </div>
+          {variant === "page" && data.universe ? <UniverseSummary counts={data.universe} filteredCount={filtered.length} /> : null}
         </div>
       ) : null}
 
@@ -405,6 +422,7 @@ export function BusinessMapWorkspace({
         resultCount={filtered.length}
         totalCount={companies.length}
         active={filtersActive}
+        lookup={labelLookup}
       />
 
       <div className="stack-xs">

@@ -165,6 +165,15 @@ export function getMapMaxMarkers() {
   return readBoundedInt("MAP_MAX_MARKERS", 10000, 100, 50000);
 }
 
+/**
+ * Teto do UNIVERSO ANALISADO por busca (Lista, Mapa e Inteligência usam o mesmo).
+ * ANALYSIS_MAX_COMPANIES; se vazio, herda MAP_MAX_MARKERS (compatível com a Fase 2).
+ */
+export function getAnalysisMaxCompanies() {
+  if (getEnv("ANALYSIS_MAX_COMPANIES")) return readBoundedInt("ANALYSIS_MAX_COMPANIES", 10000, 100, 50000);
+  return getMapMaxMarkers();
+}
+
 /** Máximo de municípios convertidos a partir da área visível em "Buscar nesta área". */
 export function getMapAreaSearchMaxCities() {
   return readBoundedInt("MAP_AREA_SEARCH_MAX_CITIES", 12, 1, 40);

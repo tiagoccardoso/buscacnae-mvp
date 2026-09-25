@@ -1,0 +1,328 @@
+/* ============================================================================
+   BuscaCNAE — Inteligência de Mercado (Fase 3)
+   Somente tokens do design system (styles/tokens.css). Gráficos Apache ECharts
+   leem as mesmas variáveis em runtime (components/intelligence/echart.tsx).
+   ============================================================================ */
+
+/* --- Universo analisado (Empresas, Mapa e Inteligência) ------------------- */
+
+.universe-summary {
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  padding: var(--space-3) var(--space-4);
+}
+
+.universe-summary > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--text-subhead);
+  color: var(--label);
+}
+
+.universe-summary > summary::-webkit-details-marker {
+  display: none;
+}
+
+.universe-summary-hint {
+  color: var(--accent);
+}
+
+.universe-summary[open] .universe-summary-hint {
+  color: var(--label-secondary);
+}
+
+.universe-summary-body {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.universe-lines {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: var(--text-footnote);
+}
+
+.universe-lines > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block: var(--space-1);
+  border-bottom: 1px solid var(--separator);
+}
+
+.universe-lines dt {
+  color: var(--label-secondary);
+}
+
+.universe-lines dd {
+  margin: 0;
+  color: var(--label);
+}
+
+.universe-lines-total dt,
+.universe-lines-total dd {
+  color: var(--label);
+  font-weight: var(--weight-semibold);
+}
+
+/* --- Chips de filtros aplicados ------------------------------------------ */
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+  border-radius: var(--radius-capsule);
+  background: var(--accent-soft);
+  color: var(--label);
+  font-size: var(--text-footnote);
+}
+
+.filter-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-chip-key {
+  color: var(--label-secondary);
+}
+
+.filter-chip-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: var(--radius-capsule);
+  background: transparent;
+  color: var(--label-secondary);
+  font-size: var(--text-callout);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.filter-chip-remove:hover {
+  background: var(--accent-soft-hover);
+  color: var(--label);
+}
+
+.filter-chip-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* --- Workspace ------------------------------------------------------------ */
+
+.intel-workspace {
+  min-width: 0;
+}
+
+.intel-filterbar.tile {
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-lg);
+}
+
+.intel-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 12rem;
+  justify-content: center;
+  color: var(--label-secondary);
+}
+
+.intel-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.intel-kpi {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.intel-kpi dd {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.intel-kpi .stat-value {
+  font-size: var(--text-title-2);
+}
+
+.intel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.intel-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+}
+
+.intel-card-wide {
+  grid-column: 1 / -1;
+}
+
+.intel-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--control-height-sm);
+}
+
+.intel-card-head h3 {
+  margin: 0;
+}
+
+.intel-card-note {
+  margin: 0;
+}
+
+.echart {
+  width: 100%;
+  min-width: 0;
+}
+
+.intel-table-toggle > summary {
+  cursor: pointer;
+  font-size: var(--text-footnote);
+  color: var(--accent);
+}
+
+.intel-table-wrap {
+  max-height: 22rem;
+  margin-top: var(--space-3);
+  overflow: auto;
+}
+
+.intel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-footnote);
+}
+
+.intel-table th,
+.intel-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--separator);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.intel-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elevated);
+  color: var(--label-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.intel-table tbody th {
+  font-weight: var(--weight-regular);
+  color: var(--label);
+}
+
+.intel-table .numeric {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.intel-table tr[aria-selected="true"] th,
+.intel-table tr[aria-selected="true"] td {
+  background: var(--accent-soft);
+}
+
+.intel-table tfoot th,
+.intel-table tfoot td {
+  font-weight: var(--weight-semibold);
+  border-bottom: 0;
+}
+
+/* --- Drill to detail ------------------------------------------------------ */
+
+.intel-drill.tile {
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+}
+
+.intel-drill-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.intel-drill-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--separator);
+}
+
+.intel-drill-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-medium);
+}
+
+.intel-drill-list .footnote {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 820px) {
+  .intel-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .intel-drill-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .intel-drill-list li > .footnote:not(a) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
