@@ -1,0 +1,531 @@
+{
+  "size": 500000,
+  "generatedAt": "2026-09-26T03:58:22.263Z",
+  "node": "v22.22.2",
+  "queries": 93,
+  "queryCategories": {
+    "razão social": 10,
+    "typo": 20,
+    "acentos": 16,
+    "CNPJ": 15,
+    "nome fantasia": 10,
+    "CNAE": 4,
+    "atividade + cidade": 6,
+    "atividade + cidade c/ erro": 8,
+    "UF (filtro)": 4
+  },
+  "interpreter": {
+    "p50Ms": 1.75,
+    "p95Ms": 7.08
+  },
+  "pg_trgm": {
+    "loadMs": 9782,
+    "indexBuildMs": 11346,
+    "tableAndIndexesMb": 261.2,
+    "indexesMb": 117.5,
+    "update1kMs": 44,
+    "engine": "PostgreSQL nativo",
+    "note": "PostgreSQL 16 local (sem rede)."
+  },
+  "meilisearch": {
+    "version": "1.54.0",
+    "documents": 500000,
+    "indexBuildMs": 53533,
+    "databaseSizeMb": 1388.5,
+    "usedDatabaseSizeMb": 1250.9,
+    "rssBeforeMb": 101,
+    "rssAfterIndexMb": 977,
+    "update1kMs": 369,
+    "update1Ms": 363,
+    "delete1kMs": 2580,
+    "expireScanMs": 57,
+    "rssAfterQueriesMb": 1468
+  },
+  "results": [
+    {
+      "engine": "A. atual (filtro da tabela)",
+      "recallAt10": 0.503,
+      "hitAt1": 0.484,
+      "mrrAt10": 0.518,
+      "p50Ms": 115.33,
+      "p95Ms": 169.11,
+      "serverP50Ms": null,
+      "serverP95Ms": null,
+      "byCategory": {
+        "razão social": {
+          "n": 10,
+          "recallAt10": 0.46,
+          "hitAt1": 0.4
+        },
+        "typo": {
+          "n": 20,
+          "recallAt10": 0,
+          "hitAt1": 0
+        },
+        "acentos": {
+          "n": 16,
+          "recallAt10": 0.694,
+          "hitAt1": 0.563
+        },
+        "CNPJ": {
+          "n": 15,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "nome fantasia": {
+          "n": 10,
+          "recallAt10": 0.16,
+          "hitAt1": 0.2
+        },
+        "CNAE": {
+          "n": 4,
+          "recallAt10": 0.625,
+          "hitAt1": 0.75
+        },
+        "atividade + cidade": {
+          "n": 6,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade c/ erro": {
+          "n": 8,
+          "recallAt10": 0.25,
+          "hitAt1": 0.25
+        },
+        "UF (filtro)": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        }
+      },
+      "failures": [
+        {
+          "id": "razao-0",
+          "q": "contabilidade cardoso",
+          "recall": 0.4
+        },
+        {
+          "id": "razao-2",
+          "q": "sociedade advogados oeste s",
+          "recall": 0
+        },
+        {
+          "id": "razao-3",
+          "q": "fazenda almeida s",
+          "recall": 0
+        },
+        {
+          "id": "razao-7",
+          "q": "padaria sudoeste comercio servicos",
+          "recall": 0.2
+        },
+        {
+          "id": "razao-8",
+          "q": "engenharia construcoes horizonte s",
+          "recall": 0
+        },
+        {
+          "id": "razao-9",
+          "q": "farma bittencourt",
+          "recall": 0.3
+        },
+        {
+          "id": "typo-0",
+          "q": "tecnoloiia nova era comercio servicos",
+          "recall": 0
+        },
+        {
+          "id": "typo-1",
+          "q": "clinica odootologica vale",
+          "recall": 0
+        },
+        {
+          "id": "typo-2",
+          "q": "salao bieleza alves",
+          "recall": 0
+        },
+        {
+          "id": "typo-3",
+          "q": "mecanica maalhaes vieira comercio servicos",
+          "recall": 0
+        },
+        {
+          "id": "typo-4",
+          "q": "auto center moreria",
+          "recall": 0
+        },
+        {
+          "id": "typo-5",
+          "q": "pizztria central",
+          "recall": 0
+        },
+        {
+          "id": "typo-6",
+          "q": "pizzcaria litoral s",
+          "recall": 0
+        },
+        {
+          "id": "typo-7",
+          "q": "engenharia costrucoes lima",
+          "recall": 0
+        },
+        {
+          "id": "typo-8",
+          "q": "cmoercio sudoeste",
+          "recall": 0
+        },
+        {
+          "id": "typo-9",
+          "q": "pizaria lima piovesan",
+          "recall": 0
+        },
+        {
+          "id": "typo-10",
+          "q": "fabricacto conceicao",
+          "recall": 0
+        },
+        {
+          "id": "typo-11",
+          "q": "pousada nasicmento s",
+          "recall": 0
+        },
+        {
+          "id": "typo-12",
+          "q": "cargas oliveia",
+          "recall": 0
+        },
+        {
+          "id": "typo-13",
+          "q": "servicos marques guimaaes",
+          "recall": 0
+        },
+        {
+          "id": "typo-14",
+          "q": "servincos souza piovesan",
+          "recall": 0
+        },
+        {
+          "id": "typo-15",
+          "q": "fabriceacao dias",
+          "recall": 0
+        },
+        {
+          "id": "typo-16",
+          "q": "constrmutora piovesan mendes comercio servicos",
+          "recall": 0
+        },
+        {
+          "id": "typo-17",
+          "q": "ativimdades nova era s",
+          "recall": 0
+        },
+        {
+          "id": "typo-18",
+          "q": "advocacia fugueiredo",
+          "recall": 0
+        },
+        {
+          "id": "typo-19",
+          "q": "constmrutora cardoso comercio servicos",
+          "recall": 0
+        },
+        {
+          "id": "acento-sem-3",
+          "q": "transportes logistica parana s",
+          "recall": 0
+        },
+        {
+          "id": "acento-sem-4",
+          "q": "deposito serra s",
+          "recall": 0.2
+        },
+        {
+          "id": "acento-sem-5",
+          "q": "comercio varejista sudoeste",
+          "recall": 0
+        },
+        {
+          "id": "acento-sem-6",
+          "q": "deposito s",
+          "recall": 0
+        },
+        {
+          "id": "acento-com-2",
+          "q": "EXTRACAO E Araújo S/A",
+          "recall": 0
+        },
+        {
+          "id": "fantasia-1",
+          "q": "farma piovesan",
+          "recall": 0.3
+        },
+        {
+          "id": "fantasia-2",
+          "q": "mercado fernandes",
+          "recall": 0.3
+        },
+        {
+          "id": "fantasia-3",
+          "q": "producao paulo",
+          "recall": 0.2
+        },
+        {
+          "id": "fantasia-4",
+          "q": "padaria dias",
+          "recall": 0.2
+        },
+        {
+          "id": "fantasia-5",
+          "q": "panifricadora lima",
+          "recall": 0
+        },
+        {
+          "id": "fantasia-6",
+          "q": "logsitica marcia",
+          "recall": 0
+        },
+        {
+          "id": "fantasia-7",
+          "q": "srevicos jose",
+          "recall": 0
+        },
+        {
+          "id": "fantasia-8",
+          "q": "deaposito piovesan",
+          "recall": 0
+        },
+        {
+          "id": "fantasia-9",
+          "q": "constrtuora fernanda",
+          "recall": 0
+        }
+      ]
+    },
+    {
+      "engine": "B. PostgreSQL pg_trgm + intérprete",
+      "recallAt10": 0.913,
+      "hitAt1": 0.957,
+      "mrrAt10": 0.965,
+      "p50Ms": 343.71,
+      "p95Ms": 1589.66,
+      "serverP50Ms": null,
+      "serverP95Ms": null,
+      "byCategory": {
+        "razão social": {
+          "n": 10,
+          "recallAt10": 0.957,
+          "hitAt1": 1
+        },
+        "typo": {
+          "n": 20,
+          "recallAt10": 0.817,
+          "hitAt1": 0.9
+        },
+        "acentos": {
+          "n": 16,
+          "recallAt10": 0.876,
+          "hitAt1": 0.938
+        },
+        "CNPJ": {
+          "n": 15,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "nome fantasia": {
+          "n": 10,
+          "recallAt10": 0.89,
+          "hitAt1": 0.9
+        },
+        "CNAE": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade": {
+          "n": 6,
+          "recallAt10": 0.983,
+          "hitAt1": 1
+        },
+        "atividade + cidade c/ erro": {
+          "n": 8,
+          "recallAt10": 0.9,
+          "hitAt1": 1
+        },
+        "UF (filtro)": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        }
+      },
+      "failures": [
+        {
+          "id": "typo-10",
+          "q": "fabricacto conceicao",
+          "recall": 0.1
+        },
+        {
+          "id": "typo-13",
+          "q": "servicos marques guimaaes",
+          "recall": 0.1
+        },
+        {
+          "id": "typo-14",
+          "q": "servincos souza piovesan",
+          "recall": 0.2
+        },
+        {
+          "id": "acento-sem-6",
+          "q": "deposito s",
+          "recall": 0
+        }
+      ]
+    },
+    {
+      "engine": "C. Meilisearch (texto cru)",
+      "recallAt10": 0.901,
+      "hitAt1": 0.914,
+      "mrrAt10": 0.93,
+      "p50Ms": 4.05,
+      "p95Ms": 7.7,
+      "serverP50Ms": 2,
+      "serverP95Ms": 6,
+      "byCategory": {
+        "razão social": {
+          "n": 10,
+          "recallAt10": 0.87,
+          "hitAt1": 1
+        },
+        "typo": {
+          "n": 20,
+          "recallAt10": 0.958,
+          "hitAt1": 1
+        },
+        "acentos": {
+          "n": 16,
+          "recallAt10": 0.915,
+          "hitAt1": 0.938
+        },
+        "CNPJ": {
+          "n": 15,
+          "recallAt10": 0.667,
+          "hitAt1": 0.667
+        },
+        "nome fantasia": {
+          "n": 10,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "CNAE": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade": {
+          "n": 6,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade c/ erro": {
+          "n": 8,
+          "recallAt10": 0.913,
+          "hitAt1": 0.75
+        },
+        "UF (filtro)": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        }
+      },
+      "failures": [
+        {
+          "id": "acento-com-6",
+          "q": "CRIACAO DE Gonçalves & LIMA",
+          "recall": 0.33
+        },
+        {
+          "id": "cnpj-mask-0",
+          "q": "73.445.026/0001-17",
+          "recall": 0
+        },
+        {
+          "id": "cnpj-mask-1",
+          "q": "56.036.756/0001-45",
+          "recall": 0
+        },
+        {
+          "id": "cnpj-mask-2",
+          "q": "38.074.624/0001-26",
+          "recall": 0
+        },
+        {
+          "id": "cnpj-mask-3",
+          "q": "47.024.840/0001-58",
+          "recall": 0
+        },
+        {
+          "id": "cnpj-mask-4",
+          "q": "13.294.940/0001-82",
+          "recall": 0
+        }
+      ]
+    },
+    {
+      "engine": "D. Meilisearch + intérprete (produção)",
+      "recallAt10": 0.964,
+      "hitAt1": 0.968,
+      "mrrAt10": 0.984,
+      "p50Ms": 5.12,
+      "p95Ms": 8.75,
+      "serverP50Ms": 2,
+      "serverP95Ms": 5,
+      "byCategory": {
+        "razão social": {
+          "n": 10,
+          "recallAt10": 0.87,
+          "hitAt1": 1
+        },
+        "typo": {
+          "n": 20,
+          "recallAt10": 0.958,
+          "hitAt1": 1
+        },
+        "acentos": {
+          "n": 16,
+          "recallAt10": 0.969,
+          "hitAt1": 0.938
+        },
+        "CNPJ": {
+          "n": 15,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "nome fantasia": {
+          "n": 10,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "CNAE": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade": {
+          "n": 6,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade c/ erro": {
+          "n": 8,
+          "recallAt10": 0.913,
+          "hitAt1": 0.75
+        },
+        "UF (filtro)": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        }
+      },
+      "failures": []
+    }
+  ]
+}

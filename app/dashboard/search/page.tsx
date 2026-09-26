@@ -1,9 +1,10 @@
 import { SearchFilterBuilder } from "@/components/search-filter-builder";
+import { CompanyOmnibox } from "@/components/search/company-omnibox";
 import { SearchSubmitButton } from "@/components/search-submit-button";
 import { SectionHeader } from "@/components/ui/section-header";
 import { getCurrentUser } from "@/lib/auth/server";
 import { createDbClient } from "@/lib/db-client";
-import { getSearchFilterDefaults } from "@/lib/search-filter-defaults";
+import { getSearchFilterDefaults, getSearchFilterDefaultsFromQuickSearch } from "@/lib/search-filter-defaults";
 import { runSearchAction } from "./server-actions";
 
 type SearchPageProps = {
@@ -40,6 +41,12 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       }
     }
   }
+  // Pré-preenchimento vindo da Busca rápida (/dashboard/search?cnae=...&uf=...&city=...).
+  const quickSearchDefaults = !reuse ? getSearchFilterDefaultsFromQuickSearch(params) : null;
+  if (quickSearchDefaults) {
+    reuseDefaults = quickSearchDefaults;
+    reuseMessage = "Filtros preenchidos a partir da Busca rápida. Confira CNAE e cidade antes de buscar na Casa dos Dados.";
+  }
   if (suggestedYear) {
     reuseDefaults = {
       ...reuseDefaults,
@@ -60,6 +67,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       <div className="search-panel search-panel-plain">
         {reuseMessage ? <div className="notice success">{reuseMessage}</div> : null}
         {error ? <div className="notice danger" role="alert">{error}</div> : null}
+
+        <CompanyOmnibox />
 
         <form
           action={runSearchAction}

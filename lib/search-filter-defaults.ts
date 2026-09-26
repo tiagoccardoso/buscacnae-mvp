@@ -71,3 +71,29 @@ export function getSearchFilterDefaults(payload: unknown) {
     defaultActivityStartYearExact: parsed?.activityStartYearExact === true
   };
 }
+
+/**
+ * Filtros vindos da Busca rápida (Fase 7): `cnae` (lista de códigos), `uf` e `city`.
+ * Tudo validado; valores fora do formato são ignorados. Retorna null se nada for aproveitável.
+ */
+export function getSearchFilterDefaultsFromQuickSearch(params: Record<string, string | string[] | undefined>) {
+  const read = (name: string) => {
+    const value = params[name];
+    return typeof value === "string" ? value : Array.isArray(value) ? value[0] ?? "" : "";
+  };
+  const cnaes = read("cnae")
+    .split(",")
+    .map((item) => item.replace(/\D/g, ""))
+    .filter((item) => /^\d{7}$/.test(item))
+    .slice(0, 10);
+  const stateCode = read("uf").trim().toUpperCase();
+  const validState = /^[A-Z]{2}$/.test(stateCode) ? stateCode : "";
+  const cityName = read("city").trim().slice(0, 80);
+  if (cnaes.length === 0 && !validState) return null;
+  return getSearchFilterDefaults({
+    cnaes,
+    stateCodes: validState ? [validState] : [],
+    citySelections: validState && cityName ? [{ cityName, stateCode: validState }] : [],
+    stateWide: Boolean(validState && !cityName)
+  });
+}

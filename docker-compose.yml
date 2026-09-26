@@ -16,3 +16,23 @@ services:
     ports:
       - "3002:3002"
     restart: unless-stopped
+
+  # Opcional (Fase 7 — docs/BUSCA_AVANCADA.md). Só sobe com: docker compose --profile search up -d
+  # No .env da aplicação: MEILISEARCH_URL=http://meilisearch:7700 e MEILISEARCH_ADMIN_KEY=<MEILI_MASTER_KEY>
+  meilisearch:
+    profiles: ["search"]
+    container_name: buscacnae-meilisearch
+    image: getmeili/meilisearch:v1.54
+    environment:
+      MEILI_ENV: production
+      # Em MEILI_ENV=production o Meilisearch não sobe sem chave mestra de 16+ bytes.
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meili-data:/meili_data
+    ports:
+      - "127.0.0.1:7700:7700"
+    restart: unless-stopped
+
+volumes:
+  meili-data:

@@ -1,0 +1,506 @@
+{
+  "size": 100000,
+  "generatedAt": "2026-09-26T03:56:57.613Z",
+  "node": "v22.22.2",
+  "queries": 93,
+  "queryCategories": {
+    "razão social": 10,
+    "typo": 20,
+    "acentos": 16,
+    "CNPJ": 15,
+    "nome fantasia": 10,
+    "CNAE": 4,
+    "atividade + cidade": 6,
+    "atividade + cidade c/ erro": 8,
+    "UF (filtro)": 4
+  },
+  "interpreter": {
+    "p50Ms": 1.45,
+    "p95Ms": 5.3
+  },
+  "pg_trgm": {
+    "loadMs": 1992,
+    "indexBuildMs": 2532,
+    "tableAndIndexesMb": 56.6,
+    "indexesMb": 27.8,
+    "update1kMs": 66,
+    "engine": "PostgreSQL nativo",
+    "note": "PostgreSQL 16 local (sem rede)."
+  },
+  "meilisearch": {
+    "version": "1.54.0",
+    "documents": 100000,
+    "indexBuildMs": 11221,
+    "databaseSizeMb": 261.2,
+    "usedDatabaseSizeMb": 251.1,
+    "rssBeforeMb": 104,
+    "rssAfterIndexMb": 654,
+    "update1kMs": 370,
+    "update1Ms": 161,
+    "delete1kMs": 762,
+    "expireScanMs": 58,
+    "rssAfterQueriesMb": 573
+  },
+  "results": [
+    {
+      "engine": "A. atual (filtro da tabela)",
+      "recallAt10": 0.572,
+      "hitAt1": 0.548,
+      "mrrAt10": 0.583,
+      "p50Ms": 14.8,
+      "p95Ms": 21.98,
+      "serverP50Ms": null,
+      "serverP95Ms": null,
+      "byCategory": {
+        "razão social": {
+          "n": 10,
+          "recallAt10": 0.77,
+          "hitAt1": 0.5
+        },
+        "typo": {
+          "n": 20,
+          "recallAt10": 0,
+          "hitAt1": 0
+        },
+        "acentos": {
+          "n": 16,
+          "recallAt10": 0.838,
+          "hitAt1": 0.75
+        },
+        "CNPJ": {
+          "n": 15,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "nome fantasia": {
+          "n": 10,
+          "recallAt10": 0.32,
+          "hitAt1": 0.4
+        },
+        "CNAE": {
+          "n": 4,
+          "recallAt10": 0.525,
+          "hitAt1": 0.75
+        },
+        "atividade + cidade": {
+          "n": 6,
+          "recallAt10": 0.983,
+          "hitAt1": 1
+        },
+        "atividade + cidade c/ erro": {
+          "n": 8,
+          "recallAt10": 0.238,
+          "hitAt1": 0.25
+        },
+        "UF (filtro)": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        }
+      },
+      "failures": [
+        {
+          "id": "razao-6",
+          "q": "transportes brasil",
+          "recall": 0.1
+        },
+        {
+          "id": "razao-9",
+          "q": "instalacao vieira",
+          "recall": 0
+        },
+        {
+          "id": "typo-0",
+          "q": "comercio varjista mendes tessaro",
+          "recall": 0
+        },
+        {
+          "id": "typo-1",
+          "q": "softwaer serra comercio servicos",
+          "recall": 0
+        },
+        {
+          "id": "typo-2",
+          "q": "farbicacao brasil",
+          "recall": 0
+        },
+        {
+          "id": "typo-3",
+          "q": "sociaedade advogados freitas",
+          "recall": 0
+        },
+        {
+          "id": "typo-4",
+          "q": "manuttncao ribeiro",
+          "recall": 0
+        },
+        {
+          "id": "typo-5",
+          "q": "fabricacaao brandao",
+          "recall": 0
+        },
+        {
+          "id": "typo-6",
+          "q": "home center cavaclanti",
+          "recall": 0
+        },
+        {
+          "id": "typo-7",
+          "q": "sistemas scheffer rodriges",
+          "recall": 0
+        },
+        {
+          "id": "typo-8",
+          "q": "assessorta contabil vieira",
+          "recall": 0
+        },
+        {
+          "id": "typo-9",
+          "q": "studio dias brabosa",
+          "recall": 0
+        },
+        {
+          "id": "typo-10",
+          "q": "conuabilidade parana s",
+          "recall": 0
+        },
+        {
+          "id": "typo-11",
+          "q": "pao quennte sul s",
+          "recall": 0
+        },
+        {
+          "id": "typo-12",
+          "q": "materiais constreucao almeida",
+          "recall": 0
+        },
+        {
+          "id": "typo-13",
+          "q": "engenharia constrmucoes scheffer magalhaes",
+          "recall": 0
+        },
+        {
+          "id": "typo-14",
+          "q": "engenharia constrmucoes assuncao comercio servicos",
+          "recall": 0
+        },
+        {
+          "id": "typo-15",
+          "q": "cunstrutora rocha",
+          "recall": 0
+        },
+        {
+          "id": "typo-16",
+          "q": "restamurante dalla costa piovesan",
+          "recall": 0
+        },
+        {
+          "id": "typo-17",
+          "q": "prolucao cardoso comercio servicos",
+          "recall": 0
+        },
+        {
+          "id": "typo-18",
+          "q": "supemrercado serra",
+          "recall": 0
+        },
+        {
+          "id": "typo-19",
+          "q": "hotel hcorizonte",
+          "recall": 0
+        },
+        {
+          "id": "acento-sem-3",
+          "q": "comercio varejista oliveira",
+          "recall": 0
+        },
+        {
+          "id": "acento-sem-7",
+          "q": "construcoes oliveira s",
+          "recall": 0.3
+        },
+        {
+          "id": "fantasia-4",
+          "q": "auto mecanica mendes",
+          "recall": 0.2
+        },
+        {
+          "id": "fantasia-5",
+          "q": "engenharia constrcoes rocha",
+          "recall": 0
+        },
+        {
+          "id": "fantasia-6",
+          "q": "fabdricacao lima",
+          "recall": 0
+        },
+        {
+          "id": "fantasia-7",
+          "q": "farmacia sebastdiao",
+          "recall": 0
+        },
+        {
+          "id": "fantasia-8",
+          "q": "peca oeste",
+          "recall": 0
+        },
+        {
+          "id": "fantasia-9",
+          "q": "superuercado luiz",
+          "recall": 0
+        },
+        {
+          "id": "cnae-4930202",
+          "q": "4930-2/02",
+          "recall": 0.2
+        },
+        {
+          "id": "ptyp-1",
+          "q": "transportadoras pato brnaco",
+          "recall": 0
+        },
+        {
+          "id": "ptyp-2",
+          "q": "padarias curitba",
+          "recall": 0
+        },
+        {
+          "id": "ptyp-3",
+          "q": "restaurantes londrna",
+          "recall": 0
+        },
+        {
+          "id": "ptyp-5",
+          "q": "construtora joinvile",
+          "recall": 0
+        },
+        {
+          "id": "ptyp-6",
+          "q": "farmacia campinaz",
+          "recall": 0
+        },
+        {
+          "id": "ptyp-8",
+          "q": "transportes fracisco beltrao",
+          "recall": 0
+        }
+      ]
+    },
+    {
+      "engine": "B. PostgreSQL pg_trgm + intérprete",
+      "recallAt10": 0.915,
+      "hitAt1": 0.989,
+      "mrrAt10": 0.989,
+      "p50Ms": 86.35,
+      "p95Ms": 2065.22,
+      "serverP50Ms": null,
+      "serverP95Ms": null,
+      "byCategory": {
+        "razão social": {
+          "n": 10,
+          "recallAt10": 0.98,
+          "hitAt1": 1
+        },
+        "typo": {
+          "n": 20,
+          "recallAt10": 0.888,
+          "hitAt1": 1
+        },
+        "acentos": {
+          "n": 16,
+          "recallAt10": 0.806,
+          "hitAt1": 1
+        },
+        "CNPJ": {
+          "n": 15,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "nome fantasia": {
+          "n": 10,
+          "recallAt10": 0.89,
+          "hitAt1": 0.9
+        },
+        "CNAE": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade": {
+          "n": 6,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade c/ erro": {
+          "n": 8,
+          "recallAt10": 0.838,
+          "hitAt1": 1
+        },
+        "UF (filtro)": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        }
+      },
+      "failures": [
+        {
+          "id": "acento-sem-7",
+          "q": "construcoes oliveira s",
+          "recall": 0.4
+        },
+        {
+          "id": "fantasia-8",
+          "q": "peca oeste",
+          "recall": 0
+        },
+        {
+          "id": "ptyp-4",
+          "q": "oficina mecanica maringa",
+          "recall": 0.2
+        }
+      ]
+    },
+    {
+      "engine": "C. Meilisearch (texto cru)",
+      "recallAt10": 0.935,
+      "hitAt1": 0.925,
+      "mrrAt10": 0.935,
+      "p50Ms": 2.85,
+      "p95Ms": 4.1,
+      "serverP50Ms": 1,
+      "serverP95Ms": 2,
+      "byCategory": {
+        "razão social": {
+          "n": 10,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "typo": {
+          "n": 20,
+          "recallAt10": 0.986,
+          "hitAt1": 1
+        },
+        "acentos": {
+          "n": 16,
+          "recallAt10": 0.981,
+          "hitAt1": 1
+        },
+        "CNPJ": {
+          "n": 15,
+          "recallAt10": 0.667,
+          "hitAt1": 0.667
+        },
+        "nome fantasia": {
+          "n": 10,
+          "recallAt10": 0.99,
+          "hitAt1": 0.9
+        },
+        "CNAE": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade": {
+          "n": 6,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade c/ erro": {
+          "n": 8,
+          "recallAt10": 0.95,
+          "hitAt1": 0.875
+        },
+        "UF (filtro)": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        }
+      },
+      "failures": [
+        {
+          "id": "cnpj-mask-0",
+          "q": "72.193.068/0001-45",
+          "recall": 0
+        },
+        {
+          "id": "cnpj-mask-1",
+          "q": "23.078.547/0001-05",
+          "recall": 0
+        },
+        {
+          "id": "cnpj-mask-2",
+          "q": "90.000.090/0001-03",
+          "recall": 0
+        },
+        {
+          "id": "cnpj-mask-3",
+          "q": "81.881.686/0001-79",
+          "recall": 0
+        },
+        {
+          "id": "cnpj-mask-4",
+          "q": "90.343.762/0001-83",
+          "recall": 0
+        }
+      ]
+    },
+    {
+      "engine": "D. Meilisearch + intérprete (produção)",
+      "recallAt10": 0.988,
+      "hitAt1": 0.978,
+      "mrrAt10": 0.989,
+      "p50Ms": 4.25,
+      "p95Ms": 6.84,
+      "serverP50Ms": 1,
+      "serverP95Ms": 2,
+      "byCategory": {
+        "razão social": {
+          "n": 10,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "typo": {
+          "n": 20,
+          "recallAt10": 0.986,
+          "hitAt1": 1
+        },
+        "acentos": {
+          "n": 16,
+          "recallAt10": 0.981,
+          "hitAt1": 1
+        },
+        "CNPJ": {
+          "n": 15,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "nome fantasia": {
+          "n": 10,
+          "recallAt10": 0.99,
+          "hitAt1": 0.9
+        },
+        "CNAE": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade": {
+          "n": 6,
+          "recallAt10": 1,
+          "hitAt1": 1
+        },
+        "atividade + cidade c/ erro": {
+          "n": 8,
+          "recallAt10": 0.95,
+          "hitAt1": 0.875
+        },
+        "UF (filtro)": {
+          "n": 4,
+          "recallAt10": 1,
+          "hitAt1": 1
+        }
+      },
+      "failures": []
+    }
+  ]
+}

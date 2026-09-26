@@ -107,6 +107,8 @@ Erros transitórios têm retry conservador; HTTP 429 não é repetido agressivam
 
 **CRM nativo (Fase 6).** Pipeline configurável (Kanban com arrastar e soltar, Tabela, Tarefas), página do negócio com timeline de etapa, responsável, notas, tarefas, contatos e origem do lead. O CRM referencia a empresa (`establishments`) sem copiar dados; listas, leads, seleção da busca e a ficha da empresa enviam ao CRM. Workspace pessoal automático e equipes (owner/admin/membro) isoladas entre si. Execute [`sql/neon_crm.sql`](sql/neon_crm.sql) no Neon e leia [`docs/CRM.md`](docs/CRM.md).
 
+**Busca Empresarial Avançada (Fase 7).** “Busca rápida” em `/dashboard/search`: texto livre com tolerância a erro (“transportadoras pato brnaco” → CNAE 4930-2/0x + Pato Branco/PR) que abre o formulário da Casa dos Dados já preenchido e pesquisa, com facetas e filtros, as empresas que o usuário já pode ver (listas liberadas, salvas, CRM). Índice opcional no Meilisearch, sincronizado por fila transacional, com validade e fallback no PostgreSQL; a Casa dos Dados continua sendo a fonte. Execute [`sql/neon_search_index.sql`](sql/neon_search_index.sql) e leia [`docs/BUSCA_AVANCADA.md`](docs/BUSCA_AVANCADA.md) (benchmark, política de dados e operação) antes de ligar `SEARCH_COMPANY_INDEX_ENABLED`.
+
 ## 5) Variáveis de ambiente
 
 Copie `.env.example` para `.env.local` e preencha os campos.

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { normalizeText, toTitleCase } from "@/lib/utils";
+import { fuzzyFilterByName } from "@/lib/search/fuzzy-options";
 
 type IbgeCity = {
   id: number;
@@ -61,14 +62,21 @@ export async function GET(request: NextRequest) {
 
   try {
     const groups = await Promise.all(stateCodes.map((stateCode) => fetchCitiesByState(stateCode)));
-    const items = groups
-      .flat()
+    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 100) : 20;
+    const all = groups.flat();
+    const items = all
       .filter((item) => {
         if (!normalizedQuery) return true;
         return normalizeText(item.cityName).includes(normalizedQuery) || normalizeText(item.label).includes(normalizedQuery);
       })
       .sort((left, right) => left.label.localeCompare(right.label, "pt-BR"))
-      .slice(0, Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 100) : 20);
+      .slice(0, safeLimit);
+
+    // Fase 7: nenhuma cidade contém o texto → aceita erro de digitação ("pato brnaco").
+    if (items.length === 0 && normalizedQuery) {
+      const fuzzy = fuzzyFilterByName(all, normalizedQuery, safeLimit);
+      return Response.json({ items: fuzzy, approximate: fuzzy.length > 0 });
+    }
 
     return Response.json({ items });
   } catch (error) {
