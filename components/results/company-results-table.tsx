@@ -68,6 +68,8 @@ type CompanyResultsTableProps = {
   saveSelectionAction?: (establishmentIds: string[]) => Promise<{ ok: boolean; saved: number; error?: string }>;
   createListFromSelectionAction?: (establishmentIds: string[], name: string) => Promise<{ ok: boolean; saved: number; error?: string; listId?: string }>;
   toggleSavedAction?: (formData: FormData) => Promise<void>;
+  /** CRM nativo (Fase 6): envia a seleção como negócios, referenciando a empresa. */
+  sendToCrmAction?: (establishmentIds: string[]) => Promise<{ ok: boolean; created: number; alreadyInCrm: number; error?: string }>;
   /** Nome base do arquivo CSV da seleção. */
   csvFileName?: string;
   /** Filtros iniciais (lidos da URL: mesmos nomes do Mapa). */
@@ -193,6 +195,7 @@ export function CompanyResultsTable({
   saveSelectionAction,
   createListFromSelectionAction,
   toggleSavedAction,
+  sendToCrmAction,
   csvFileName = "empresas-selecionadas",
   initialFilters,
   syncFiltersToUrl = false,
@@ -422,6 +425,20 @@ export function CompanyResultsTable({
     });
   }
 
+  function sendSelectionToCrm() {
+    if (!sendToCrmAction || selectedItems.length === 0) return;
+    const ids = selectedItems.map((item) => item.id);
+    startSaving(async () => {
+      const result = await sendToCrmAction(ids);
+      if (!result.ok) {
+        setFeedback({ tone: "danger", text: result.error ?? "Não foi possível enviar ao CRM." });
+        return;
+      }
+      const already = result.alreadyInCrm > 0 ? ` ${numberFormatter.format(result.alreadyInCrm)} já estava(m) no CRM.` : "";
+      setFeedback({ tone: "success", text: `${numberFormatter.format(result.created)} empresa(s) adicionada(s) ao CRM na etapa inicial.${already}` });
+    });
+  }
+
   const totalColumns = 10;
   const filtersActive = hasActiveFilters(filters);
   const pageCount = table.getPageCount();
@@ -513,6 +530,11 @@ export function CompanyResultsTable({
           {createListFromSelectionAction ? (
             <button type="button" className="button-secondary button-sm" onClick={createListFromSelection} aria-busy={isSaving} disabled={isSaving}>
               Criar lista com seleção
+            </button>
+          ) : null}
+          {sendToCrmAction ? (
+            <button type="button" className="button-secondary button-sm" onClick={sendSelectionToCrm} aria-busy={isSaving} disabled={isSaving}>
+              Enviar ao CRM
             </button>
           ) : null}
           <button type="button" className="button-secondary button-sm" onClick={downloadCsv}>

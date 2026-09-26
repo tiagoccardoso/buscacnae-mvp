@@ -20,6 +20,11 @@ const items = [
     href: "/dashboard/leads",
     label: "Leads salvos",
     match: (path: string) => path.startsWith("/dashboard/leads") || path.startsWith("/dashboard/companies")
+  },
+  {
+    href: "/dashboard/crm",
+    label: "CRM",
+    match: (path: string) => path.startsWith("/dashboard/crm")
   }
 ];
 

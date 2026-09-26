@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { EstablishmentDetails } from "@/components/establishment-details";
+import { CompanyCrmPanel } from "@/components/crm/company-crm-panel";
 import { fetchCasaDosDadosCompanyByCnpj, isCasaDosDadosError } from "@/lib/discovery/providers/casadosdados";
 import { formatCnpj } from "@/lib/format";
 import { createDbClient } from "@/lib/db-client";
@@ -116,6 +117,8 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
           Contatos e dados tributários podem estar desatualizados; uma nova atualização será tentada na próxima abertura.
         </div>
       ) : null}
+
+      <CompanyCrmPanel establishmentId={String(company.id)} returnTo={`/dashboard/companies/${normalizedCnpj}`} />
 
       <EstablishmentDetails establishment={company as unknown as Record<string, unknown>} />
     </section>

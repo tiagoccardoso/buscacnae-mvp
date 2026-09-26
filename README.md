@@ -105,6 +105,8 @@ Erros transitórios têm retry conservador; HTTP 429 não é repetido agressivam
 
 **Central de Prospecção (Fase 5).** Selecione empresas no resultado para criar listas; edite, exclua, filtre, pesquise, tagueie, anote, enriqueça com origem e exporte. O score é calculado deterministicamente por critérios configuráveis; a pesquisa assistida separa fato oficial, cálculo e hipótese. Execute [`sql/neon_prospecting.sql`](sql/neon_prospecting.sql) no Neon e leia [`docs/PROSPECCAO.md`](docs/PROSPECCAO.md) antes de publicar.
 
+**CRM nativo (Fase 6).** Pipeline configurável (Kanban com arrastar e soltar, Tabela, Tarefas), página do negócio com timeline de etapa, responsável, notas, tarefas, contatos e origem do lead. O CRM referencia a empresa (`establishments`) sem copiar dados; listas, leads, seleção da busca e a ficha da empresa enviam ao CRM. Workspace pessoal automático e equipes (owner/admin/membro) isoladas entre si. Execute [`sql/neon_crm.sql`](sql/neon_crm.sql) no Neon e leia [`docs/CRM.md`](docs/CRM.md).
+
 ## 5) Variáveis de ambiente
 
 Copie `.env.example` para `.env.local` e preencha os campos.
