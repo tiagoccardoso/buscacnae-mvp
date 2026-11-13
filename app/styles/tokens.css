@@ -177,6 +177,8 @@
   --fill-2: rgba(120, 120, 128, 0.16);
   --fill-3: rgba(120, 120, 128, 0.12);
   --fill-4: rgba(120, 120, 128, 0.07);
+  /* Véu atrás de diálogos modais (mesmo valor nos dois temas). */
+  --scrim: rgba(0, 0, 0, 0.32);
 
   /* Elevação: sombra de contato + sombra ambiente, sempre suaves */
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.03);

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { applyMove, computeDropPosition, evenlySpaced, groupByStage, positionBetween, sumAmounts } from "../lib/crm/board.ts";
-import { DEFAULT_PIPELINE, entryStage, moveStage, planStageRemoval, stageTransition, validatePipeline } from "../lib/crm/pipeline.ts";
-import {
+const { applyMove, computeDropPosition, evenlySpaced, groupByStage, positionBetween, sumAmounts } = await import("../lib/crm/board.ts");
+const { DEFAULT_PIPELINE, entryStage, moveStage, planStageRemoval, stageTransition, validatePipeline } = await import("../lib/crm/pipeline.ts");
+const {
   canAssignDeal,
   canChangeMember,
   canConfigurePipeline,
@@ -12,10 +12,10 @@ import {
   canManageMembers,
   canMoveDeal,
   canUpdateTask
-} from "../lib/crm/permissions.ts";
-import { buildTimeline, dealChangeActivities, dealCreatedActivity, describeActivity } from "../lib/crm/timeline.ts";
-import { cleanEmail, parseAmountToCents, parseDateOnly, parseLocalDateTime, planImport, uuidList } from "../lib/crm/input.ts";
-import { isKnownCrmDetail, readCrmFeedback } from "../lib/crm/messages.ts";
+} = await import("../lib/crm/permissions.ts");
+const { buildTimeline, dealChangeActivities, dealCreatedActivity, describeActivity } = await import("../lib/crm/timeline.ts");
+const { cleanEmail, parseAmountToCents, parseDateOnly, parseLocalDateTime, planImport, uuidList } = await import("../lib/crm/input.ts");
+const { isKnownCrmDetail, readCrmFeedback } = await import("../lib/crm/messages.ts");
 import type { CrmActivity, PipelineStage } from "../lib/crm/types.ts";
 
 const stages: PipelineStage[] = DEFAULT_PIPELINE.map((stage, index) => ({ id: `s${index}`, name: stage.name, kind: stage.kind, position: index }));

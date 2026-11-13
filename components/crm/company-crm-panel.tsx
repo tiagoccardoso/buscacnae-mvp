@@ -5,13 +5,15 @@ import { formatCents } from "@/lib/crm/input";
 import { getDealByEstablishment, listActivities, listStages } from "@/lib/crm/repository";
 import { getCrmSession } from "@/lib/crm/server";
 import { describeActivity } from "@/lib/crm/timeline";
+import { WhatsAppLink } from "@/components/crm/whatsapp-link";
+import { firstWhatsappNumber } from "@/lib/whatsapp";
 
 /**
  * Painel "CRM" na ficha da empresa: a empresa é a entidade central, então a ficha
  * mostra o negócio (se houver) e o histórico recente — ou permite iniciar um.
  * Falhas do CRM nunca derrubam a ficha.
  */
-export async function CompanyCrmPanel({ establishmentId, returnTo }: { establishmentId: string; returnTo: string }) {
+export async function CompanyCrmPanel({ establishmentId, returnTo, phone, companyName }: { establishmentId: string; returnTo: string; phone?: string | null; companyName?: string }) {
   let data: Awaited<ReturnType<typeof load>> | null = null;
   try {
     data = await load(establishmentId);
@@ -21,12 +23,16 @@ export async function CompanyCrmPanel({ establishmentId, returnTo }: { establish
   }
   if (!data) return null;
   const { ctx, deal, stageName, activities } = data;
+  const whatsapp = firstWhatsappNumber(phone)?.raw ?? null;
 
   return (
     <section className="card stack-sm crm-company-panel" aria-labelledby="company-crm-title">
       <div className="cluster cluster-between">
         <h3 id="company-crm-title" className="headline">CRM · {ctx.workspace.isPersonal ? "pessoal" : ctx.workspace.name}</h3>
-        {deal ? <Link href={`/dashboard/crm/${deal.id}`} className="button-secondary button-sm">Abrir negócio</Link> : null}
+        <div className="cluster">
+          {whatsapp ? <WhatsAppLink phone={whatsapp} name={companyName} className="button-ghost button-sm" /> : null}
+          {deal ? <Link href={`/dashboard/crm/${deal.id}`} className="button-secondary button-sm">Abrir negócio</Link> : null}
+        </div>
       </div>
       {deal ? (
         <>

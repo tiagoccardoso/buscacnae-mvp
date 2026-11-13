@@ -40,19 +40,58 @@ export type PipelineStage = {
   position: number;
 };
 
-/** Dados de exibição da empresa, lidos de `establishments` (fonte única). */
+/**
+ * Dados de exibição do alvo do negócio. Para empresas da base vêm de `establishments`
+ * (fonte única); para prospects manuais vêm de `crm_prospects` (dado do usuário).
+ * `kind` diz qual é a origem — a interface deixa a diferença visível.
+ */
 export type CrmCompanyRef = {
-  establishmentId: string;
+  kind: "establishment" | "prospect";
+  establishmentId: string | null;
+  prospectId: string | null;
+  /** CNPJ oficial (somente kind = establishment). */
   cnpj: string;
   companyName: string;
   tradeName: string;
   cityName: string;
   stateCode: string;
+  /** Telefone para WhatsApp: do prospect (whatsapp > telefone) ou o telefone público da ficha. */
+  whatsappPhone: string | null;
+  personKind: "company" | "person";
+};
+
+export type ProspectRecord = {
+  id: string;
+  kind: "company" | "person";
+  name: string;
+  tradeName: string | null;
+  documentType: "cnpj" | "cpf" | null;
+  document: string | null;
+  origin: import("./prospects").ProspectOrigin;
+  originDetail: string | null;
+  segment: string | null;
+  cityName: string | null;
+  stateCode: string | null;
+  address: string | null;
+  contactName: string | null;
+  contactRole: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  phoneSecondary: string | null;
+  email: string | null;
+  website: string | null;
+  tags: string[];
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type Deal = {
   id: string;
-  establishmentId: string;
+  establishmentId: string | null;
+  prospectId: string | null;
+  priority: import("./prospects").DealPriority;
+  nextContactAt: string | null;
   stageId: string;
   position: number;
   title: string | null;
@@ -100,13 +139,18 @@ export type CrmTask = {
 
 export type CrmContact = {
   id: string;
-  establishmentId: string;
+  establishmentId: string | null;
+  prospectId: string | null;
   name: string;
   jobTitle: string | null;
   email: string | null;
   phone: string | null;
+  whatsapp: string | null;
   createdAt: string;
 };
+
+/** Canais das interações registradas manualmente pelo usuário. */
+export type InteractionChannel = "call" | "whatsapp" | "meeting" | "email" | "visit" | "other";
 
 export type ActivityType =
   | "deal.created"
@@ -120,12 +164,17 @@ export type ActivityType =
   | "task.reopened"
   | "contact.created"
   | "contact.linked"
-  | "contact.deleted";
+  | "contact.deleted"
+  | "prospect.created"
+  | "prospect.updated"
+  | "interaction.logged"
+  | "next_contact.scheduled";
 
 export type CrmActivity = {
   id: string;
   dealId: string | null;
   establishmentId: string | null;
+  prospectId: string | null;
   actorProfileId: string | null;
   actorName: string | null;
   type: ActivityType;
@@ -138,6 +187,7 @@ export type ActivityDraft = {
   type: ActivityType;
   dealId: string | null;
   establishmentId: string | null;
+  prospectId?: string | null;
   actorProfileId: string;
   payload: Record<string, unknown>;
 };

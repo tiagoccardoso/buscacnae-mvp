@@ -6,7 +6,7 @@ import type { CrmContext, CrmRole, CrmWorkspace } from "@/lib/crm/types";
 type Props = {
   ctx: CrmContext;
   workspaces: Array<CrmWorkspace & { role: CrmRole }>;
-  current: "kanban" | "tabela" | "tarefas" | "configuracoes" | "negocio";
+  current: "kanban" | "tabela" | "tarefas" | "configuracoes" | "negocio" | "novo";
   returnTo: string;
   feedback: { status: string; error: string };
 };
@@ -30,6 +30,12 @@ export function CrmHeader({ ctx, workspaces, current, returnTo, feedback }: Prop
             {ctx.workspace.isPersonal ? "CRM pessoal" : `Equipe ${ctx.workspace.name}`} · seu papel: {ROLE_LABEL[ctx.role]}
           </p>
         </div>
+        <div className="cluster crm-header-actions">
+        {current !== "novo" ? (
+          <Link href="/dashboard/crm/novo" className="button button-sm crm-new-prospect">
+            <span aria-hidden="true">+</span> Novo prospect
+          </Link>
+        ) : null}
         {workspaces.length > 1 ? (
           <form action={switchWorkspaceAction} className="crm-workspace-switch">
             <input type="hidden" name="returnTo" value={returnTo} />
@@ -46,6 +52,7 @@ export function CrmHeader({ ctx, workspaces, current, returnTo, feedback }: Prop
             <button type="submit" className="button-secondary button-sm">Trocar</button>
           </form>
         ) : null}
+        </div>
       </div>
       <nav className="segmented crm-views" aria-label="Visões do CRM">
         {VIEWS.map((view) => (

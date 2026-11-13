@@ -7,8 +7,8 @@ import { after, before, describe, test } from "node:test";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
-import { setQueryExecutorForTests } from "@/lib/db";
-import {
+const { setQueryExecutorForTests } = await import("@/lib/db");
+const {
   CrmError,
   addContact,
   addMemberByEmail,
@@ -31,14 +31,14 @@ import {
   resolveCrmContext,
   setTaskStatus,
   updateDeal
-} from "../lib/crm/repository.ts";
+} = await import("../lib/crm/repository.ts");
 import type { CrmContext } from "../lib/crm/types.ts";
 
 const BASE_SCHEMA = `
   CREATE TABLE users (id UUID PRIMARY KEY, name TEXT, email TEXT UNIQUE, password_hash TEXT NOT NULL DEFAULT 'x', is_active BOOLEAN DEFAULT TRUE);
   CREATE TABLE profiles (id UUID PRIMARY KEY, user_id UUID REFERENCES users(id), email TEXT, full_name TEXT);
   CREATE TABLE establishments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), cnpj TEXT UNIQUE, company_name TEXT, trade_name TEXT, city_name TEXT, state_code TEXT
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), cnpj TEXT UNIQUE, company_name TEXT, trade_name TEXT, city_name TEXT, state_code TEXT, phone TEXT
   );
 `;
 
@@ -67,6 +67,8 @@ describe("CRM no banco (PGlite)", () => {
     db = new PGlite({ extensions: { pgcrypto } });
     await db.exec(BASE_SCHEMA);
     await db.exec(readFileSync(new URL("../sql/neon_crm.sql", import.meta.url), "utf8"));
+    // Fase 8 aplicada por cima: os fluxos da Fase 6 precisam continuar idênticos.
+    await db.exec(readFileSync(new URL("../sql/neon_crm_prospects.sql", import.meta.url), "utf8"));
     for (const user of Object.values(users)) {
       await db.query(`INSERT INTO users (id, name, email) VALUES ($1, $2, $3)`, [user.id, user.name, user.email]);
       await db.query(`INSERT INTO profiles (id, user_id, email, full_name) VALUES ($1, $1, $2, $3)`, [user.id, user.email, user.name]);

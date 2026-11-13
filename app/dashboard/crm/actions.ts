@@ -30,6 +30,7 @@ import {
 import { getCrmSession, rememberWorkspace } from "@/lib/crm/server";
 import { isDealSource } from "@/lib/crm/timeline";
 import type { DealSource } from "@/lib/crm/types";
+import { isPriority, type DealPriority } from "@/lib/crm/prospects";
 
 /**
  * Server actions do CRM. Padrão de todas:
@@ -207,6 +208,7 @@ export async function updateDealAction(formData: FormData) {
       amountCents: amount,
       expectedCloseDate: formData.has("expectedCloseDate") ? parseDateOnly(formData.get("expectedCloseDate")) : undefined,
       lostReason: formData.has("lostReason") ? cleanText(formData.get("lostReason"), 500) : undefined,
+      priority: formData.has("priority") && isPriority(formData.get("priority")) ? (String(formData.get("priority")) as DealPriority) : undefined,
       stageId: formData.has("stageId") && isUuid(formData.get("stageId")) ? String(formData.get("stageId")) : undefined,
       ownerProfileId: owner === undefined ? undefined : isUuid(owner) ? owner : null,
       primaryContactId: formData.has("primaryContactId") ? (isUuid(formData.get("primaryContactId")) ? String(formData.get("primaryContactId")) : null) : undefined
@@ -221,9 +223,9 @@ export async function deleteDealAction(formData: FormData) {
   const dealId = String(formData.get("dealId") ?? "");
   await run("/dashboard/crm", async () => {
     if (!isUuid(dealId)) throw new CrmError("invalid", "Etapa inválida.");
-    await deleteDeal(ctx, dealId);
+    const removed = await deleteDeal(ctx, dealId);
     revalidateCrm(dealId);
-    return "deal-removido";
+    return removed.kind === "prospect" ? "prospect-removido" : "deal-removido";
   });
 }
 
@@ -280,6 +282,7 @@ export async function addContactAction(formData: FormData) {
       jobTitle: cleanText(formData.get("jobTitle"), 120),
       email,
       phone: cleanPhone(formData.get("phone")),
+      whatsapp: cleanPhone(formData.get("whatsapp")),
       makePrimary: formData.get("makePrimary") === "1"
     });
     revalidateCrm(dealId);

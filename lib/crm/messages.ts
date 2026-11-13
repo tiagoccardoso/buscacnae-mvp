@@ -20,7 +20,15 @@ export const CRM_STATUS: Record<string, string> = {
   "membro-adicionado": "Membro adicionado à equipe.",
   "membro-nao-encontrado": "Nenhuma conta BuscaCNAE encontrada com esse e-mail. A pessoa precisa criar a conta antes.",
   "membro-atualizado": "Equipe atualizada.",
-  "workspace-trocado": "Workspace alterado."
+  "workspace-trocado": "Workspace alterado.",
+  "prospect-criado": "Prospect cadastrado e incluído no pipeline.",
+  "prospect-vinculado": "Empresa da base BuscaCNAE incluída no pipeline com os dados de contato informados.",
+  "prospect-atualizado": "Cadastro do prospect atualizado.",
+  "prospect-removido": "Prospect excluído com contatos, observações, tarefas e histórico.",
+  "interacao-registrada": "Contato registrado no histórico.",
+  "proximo-contato": "Próximo contato atualizado.",
+  "modelo-salvo": "Modelo de mensagem salvo.",
+  "modelo-removido": "Modelo de mensagem excluído."
 };
 
 export const CRM_ERROR: Record<string, string> = {
@@ -52,7 +60,23 @@ const KNOWN_DETAIL_PREFIXES = [
   "Valor inválido",
   "E-mail inválido",
   "Nenhuma empresa",
-  "Configure ao menos"
+  "Configure ao menos",
+  "CNPJ inválido",
+  "CPF inválido",
+  "Origem do prospect",
+  "UF inválida",
+  "Telefone ",
+  "WhatsApp inválido",
+  "Site inválido",
+  "Data do próximo",
+  "Previsão de fechamento",
+  "Já existe",
+  "Prospect não encontrado",
+  "Canal inválido",
+  "Modelo ",
+  "Variável desconhecida",
+  "Use no máximo",
+  "Escolha "
 ];
 
 export function isKnownCrmDetail(detail: string) {

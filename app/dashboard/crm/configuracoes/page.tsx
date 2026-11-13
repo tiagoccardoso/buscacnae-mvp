@@ -12,8 +12,10 @@ import {
 import { readCrmFeedback } from "@/lib/crm/messages";
 import { ROLE_LABEL, canChangeMember, canConfigurePipeline, canManageMembers } from "@/lib/crm/permissions";
 import { STAGE_KIND_LABEL, sortStages } from "@/lib/crm/pipeline";
-import { listDeals, listMembers, listStages } from "@/lib/crm/repository";
+import { canManageTemplate, listDeals, listMembers, listStages, listTemplates } from "@/lib/crm/repository";
 import { getCrmSession } from "@/lib/crm/server";
+import { TEMPLATE_BODY_MAX, TEMPLATE_NAME_MAX, TEMPLATE_VARIABLES } from "@/lib/crm/templates";
+import { deleteTemplateAction, saveTemplateAction } from "@/app/dashboard/crm/prospect-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +29,7 @@ export default async function CrmSettingsPage({ searchParams }: PageProps) {
   const { ctx, workspaces } = session;
   const actor = { profileId: ctx.profileId, role: ctx.role };
 
-  const [stages, members, deals] = await Promise.all([listStages(ctx), listMembers(ctx), listDeals(ctx)]);
+  const [stages, members, deals, templates] = await Promise.all([listStages(ctx), listMembers(ctx), listDeals(ctx), listTemplates(ctx)]);
   const ordered = sortStages(stages);
   const countByStage = new Map<string, number>();
   for (const deal of deals) countByStage.set(deal.stageId, (countByStage.get(deal.stageId) ?? 0) + 1);
@@ -182,6 +184,54 @@ export default async function CrmSettingsPage({ searchParams }: PageProps) {
             <button type="submit" className="button-secondary button-sm">Criar equipe</button>
           </form>
         </div>
+      </section>
+
+      <section className="section" id="modelos" aria-labelledby="templates-title">
+        <div className="section-header">
+          <span className="eyebrow">WhatsApp</span>
+          <h3 id="templates-title" className="title-2">Modelos de mensagem</h3>
+          <p className="section-copy">
+            Usados para pré-preencher conversas no WhatsApp. Variáveis disponíveis:{" "}
+            {Object.entries(TEMPLATE_VARIABLES).map(([key, label], index) => (
+              <span key={key}>{index ? ", " : ""}<code>{`{${key}}`}</code> ({label.toLowerCase()})</span>
+            ))}
+            . Nada é enviado automaticamente.
+          </p>
+        </div>
+        <ul className="crm-template-list">
+          {templates.map((template) => (
+            <li key={template.id} className="card stack-xs crm-template">
+              {template.isDefault || !canManageTemplate(ctx, template) ? (
+                <>
+                  <div className="cluster cluster-between">
+                    <strong>{template.name}</strong>
+                    <span className="pill">{template.isDefault ? "Padrão" : "Somente leitura"}</span>
+                  </div>
+                  <p className="footnote crm-template-body">{template.body}</p>
+                </>
+              ) : (
+                <>
+                  <form action={saveTemplateAction} className="stack-xs">
+                    <input type="hidden" name="templateId" value={template.id} />
+                    <label className="field"><span className="field-label">Nome</span><input name="name" className="input" defaultValue={template.name} maxLength={TEMPLATE_NAME_MAX} required /></label>
+                    <label className="field"><span className="field-label">Texto</span><textarea name="body" className="textarea" rows={4} defaultValue={template.body} maxLength={TEMPLATE_BODY_MAX} required /></label>
+                    <div className="cluster cluster-end"><button type="submit" className="button-secondary button-sm">Salvar modelo</button></div>
+                  </form>
+                  <form action={deleteTemplateAction} className="cluster cluster-end">
+                    <input type="hidden" name="templateId" value={template.id} />
+                    <button type="submit" className="button-ghost button-sm is-destructive" aria-label={`Excluir modelo ${template.name}`}>Excluir</button>
+                  </form>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+        <form action={saveTemplateAction} className="card stack-xs crm-template-new">
+          <strong>Novo modelo</strong>
+          <label className="field"><span className="field-label">Nome</span><input name="name" className="input" maxLength={TEMPLATE_NAME_MAX} required placeholder="Ex.: Pós-reunião" /></label>
+          <label className="field"><span className="field-label">Texto</span><textarea name="body" className="textarea" rows={4} maxLength={TEMPLATE_BODY_MAX} required placeholder="Olá, {nome_contato}! Obrigado pela reunião de hoje…" /></label>
+          <div className="cluster cluster-end"><button type="submit" className="button-secondary button-sm">Criar modelo</button></div>
+        </form>
       </section>
     </>
   );

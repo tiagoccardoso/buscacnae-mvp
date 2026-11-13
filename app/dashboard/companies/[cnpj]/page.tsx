@@ -118,7 +118,12 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
         </div>
       ) : null}
 
-      <CompanyCrmPanel establishmentId={String(company.id)} returnTo={`/dashboard/companies/${normalizedCnpj}`} />
+      <CompanyCrmPanel
+        establishmentId={String(company.id)}
+        returnTo={`/dashboard/companies/${normalizedCnpj}`}
+        phone={typeof company.phone === "string" ? company.phone : null}
+        companyName={String(company.trade_name || company.company_name || "")}
+      />
 
       <EstablishmentDetails establishment={company as unknown as Record<string, unknown>} />
     </section>

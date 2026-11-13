@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { applyMove, groupByStage, sumAmounts } from "@/lib/crm/board";
 import { formatCents } from "@/lib/crm/input";
+import { WhatsAppLink } from "@/components/crm/whatsapp-link";
 import type { PipelineStage } from "@/lib/crm/types";
 
-/** Dados mínimos e serializáveis de um card (a empresa vem de establishments). */
+/** Dados mínimos e serializáveis de um card (empresa da base ou prospect manual). */
 export type BoardDeal = {
   id: string;
   stageId: string;
@@ -20,6 +21,11 @@ export type BoardDeal = {
   nextTaskDueAt: string | null;
   sourceLabel: string;
   canMove: boolean;
+  /** Telefone válido para WhatsApp (o link só aparece se a normalização aceitar). */
+  whatsappPhone?: string | null;
+  nextContactAt?: string | null;
+  highPriority?: boolean;
+  isManual?: boolean;
 };
 
 type MoveAction = (dealId: string, toStageId: string, toIndex: number) => Promise<{ ok: boolean; error?: string }>;
@@ -59,9 +65,16 @@ function dueLabel(value: string | null, now: number) {
 
 function DealCardBody({ deal, now }: { deal: BoardDeal; now: number }) {
   const due = dueLabel(deal.nextTaskDueAt, now);
+  const nextContact = dueLabel(deal.nextContactAt ?? null, now);
   return (
     <>
       <span className="crm-card-subtitle">{deal.subtitle}</span>
+      {nextContact || deal.highPriority ? (
+        <div className="crm-card-flags">
+          {deal.highPriority ? <span className="crm-card-flag is-priority">Prioridade alta</span> : null}
+          {nextContact ? <span className={`crm-card-flag${nextContact.overdue ? " is-overdue" : ""}`} title="Próximo contato">Contato {nextContact.overdue ? "atrasado · " : ""}{nextContact.label}</span> : null}
+        </div>
+      ) : null}
       <div className="crm-card-meta">
         <span className="crm-card-amount numeric">{deal.amountCents !== null ? formatCents(deal.amountCents) : "Sem valor"}</span>
         {deal.openTasks > 0 ? (
@@ -275,6 +288,7 @@ export function KanbanBoard({ stages, deals, moveAction, now: nowProp }: { stage
                     >
                       <div className="crm-card-head">
                         <Link href={deal.href} className="crm-card-title" draggable={false}>{deal.companyName}</Link>
+                        {deal.whatsappPhone ? <WhatsAppLink phone={deal.whatsappPhone} name={deal.companyName} variant="icon" className="crm-card-wa" /> : null}
                         {deal.canMove ? (
                           <button type="button" className="crm-drag-handle" data-drag-handle aria-label={`Arrastar ${deal.companyName}`} title="Arrastar">
                             <svg viewBox="0 0 12 16" width="12" height="16" aria-hidden="true"><g fill="currentColor"><circle cx="3" cy="3" r="1.4" /><circle cx="9" cy="3" r="1.4" /><circle cx="3" cy="8" r="1.4" /><circle cx="9" cy="8" r="1.4" /><circle cx="3" cy="13" r="1.4" /><circle cx="9" cy="13" r="1.4" /></g></svg>

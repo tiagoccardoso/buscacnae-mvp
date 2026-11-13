@@ -138,9 +138,89 @@ npm run build
 6. Em *Pipeline e equipe*, criar uma equipe, adicionar um colega, mudar o papel dele, entrar como ele e confirmar o que ele pode e não pode fazer.
 7. Entrar com um usuário de outra organização e confirmar 404 nas URLs de negócio.
 
+## Fase 8: prospects manuais, WhatsApp e histórico comercial
+
+### O que mudou
+
+- **+ Novo prospect** no cabeçalho do CRM e em *Leads salvos* abre `/dashboard/crm/novo`. O cadastro funciona sem busca e sem compra de lista. Pode ser **empresa** (CNPJ opcional) ou **pessoa física** (CPF opcional). Só o nome é obrigatório.
+- O prospect entra direto no pipeline, no mesmo fluxo dos leads de busca: Kanban, movimentação, responsável, contatos, tarefas, observações, timeline, filtros e pesquisa.
+- **WhatsApp:** link oficial `https://wa.me/<número>` em nova aba. No celular ele abre o app e, no desktop, o WhatsApp Web, com fallback no navegador. O link aparece na lista (tabela), nos cards do Kanban, na ficha do negócio, nos contatos, na ficha da empresa (telefone público) e em *Leads salvos*. O compositor da ficha do negócio permite escolher um modelo, editar a mensagem ou abrir sem mensagem.
+- **Modelos de mensagem** por workspace, em *Pipeline e equipe → Modelos de mensagem*. Há três modelos padrão no código (primeiro contato, retomada, proposta) e modelos próprios com criar, editar e excluir.
+- **Ações rápidas na ficha:** registrar contato (ligação, WhatsApp, reunião, e-mail, visita) com resultado, data e resumo; adicionar observação; agendar o próximo contato ou marcar como realizado; criar tarefa.
+- **Indicadores** no Kanban e na Tabela, calculados com os filtros atuais: em aberto, valor em aberto, ganhos e taxa de ganho, cadastros manuais e contatos atrasados.
+
+### Decisões de arquitetura
+
+1. **Dado do usuário ≠ dado oficial.** O que o usuário digita vai para `crm_prospects`, que pertence ao workspace. Nunca vai para `establishments`, e nenhum registro empresarial falso é criado para quem não tem CNPJ.
+2. **Um alvo por negócio.** `crm_deals.establishment_id` passou a aceitar nulo e ganhou `prospect_id`. O CHECK `crm_deals_one_target` (`num_nonnulls = 1`) garante que cada negócio aponte para exatamente um dos dois. `crm_contacts` segue a mesma regra.
+3. **Isolamento no banco.** A FK composta `(workspace_id, prospect_id)` impede que um negócio ou contato aponte para um prospect de outro workspace, mesmo que o código erre.
+4. **CNPJ já existente na base.** O formulário consulta a base e oferece *vincular à ficha oficial* (recomendado). Nesse caso o negócio referencia `establishments` e o responsável, os telefones e o e-mail informados viram um `crm_contacts` do workspace. A ficha oficial não é alterada. Nenhuma consulta externa paga é feita.
+   - A empresa só é **revelada e vinculada** se o usuário já tiver acesso a ela, pelas mesmas regras de `lib/search/visibility.ts`: busca liberada (paid/free), empresa salva ou negócio em um workspace do qual participa. Sem esse acesso, a verificação de CNPJ não informa que a empresa existe e o cadastro segue como manual. Assim a checagem de duplicidade não vira um atalho para dados ainda não liberados.
+   - O servidor confere se o CNPJ informado é o mesmo da empresa vinculada. Um id forjado ou desatualizado no campo oculto é recusado.
+   - O usuário pode desmarcar o vínculo e manter um cadastro manual com esse CNPJ. O requisito é *oferecer* o vínculo, e o registro guarda apenas o que o usuário digitou.
+5. **Duplicidades** por CNPJ/CPF, telefone (comparando o número normalizado, então "(41) 99999-8888" e "+55 41 99999 8888" colidem) e e-mail, só dentro do workspace ativo. As possíveis duplicidades são **exibidas, nunca mescladas**. Um CNPJ/CPF repetido no mesmo workspace é bloqueado por índice único.
+6. **Telefones não destrutivos.** O número é guardado exatamente como digitado e a normalização (`lib/whatsapp.ts`) acontece só na leitura. O DDI 55 só é acrescentado quando o número é brasileiro válido (DDD + 8/9 dígitos). Números internacionais exigem `+` ou `00`. Números 0800, inválidos ou ambíguos não geram link.
+7. **WhatsApp não comprova envio.** Abrir o link não grava nada. O histórico só recebe `interaction.logged` quando o usuário clica em *Registrar*, seja no formulário ou no compositor depois de abrir a conversa. Não há envio automático nem API paga.
+8. **Origem estruturada.** `crm_prospects.origin` aceita uma lista fechada (Busca BuscaCNAE, Cadastro manual, Indicação, WhatsApp, Visita comercial, Telefone, Site, Redes sociais, Evento, Importação, Outros) mais um detalhe livre. A entrada no CRM continua em `crm_deals.source = 'manual'`. As duas aparecem no histórico (`deal.created` e `prospect.created`) e podem ser filtradas.
+
+### Migração
+
+Rode [`sql/neon_crm_prospects.sql`](../sql/neon_crm_prospects.sql) **depois** de `neon_crm.sql`. Ela é aditiva, idempotente e transacional (BEGIN/COMMIT):
+
+| Objeto | Mudança |
+|---|---|
+| `crm_prospects` | Nova tabela (tipo, nome, fantasia, documento, origem, segmento, cidade/UF, endereço, responsável, telefones, e-mail, site, tags). |
+| `crm_deals` | `establishment_id` aceita nulo; novos `prospect_id`, `priority` (`low`/`normal`/`high`) e `next_contact_at`; FK composta, CHECK de alvo único, UNIQUE `(workspace_id, prospect_id)`. |
+| `crm_contacts` | `establishment_id` aceita nulo; novos `prospect_id` (cascata com o prospect) e `whatsapp`; CHECK de alvo único. |
+| `crm_activities` | Nova coluna `prospect_id`; o CHECK de tipos é recriado com `prospect.created`, `prospect.updated`, `interaction.logged` e `next_contact.scheduled`. |
+| `crm_message_templates` | Nova tabela de modelos por workspace. |
+
+Os negócios existentes continuam válidos: todos têm `establishment_id` e passam no CHECK. Isso é coberto por teste, com a migração aplicada sobre dados já existentes.
+
+**Reversão:** [`sql/neon_crm_prospects_rollback.sql`](../sql/neon_crm_prospects_rollback.sql) só roda se não houver nenhum dado da Fase 8 (prospects, contatos de prospect, eventos novos ou modelos). Se houver, ela aborta sem apagar nada.
+
+O índice de busca (`lib/search/visibility.ts`) agora ignora negócios sem `establishment_id`. Os gatilhos de `neon_search_index.sql` já eram seguros para nulos.
+
+### LGPD
+
+- O CPF é opcional, validado e exibido por completo só na ficha do prospect. Os campos do formulário avisam para registrar só o necessário.
+- `prospect.updated` registra **quais campos** mudaram, não os valores.
+- Excluir um prospect exige confirmação. A exclusão apaga o cadastro, os contatos, as notas, as tarefas e o histórico daquele negócio, e deixa um único evento de auditoria sem dados pessoais (`deal.deleted` com `kind: "prospect"`).
+- Pendências que continuam: política de retenção, exportação por titular e base legal para contatos de pessoas físicas (decisão de produto e jurídico).
+
+### Arquivos
+
+| Caminho | Conteúdo |
+|---|---|
+| `lib/whatsapp.ts` | Normalização (BR/internacional), `buildWhatsappUrl`, escolha do melhor número em campos com vários telefones. |
+| `lib/crm/prospects.ts` | Origens, prioridade, validação de CPF/CNPJ, parsing do formulário, chaves de duplicidade. |
+| `lib/crm/templates.ts` | Modelos padrão, variáveis `{nome_contato}`, `{nome_empresa}`, `{nome_usuario}` e `{cidade}`, renderização sem placeholders, validação. |
+| `lib/crm/metrics.ts` | Indicadores do pipeline. |
+| `lib/crm/repository.ts` | `createManualDeal`, `updateProspect`, `findDuplicates`, `logInteraction`, `scheduleNextContact`, CRUD de modelos; negócios e contatos com alvo empresa **ou** prospect. |
+| `app/dashboard/crm/prospect-actions.ts` | Server actions da fase. |
+| `app/dashboard/crm/novo`, `app/dashboard/crm/[dealId]/editar` | Cadastro e edição. |
+| `components/crm/prospect-form.tsx`, `whatsapp-composer.tsx`, `whatsapp-link.tsx` | Formulário com verificação de duplicidade, compositor (`<dialog>` nativo) e link. |
+
+### Revisão independente (Codex)
+
+A primeira auditoria não encontrou nada crítico. Encontrou 3 problemas altos, 5 médios e 1 baixo. Correções:
+
+- **Alto:** a checagem de CNPJ e o vínculo agora respeitam o acesso do usuário à empresa e conferem o CNPJ informado (ver item 4). `crm_activities.prospect_id` ganhou FK composta `(workspace_id, prospect_id)` com `ON DELETE CASCADE`.
+- **Médio:** modelos e compositor recusam qualquer expressão entre chaves que não seja variável conhecida, incluindo maiúsculas, espaços, hífen e chave solta. O texto da mensagem não é mais copiado para o histórico. O vínculo com a ficha oficial não gera mais `prospect.created`. A troca de responsável já usava o nome anterior correto (falso positivo).
+- **Pendente:**
+  - `createDeals` (ficha → CRM e seleção da busca → CRM, da Fase 6) aceita qualquer empresa existente. A própria ficha `/dashboard/companies/[cnpj]` também abre para qualquer usuário logado. Restringir só a entrada no CRM seria incoerente, então isso fica como decisão de produto.
+  - A pesquisa e a duplicidade por telefone normalizam dígitos com `regexp_replace` na hora da consulta, sempre dentro do workspace. Se algum workspace passar de alguns milhares de negócios, vale persistir uma coluna normalizada com índice.
+
+### Testes da fase
+
+- `tests/crm-prospects.test.mts` (unidade): WhatsApp (BR com e sem 55, operadora, fixo, internacional com `+`/`00`, recusa de 55 indevido, inválidos, 0800, codificação da mensagem, campos com vários telefones), modelos (substituição, ausência de placeholders, pontuação, injeção de chaves), CPF/CNPJ, formulário, duplicidade, histórico e indicadores.
+- `tests/crm-prospects-db.test.mts` (PGlite + repositório real): migração sobre dados existentes e reaplicada, lead de busca preservado, cadastro sem CNPJ, com CNPJ fora da base, com CNPJ da base (vínculo), pessoa física, duplicidades, edição, movimentação, contato adicional, pesquisa por telefone/e-mail/documento, filtros, registro de contato, próximo contato, tarefa, isolamento (inclusive pela FK composta e pelo CHECK), permissões em equipe, modelos, exclusão com LGPD, reversão bloqueada com dados e reversão limpa.
+- **Node 24:** neste ambiente (Node 24.11 + tsx 4.20), imports **estáticos** de `.ts` a partir de `.mts` não expõem os nomes exportados. Os testes da fase e os de `crm`, `crm-db` e `prospeccao` usam `await import()`, o mesmo padrão dos testes da Fase 7.
+
 ## Próximos passos sugeridos
 
 - Convite por e-mail com aceite (em vez de adicionar pelo e-mail de uma conta existente).
+- Importação em lote de prospects manuais (CSV), reaproveitando `parseProspectInput` e `findDuplicates`.
 - Várias oportunidades por empresa (hoje é uma por workspace, de propósito).
 - Filtros salvos e métricas do funil (conversão por etapa, tempo médio em cada etapa), aproveitando `crm_activities`.
 - Procedimento LGPD de atendimento a titulares para `crm_contacts` e payloads do histórico.

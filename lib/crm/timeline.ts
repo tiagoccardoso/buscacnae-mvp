@@ -1,4 +1,5 @@
-import type { ActivityDraft, CrmActivity, Deal, DealSource } from "./types";
+import { PRIORITY_LABEL, PROSPECT_ORIGIN_LABEL, isPriority, isProspectOrigin } from "./prospects";
+import type { ActivityDraft, CrmActivity, Deal, DealSource, InteractionChannel } from "./types";
 
 /**
  * Histórico do CRM. Toda mutação passa por um destes construtores, para que a
@@ -18,7 +19,42 @@ export function isDealSource(value: unknown): value is DealSource {
   return typeof value === "string" && value in SOURCE_LABEL;
 }
 
-type Base = { dealId: string | null; establishmentId: string | null; actorProfileId: string };
+type Base = { dealId: string | null; establishmentId: string | null; prospectId?: string | null; actorProfileId: string };
+
+export const INTERACTION_LABEL: Record<InteractionChannel, string> = {
+  call: "Ligação",
+  whatsapp: "WhatsApp",
+  meeting: "Reunião",
+  email: "E-mail",
+  visit: "Visita",
+  other: "Contato"
+};
+
+/** Forma usada no meio da frase (nomes próprios mantêm a grafia: WhatsApp). */
+const INTERACTION_INLINE: Record<InteractionChannel, string> = {
+  call: "ligação",
+  whatsapp: "WhatsApp",
+  meeting: "reunião",
+  email: "e-mail",
+  visit: "visita",
+  other: "outro contato"
+};
+
+export const INTERACTION_OUTCOME_LABEL = {
+  done: "realizado",
+  no_answer: "sem resposta",
+  scheduled: "reagendado"
+} as const;
+
+export type InteractionOutcome = keyof typeof INTERACTION_OUTCOME_LABEL;
+
+export function isInteractionChannel(value: unknown): value is InteractionChannel {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(INTERACTION_LABEL, value);
+}
+
+export function isInteractionOutcome(value: unknown): value is InteractionOutcome {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(INTERACTION_OUTCOME_LABEL, value);
+}
 
 export function dealCreatedActivity(base: Base, input: { stageName: string; source: DealSource; sourceRef?: string | null; sourceLabel?: string | null }): ActivityDraft {
   return {
@@ -33,9 +69,9 @@ export function dealCreatedActivity(base: Base, input: { stageName: string; sour
   };
 }
 
-export type DealPatch = Partial<Pick<Deal, "title" | "amountCents" | "expectedCloseDate" | "lostReason" | "primaryContactId">>;
+export type DealPatch = Partial<Pick<Deal, "title" | "amountCents" | "expectedCloseDate" | "lostReason" | "primaryContactId" | "priority">>;
 
-const TRACKED_FIELDS: Array<keyof DealPatch> = ["title", "amountCents", "expectedCloseDate", "lostReason", "primaryContactId"];
+const TRACKED_FIELDS: Array<keyof DealPatch> = ["title", "amountCents", "expectedCloseDate", "lostReason", "primaryContactId", "priority"];
 
 /**
  * Compara o negócio antes/depois e produz as atividades correspondentes.
@@ -92,8 +128,36 @@ const FIELD_LABEL: Record<string, string> = {
   amountCents: "valor",
   expectedCloseDate: "previsão de fechamento",
   lostReason: "motivo da perda",
-  primaryContactId: "contato principal"
+  primaryContactId: "contato principal",
+  priority: "prioridade"
 };
+
+const PROSPECT_FIELD_LABEL: Record<string, string> = {
+  kind: "tipo",
+  name: "nome",
+  tradeName: "nome fantasia",
+  document: "documento",
+  origin: "origem",
+  originDetail: "detalhe da origem",
+  segment: "segmento",
+  cityName: "cidade",
+  stateCode: "UF",
+  address: "endereço",
+  contactName: "responsável",
+  contactRole: "cargo",
+  phone: "telefone",
+  whatsapp: "WhatsApp",
+  phoneSecondary: "telefone adicional",
+  email: "e-mail",
+  website: "site",
+  tags: "tags"
+};
+
+function dateTimeLabel(value: unknown) {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
+}
 
 function text(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -115,10 +179,12 @@ export function describeActivity(activity: Pick<CrmActivity, "type" | "payload">
     case "deal.updated": {
       const diff = (p.diff ?? {}) as Record<string, unknown>;
       const fields = Object.keys(diff).map((key) => FIELD_LABEL[key] ?? key);
+      const priority = (diff.priority ?? null) as { to?: unknown } | null;
+      if (fields.length === 1 && priority && isPriority(priority.to)) return `Prioridade: ${PRIORITY_LABEL[priority.to]}`;
       return fields.length ? `Atualizou ${fields.join(", ")}` : "Negócio atualizado";
     }
     case "deal.deleted":
-      return "Negócio removido do CRM (a empresa continua na base)";
+      return p.kind === "prospect" ? "Negócio e cadastro manual do prospect removidos do CRM" : "Negócio removido do CRM (a empresa continua na base)";
     case "note.created":
       return "Adicionou uma nota";
     case "task.created":
@@ -133,6 +199,24 @@ export function describeActivity(activity: Pick<CrmActivity, "type" | "payload">
       return p.contactId ? `Definiu ${text(p.name) ?? "um contato"} como contato principal` : "Removeu o contato principal";
     case "contact.deleted":
       return `Excluiu o contato ${text(p.name) ?? ""}`.trim();
+    case "prospect.created": {
+      const origin = isProspectOrigin(p.origin) ? PROSPECT_ORIGIN_LABEL[p.origin] : "origem não informada";
+      return `Cadastrou o prospect manualmente · origem: ${origin}${text(p.originDetail) ? ` (${text(p.originDetail)})` : ""}`;
+    }
+    case "prospect.updated": {
+      const fields = Array.isArray(p.fields) ? p.fields.map((key) => PROSPECT_FIELD_LABEL[String(key)] ?? String(key)) : [];
+      return fields.length ? `Editou o cadastro: ${fields.join(", ")}` : "Editou o cadastro do prospect";
+    }
+    case "interaction.logged": {
+      const channel = isInteractionChannel(p.channel) ? INTERACTION_INLINE[p.channel] : "outro contato";
+      const outcome = isInteractionOutcome(p.outcome) ? ` (${INTERACTION_OUTCOME_LABEL[p.outcome]})` : "";
+      const when = dateTimeLabel(p.occurredAt);
+      return `Registrou contato: ${channel}${outcome}${when ? ` · ${when}` : ""}${text(p.summary) ? ` — ${text(p.summary)}` : ""}`;
+    }
+    case "next_contact.scheduled": {
+      const when = dateTimeLabel(p.at);
+      return when ? `Agendou o próximo contato para ${when}` : "Removeu o próximo contato agendado";
+    }
     default:
       return "Atividade";
   }

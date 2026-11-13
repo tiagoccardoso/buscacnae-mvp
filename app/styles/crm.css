@@ -733,3 +733,307 @@ a.crm-card-title:hover {
     transition: none;
   }
 }
+
+/* ===========================================================================
+   Fase 8 — prospects manuais, WhatsApp e indicadores
+   =========================================================================== */
+
+.crm-header-actions {
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.crm-new-prospect span[aria-hidden="true"] {
+  font-weight: var(--weight-semibold);
+}
+
+/* Indicadores: uma linha discreta, sem cards. */
+.crm-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+  padding: var(--space-3) 0;
+  border-block: var(--border-thin) solid var(--separator);
+}
+
+.crm-metrics > div {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.crm-metrics dt {
+  color: var(--label-secondary);
+  font-size: var(--text-caption);
+}
+
+.crm-metrics dd {
+  margin: 0;
+  color: var(--label);
+  font-size: var(--text-callout);
+  font-weight: var(--weight-semibold);
+}
+
+/* Link de WhatsApp: verde de sucesso (contraste AA) + glifo reconhecível. */
+.wa-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--success);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.wa-link:hover {
+  text-decoration: underline;
+}
+
+.wa-link:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.wa-link.is-icon {
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: var(--space-1);
+}
+
+.wa-link.is-icon:hover {
+  background: var(--success-soft);
+  text-decoration: none;
+}
+
+.wa-icon {
+  flex: none;
+}
+
+.wa-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.wa-trigger .wa-icon {
+  color: var(--success);
+}
+
+.crm-hero-actions {
+  gap: var(--space-2);
+}
+
+.crm-cell-name {
+  gap: var(--space-1);
+  flex-wrap: nowrap;
+}
+
+/* Diálogo nativo: foco preso, Esc fecha, leitor de tela anuncia o título. */
+.wa-dialog {
+  width: min(34rem, calc(100vw - 2 * var(--gutter)));
+  max-height: calc(100dvh - 2 * var(--space-6));
+  padding: 0;
+  border: var(--border-thin) solid var(--separator);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  color: var(--label);
+  box-shadow: var(--shadow-4);
+}
+
+.wa-dialog::backdrop {
+  background: var(--scrim);
+}
+
+.wa-dialog-body {
+  padding: var(--space-5);
+  overflow-y: auto;
+}
+
+.wa-actions {
+  gap: var(--space-2);
+}
+
+.wa-open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.wa-log {
+  padding-top: var(--space-3);
+  border-top: var(--border-thin) solid var(--separator);
+}
+
+@media (max-width: 640px) {
+  .wa-dialog {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 92dvh;
+    margin: auto 0 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .wa-actions > * {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}
+
+/* Kanban: sinais compactos (prioridade, próximo contato). */
+.crm-card-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.crm-card-flag {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-capsule);
+  background: var(--fill-4);
+  color: var(--label-secondary);
+  font-size: var(--text-caption);
+}
+
+.crm-card-flag.is-priority {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.crm-card-flag.is-overdue {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.crm-card-head .crm-card-wa {
+  margin-left: auto;
+  margin-top: -4px;
+}
+
+.crm-card-head .crm-card-wa + .crm-drag-handle {
+  margin-left: 0;
+}
+
+.crm-card-foot .wa-link.is-icon {
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+}
+
+/* Formulário de prospect */
+.prospect-page {
+  display: grid;
+  gap: var(--space-5);
+  max-width: 60rem;
+}
+
+.prospect-section {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.prospect-section > legend {
+  padding: 0;
+  margin-bottom: var(--space-3);
+}
+
+.prospect-section + .prospect-section,
+.prospect-duplicates + .prospect-section {
+  padding-top: var(--space-5);
+  border-top: var(--border-thin) solid var(--separator);
+}
+
+.prospect-kind .segmented-item {
+  cursor: pointer;
+}
+
+.prospect-kind .segmented-item[data-checked="true"] {
+  color: var(--label);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-1), 0 0 0 var(--border-hairline) var(--separator);
+}
+
+.prospect-kind .segmented-item:focus-within {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+
+.prospect-duplicates:empty {
+  display: none;
+}
+
+.prospect-dup-list {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.prospect-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  background: var(--bg);
+  border-top: var(--border-thin) solid var(--separator);
+}
+
+.crm-interaction-grid .field,
+.crm-next-form .field {
+  min-width: 0;
+}
+
+.crm-next-form {
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.crm-template-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.crm-template-body {
+  white-space: pre-line;
+}
+
+.crm-template-new {
+  max-width: 40rem;
+}
+
+@media (max-width: 640px) {
+  .crm-header-actions {
+    width: 100%;
+  }
+
+  .crm-header-actions .crm-new-prospect {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .prospect-actions > * {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+}
+
+.prospect-page > a.button-ghost {
+  justify-self: start;
+}
+
+.prospect-kind {
+  align-self: flex-start;
+  justify-self: start;
+  width: fit-content;
+}
+
+/* .notice é display:block no design system; aqui cada linha do aviso fica separada. */
+.prospect-duplicates .notice {
+  display: grid;
+  gap: var(--space-2);
+}

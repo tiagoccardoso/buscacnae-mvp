@@ -98,6 +98,6 @@ export async function visibleEstablishmentsSql(profileParam: string, workspacesP
      WHERE COALESCE(o.profile_id, sr.profile_id)::text = ${profileParam}
     UNION
     SELECT se.establishment_id FROM saved_establishments se WHERE se.profile_id::text = ${profileParam}
-    ${withCrm ? `UNION SELECT d.establishment_id FROM crm_deals d WHERE d.workspace_id::text = ANY(${workspacesParam})` : ""}
+    ${withCrm ? `UNION SELECT d.establishment_id FROM crm_deals d WHERE d.establishment_id IS NOT NULL AND d.workspace_id::text = ANY(${workspacesParam})` : ""}
   )`;
 }

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deriveEnrichmentFacts } from "../lib/prospecting/enrichment.ts";
-import { buildResearchBrief } from "../lib/prospecting/research.ts";
-import { calculateLeadScore, normalizeScoreCriteria } from "../lib/prospecting/score.ts";
+const { deriveEnrichmentFacts } = await import("../lib/prospecting/enrichment.ts");
+const { buildResearchBrief } = await import("../lib/prospecting/research.ts");
+const { calculateLeadScore, normalizeScoreCriteria } = await import("../lib/prospecting/score.ts");
 
 const referenceDate = new Date("2026-09-25T00:00:00.000Z");
 

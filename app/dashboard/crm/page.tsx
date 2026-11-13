@@ -11,6 +11,9 @@ import { canMoveDeal, canUpdateTask } from "@/lib/crm/permissions";
 import { listDeals, listMembers, listStages, listTasks, type DealFilters } from "@/lib/crm/repository";
 import { getCrmSession } from "@/lib/crm/server";
 import { SOURCE_LABEL, isDealSource } from "@/lib/crm/timeline";
+import { PROSPECT_ORIGIN_LABEL, isProspectOrigin } from "@/lib/crm/prospects";
+import { summarizePipeline } from "@/lib/crm/metrics";
+import { WhatsAppLink } from "@/components/crm/whatsapp-link";
 import type { DealView } from "@/lib/crm/types";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +23,21 @@ function isOverdue(task: { status: string; dueAt: string | null }) {
   return task.status === "todo" && Boolean(task.dueAt) && Date.parse(String(task.dueAt)) < Date.now();
 }
 
+function isPastDate(value: string | null) {
+  return Boolean(value) && Date.parse(String(value)) < Date.now();
+}
+
+function nowMs() {
+  return Date.now();
+}
+
 type PageProps = { searchParams?: Promise<Record<string, string | string[] | undefined>> };
 
 const SORTS = {
   recentes: { label: "Atualização", compare: (a: DealView, b: DealView) => b.updatedAt.localeCompare(a.updatedAt) },
   valor: { label: "Valor", compare: (a: DealView, b: DealView) => (b.amountCents ?? -1) - (a.amountCents ?? -1) },
   empresa: { label: "Empresa", compare: (a: DealView, b: DealView) => a.company.companyName.localeCompare(b.company.companyName, "pt-BR") },
+  contato: { label: "Próximo contato", compare: (a: DealView, b: DealView) => (a.nextContactAt ?? "9999").localeCompare(b.nextContactAt ?? "9999") },
   fechamento: { label: "Previsão", compare: (a: DealView, b: DealView) => (a.expectedCloseDate ?? "9999").localeCompare(b.expectedCloseDate ?? "9999") }
 } as const;
 
@@ -41,6 +53,10 @@ export default async function CrmPage({ searchParams }: PageProps) {
   const q = param(params, "q").slice(0, 80);
   const sourceParam = param(params, "source");
   const source = isDealSource(sourceParam) ? sourceParam : "";
+  const originParam = param(params, "origin");
+  const origin = isProspectOrigin(originParam) ? originParam : "";
+  const targetParam = param(params, "tipo");
+  const target = targetParam === "prospect" || targetParam === "establishment" ? targetParam : "";
   const sortKey = (param(params, "sort") in SORTS ? param(params, "sort") : "recentes") as keyof typeof SORTS;
 
   const session = await getCrmSession().catch((error) => {
@@ -51,7 +67,7 @@ export default async function CrmPage({ searchParams }: PageProps) {
   if (!session) return null;
   const { ctx, workspaces } = session;
 
-  const filters: DealFilters = { owner: owner || undefined, q, source };
+  const filters: DealFilters = { owner: owner || undefined, q, source, origin, target };
   const [stages, members, deals, tasks] = await Promise.all([
     listStages(ctx),
     listMembers(ctx),
@@ -62,16 +78,26 @@ export default async function CrmPage({ searchParams }: PageProps) {
   const stageById = new Map(stages.map((stage) => [stage.id, stage]));
   const returnTo = `/dashboard/crm${view === "kanban" ? "" : `?view=${view}`}`;
   const feedback = readCrmFeedback(params);
-  const hasFilters = Boolean(owner || q || source);
+  const hasFilters = Boolean(owner || q || source || origin || target);
 
   const header = <CrmHeader ctx={ctx} workspaces={workspaces} current={view} returnTo={returnTo} feedback={feedback} />;
+  const summary = summarizePipeline(deals, stages, nowMs());
+  const metrics = (
+    <dl className="crm-metrics" aria-label="Indicadores do pipeline (com os filtros atuais)">
+      <div><dt>Em aberto</dt><dd className="numeric">{summary.open}</dd></div>
+      <div><dt>Valor em aberto</dt><dd className="numeric">{formatCents(summary.openValueCents) || "R$ 0,00"}</dd></div>
+      <div><dt>Ganhos</dt><dd className="numeric">{summary.won}{summary.winRate !== null ? <span className="caption"> · {summary.winRate}% dos fechados</span> : null}</dd></div>
+      <div><dt>Cadastros manuais</dt><dd className="numeric">{summary.manual}</dd></div>
+      <div><dt>Contatos atrasados</dt><dd className={`numeric${summary.overdueContacts ? " crm-overdue" : ""}`}>{summary.overdueContacts}</dd></div>
+    </dl>
+  );
 
   const filterForm = (
     <form method="get" className="crm-filters" role="search" aria-label="Filtrar negócios">
       {view !== "kanban" ? <input type="hidden" name="view" value={view} /> : null}
       <label className="field crm-filter-q">
         <span className="field-label">Buscar</span>
-        <input name="q" className="input" defaultValue={q} placeholder="Empresa, CNPJ, cidade ou título" />
+        <input name="q" className="input" defaultValue={q} placeholder="Nome, telefone, e-mail ou documento" />
       </label>
       <label className="field">
         <span className="field-label">Responsável</span>
@@ -83,10 +109,25 @@ export default async function CrmPage({ searchParams }: PageProps) {
         </select>
       </label>
       <label className="field">
-        <span className="field-label">Origem</span>
+        <span className="field-label">Tipo</span>
+        <select name="tipo" className="input" defaultValue={target}>
+          <option value="">Todos</option>
+          <option value="establishment">Empresas da base</option>
+          <option value="prospect">Cadastros manuais</option>
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Entrada no CRM</span>
         <select name="source" className="input" defaultValue={source}>
           <option value="">Todas</option>
           {Object.entries(SOURCE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Origem do prospect</span>
+        <select name="origin" className="input" defaultValue={origin}>
+          <option value="">Todas</option>
+          {Object.entries(PROSPECT_ORIGIN_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
       </label>
       {view === "tabela" ? (
@@ -110,9 +151,9 @@ export default async function CrmPage({ searchParams }: PageProps) {
         {header}
         <EmptyState
           title="Seu CRM está vazio"
-          description="Adicione empresas pela ficha, pela seleção na tabela de resultados ou enviando uma lista de prospecção inteira. O CRM referencia a empresa da base — nada é copiado."
-          ctaHref="/dashboard/leads"
-          ctaLabel="Enviar uma lista ao CRM"
+          description="Cadastre um prospect manualmente (indicação, evento, WhatsApp…) ou adicione empresas pela ficha, pela tabela de resultados ou enviando uma lista de prospecção inteira."
+          ctaHref="/dashboard/crm/novo"
+          ctaLabel="Cadastrar o primeiro prospect"
         />
       </>
     );
@@ -173,6 +214,7 @@ export default async function CrmPage({ searchParams }: PageProps) {
       <>
         {header}
         {filterForm}
+        {metrics}
         <section className="section" aria-labelledby="crm-table-title">
           <h3 id="crm-table-title" className="sr-only">Negócios em tabela</h3>
           <p className="footnote">{deals.length} negócio(s) · total {formatCents(deals.reduce((sum, deal) => sum + (deal.amountCents ?? 0), 0)) || "R$ 0,00"}</p>
@@ -181,7 +223,7 @@ export default async function CrmPage({ searchParams }: PageProps) {
               <table className="table table-responsive crm-table">
                 <caption className="sr-only">Negócios do CRM</caption>
                 <thead>
-                  <tr><th>Empresa</th><th>Etapa</th><th>Responsável</th><th className="cell-num">Valor</th><th>Previsão</th><th>Tarefas</th><th>Origem</th><th>Atualizado</th></tr>
+                  <tr><th>Empresa</th><th>Etapa</th><th>Responsável</th><th className="cell-num">Valor</th><th>Previsão</th><th>Próximo contato</th><th>Tarefas</th><th>Origem</th><th>Atualizado</th></tr>
                 </thead>
                 <tbody>
                   {sorted.map((deal) => {
@@ -190,8 +232,11 @@ export default async function CrmPage({ searchParams }: PageProps) {
                       <tr key={deal.id}>
                         <td data-label="Empresa">
                           <div className="cell-stack">
-                            <Link href={`/dashboard/crm/${deal.id}`} className="cell-strong text-link">{deal.company.companyName}</Link>
-                            <span className="muted">{formatCnpj(deal.company.cnpj)} · {[deal.company.cityName, deal.company.stateCode].filter(Boolean).join("/") || "—"}</span>
+                            <span className="cluster crm-cell-name">
+                              <Link href={`/dashboard/crm/${deal.id}`} className="cell-strong text-link">{deal.company.companyName}</Link>
+                              {deal.company.whatsappPhone ? <WhatsAppLink phone={deal.company.whatsappPhone} name={deal.company.companyName} variant="icon" /> : null}
+                            </span>
+                            <span className="muted">{deal.company.kind === "prospect" ? (deal.company.personKind === "person" ? "Pessoa física" : "Cadastro manual") : formatCnpj(deal.company.cnpj)} · {[deal.company.cityName, deal.company.stateCode].filter(Boolean).join("/") || "—"}</span>
                           </div>
                         </td>
                         <td data-label="Etapa">
@@ -211,8 +256,9 @@ export default async function CrmPage({ searchParams }: PageProps) {
                         <td data-label="Responsável">{deal.ownerName ?? <span className="muted">Sem responsável</span>}</td>
                         <td data-label="Valor" className="cell-num">{deal.amountCents !== null ? formatCents(deal.amountCents) : "—"}</td>
                         <td data-label="Previsão">{deal.expectedCloseDate ? formatDate(deal.expectedCloseDate) : "—"}</td>
+                        <td data-label="Próximo contato" className={isPastDate(deal.nextContactAt) ? "crm-overdue" : undefined}>{deal.nextContactAt ? formatDateTime(deal.nextContactAt) : "—"}</td>
                         <td data-label="Tarefas">{deal.openTasks ? `${deal.openTasks} aberta(s)` : "—"}</td>
-                        <td data-label="Origem"><span className="pill">{SOURCE_LABEL[deal.source]}</span></td>
+                        <td data-label="Origem"><span className="pill">{deal.prospectId ? "Manual" : SOURCE_LABEL[deal.source]}</span></td>
                         <td data-label="Atualizado" className="cell-nowrap">{formatDateTime(deal.updatedAt)}</td>
                       </tr>
                     );
@@ -232,19 +278,24 @@ export default async function CrmPage({ searchParams }: PageProps) {
     position: deal.position,
     href: `/dashboard/crm/${deal.id}`,
     companyName: deal.company.tradeName || deal.company.companyName,
-    subtitle: [deal.company.cityName && `${deal.company.cityName}/${deal.company.stateCode}`, formatCnpj(deal.company.cnpj)].filter(Boolean).join(" · "),
+    subtitle: [deal.company.cityName && `${deal.company.cityName}${deal.company.stateCode ? `/${deal.company.stateCode}` : ""}`, deal.company.kind === "prospect" ? (deal.company.personKind === "person" ? "Pessoa física" : "Cadastro manual") : formatCnpj(deal.company.cnpj)].filter(Boolean).join(" · "),
     amountCents: deal.amountCents,
     ownerName: deal.ownerName,
     openTasks: deal.openTasks,
     nextTaskDueAt: deal.nextTaskDueAt,
-    sourceLabel: SOURCE_LABEL[deal.source],
-    canMove: canMoveDeal(actor, deal)
+    sourceLabel: deal.prospectId ? "Manual" : SOURCE_LABEL[deal.source],
+    canMove: canMoveDeal(actor, deal),
+    whatsappPhone: deal.company.whatsappPhone,
+    nextContactAt: deal.nextContactAt,
+    highPriority: deal.priority === "high",
+    isManual: Boolean(deal.prospectId)
   }));
 
   return (
     <>
       {header}
       {filterForm}
+      {metrics}
       <section className="section crm-board-section" aria-labelledby="crm-board-title">
         <div className="cluster cluster-between">
           <h3 id="crm-board-title" className="sr-only">Pipeline em Kanban</h3>
