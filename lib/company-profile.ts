@@ -8,7 +8,7 @@ import { hasLegacyProviderData, sanitizeProviderPayload } from "@/lib/provider-p
  * Não existe fonte secundária: se a consulta detalhada falhar, a ficha segue com os
  * dados já salvos da própria Casa dos Dados.
  *
- * Registros antigos podem ter campos preenchidos pela integração removida (CNPJ.ws).
+ * Registros antigos podem ter campos preenchidos por fontes aposentadas.
  * Para eles a ficha força uma revalidação na Casa dos Dados e, quando ela conclui,
  * os campos que só a consulta detalhada fornece são substituídos pelo valor da Casa dos
  * Dados (inclusive ficando vazios quando ela não retorna o campo), para que nenhum valor
@@ -109,7 +109,7 @@ function mergeProviderPayload(existingPayload: unknown, detailedPayload: Record<
 }
 
 /**
- * Campos que, no fluxo antigo, podiam ser preenchidos pela fonte removida (a pesquisa da
+ * Campos que, no fluxo antigo, podiam ser preenchidos por outra fonte (a pesquisa da
  * Casa dos Dados não os retornava). Em registros legados eles passam a refletir
  * exclusivamente a consulta detalhada da Casa dos Dados.
  */

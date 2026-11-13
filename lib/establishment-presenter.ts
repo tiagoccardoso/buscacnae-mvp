@@ -273,87 +273,88 @@ function resolveAddressLine(establishment: Record<string, unknown>, sources: Rec
 }
 
 export function buildDisplayEstablishment(establishment: Record<string, unknown>): DisplayEstablishment {
-  const payloadSources = collectPayloadSources(establishment);
+  const sanitizedEstablishment = sanitizeProviderPayload(establishment);
+  const payloadSources = collectPayloadSources(sanitizedEstablishment);
 
   return {
-    ...establishment,
+    ...sanitizedEstablishment,
     cnpj:
-      getValue(establishment, "cnpj") ??
+      getValue(sanitizedEstablishment, "cnpj") ??
       findFirstFromPaths(payloadSources, [["cnpj"], ["estabelecimento", "cnpj"], ["empresa", "cnpj"]]),
     cnpj_root:
-      getValue(establishment, "cnpj_root", "cnpj_raiz") ??
+      getValue(sanitizedEstablishment, "cnpj_root", "cnpj_raiz") ??
       findFirstFromPaths(payloadSources, [["cnpj_raiz"], ["cnpjRoot"], ["raiz_cnpj"]]),
     company_name:
-      getValue(establishment, "company_name", "razao_social") ??
+      getValue(sanitizedEstablishment, "company_name", "razao_social") ??
       findFirstFromPaths(payloadSources, [["razao_social"], ["nome_empresarial"], ["nome"]]),
     trade_name:
-      getValue(establishment, "trade_name", "nome_fantasia") ??
+      getValue(sanitizedEstablishment, "trade_name", "nome_fantasia") ??
       findFirstFromPaths(payloadSources, [["nome_fantasia"]]),
     registration_status:
-      getValue(establishment, "registration_status", "situacao_cadastral") ??
+      getValue(sanitizedEstablishment, "registration_status", "situacao_cadastral") ??
       findFirstFromPaths(payloadSources, [["situacao_cadastral", "situacao_atual"], ["situacao_cadastral"], ["status"]]),
     opened_at:
-      getValue(establishment, "opened_at", "data_abertura", "data_inicio_atividade") ??
+      getValue(sanitizedEstablishment, "opened_at", "data_abertura", "data_inicio_atividade") ??
       findFirstFromPaths(payloadSources, [["data_abertura"], ["data_inicio_atividade"], ["situacao_cadastral", "data"]]),
-    primary_cnae_code: resolvePrimaryCnaeCode(establishment, payloadSources),
-    primary_cnae_description: resolvePrimaryCnaeDescription(establishment, payloadSources),
-    secondary_cnaes: resolveSecondaryCnaes(establishment, payloadSources),
+    primary_cnae_code: resolvePrimaryCnaeCode(sanitizedEstablishment, payloadSources),
+    primary_cnae_description: resolvePrimaryCnaeDescription(sanitizedEstablishment, payloadSources),
+    secondary_cnaes: resolveSecondaryCnaes(sanitizedEstablishment, payloadSources),
     legal_nature_code:
-      getValue(establishment, "legal_nature_code", "natureza_juridica_id") ??
+      getValue(sanitizedEstablishment, "legal_nature_code", "natureza_juridica_id") ??
       findFirstFromPaths(payloadSources, [["codigo_natureza_juridica"], ["natureza_juridica", "codigo"]]),
     legal_nature_description:
-      getValue(establishment, "legal_nature_description", "natureza_juridica") ??
+      getValue(sanitizedEstablishment, "legal_nature_description", "natureza_juridica") ??
       findFirstFromPaths(payloadSources, [["descricao_natureza_juridica"], ["natureza_juridica", "descricao"], ["natureza_juridica"]]),
     company_size:
-      getValue(establishment, "company_size", "porte") ??
+      getValue(sanitizedEstablishment, "company_size", "porte") ??
       findFirstFromPaths(payloadSources, [["porte_empresa", "descricao"], ["porte", "descricao"], ["porte"]]),
     simples_opt_in:
-      getValue(establishment, "simples_opt_in", "simples") ??
+      getValue(sanitizedEstablishment, "simples_opt_in", "simples") ??
       findFirstFromPaths(payloadSources, [["simples", "optante"], ["simples_optante"]]),
     mei_opt_in:
-      getValue(establishment, "mei_opt_in", "mei") ??
+      getValue(sanitizedEstablishment, "mei_opt_in", "mei") ??
       findFirstFromPaths(payloadSources, [["mei", "optante"], ["mei_optante"], ["simples", "mei"]]),
     capital_social:
-      getValue(establishment, "capital_social") ??
+      getValue(sanitizedEstablishment, "capital_social") ??
       findFirstFromPaths(payloadSources, [["capital_social"]]),
     email:
-      getValue(establishment, "email") ??
+      getValue(sanitizedEstablishment, "email") ??
       findFirstFromPaths(payloadSources, [["contato_email"], ["email"], ["contacts", "email"], ["contacts", "emails"], ["estabelecimento", "email"], ["consulta_cnpj", "email"]]),
     phone:
-      getValue(establishment, "phone", "telefone") ??
+      getValue(sanitizedEstablishment, "phone", "telefone") ??
       findFirstFromPaths(
         payloadSources,
         [["contato_telefonico"], ["telefone"], ["telefone1"], ["ddd_telefone_1"], ["contacts", "telefone"], ["contacts", "telefones"], ["estabelecimento", "telefone1"], ["consulta_cnpj", "telefone"]],
         extractPhoneText
       ),
     website:
-      getValue(establishment, "website", "site") ??
+      getValue(sanitizedEstablishment, "website", "site") ??
       findFirstFromPaths(payloadSources, [["website"], ["site"], ["url"], ["contacts", "website"], ["contacts", "site"], ["estabelecimento", "site"], ["consulta_cnpj", "site"]]),
     country:
-      getValue(establishment, "country", "pais") ??
+      getValue(sanitizedEstablishment, "country", "pais") ??
       findFirstFromPaths(payloadSources, [["pais", "nome"], ["pais_nome"], ["pais"]]),
     state_code:
-      getValue(establishment, "state_code", "uf") ??
+      getValue(sanitizedEstablishment, "state_code", "uf") ??
       findFirstFromPaths(payloadSources, [["endereco", "uf"], ["uf"], ["estabelecimento", "uf"], ["consulta_cnpj", "uf"]]),
     city_name:
-      getValue(establishment, "city_name", "cidade", "municipio") ??
+      getValue(sanitizedEstablishment, "city_name", "cidade", "municipio") ??
       findFirstFromPaths(payloadSources, [["endereco", "municipio"], ["cidade_nome"], ["cidade"], ["municipio"], ["estabelecimento", "cidade"], ["consulta_cnpj", "municipio"]]),
     city_ibge:
-      getValue(establishment, "city_ibge", "cidade_id", "ibge_id") ??
+      getValue(sanitizedEstablishment, "city_ibge", "cidade_id", "ibge_id") ??
       findFirstFromPaths(payloadSources, [["endereco", "ibge", "codigo_municipio"], ["codigo_municipio_ibge"], ["cidade_id"], ["ibge_id"], ["estabelecimento", "codigo_municipio_ibge"], ["consulta_cnpj", "codigo_municipio_ibge"]]),
     cep:
-      getValue(establishment, "cep") ??
+      getValue(sanitizedEstablishment, "cep") ??
       findFirstFromPaths(payloadSources, [["endereco", "cep"], ["cep"], ["estabelecimento", "cep"], ["consulta_cnpj", "cep"]]),
     neighborhood:
-      getValue(establishment, "neighborhood", "bairro") ??
+      getValue(sanitizedEstablishment, "neighborhood", "bairro") ??
       findFirstFromPaths(payloadSources, [["endereco", "bairro"], ["bairro"], ["estabelecimento", "bairro"], ["consulta_cnpj", "bairro"]]),
-    address_line: resolveAddressLine(establishment, payloadSources),
+    address_line: resolveAddressLine(sanitizedEstablishment, payloadSources),
     address_number:
-      getValue(establishment, "address_number", "numero") ??
+      getValue(sanitizedEstablishment, "address_number", "numero") ??
       findFirstFromPaths(payloadSources, [["endereco", "numero"], ["numero"], ["estabelecimento", "numero"], ["consulta_cnpj", "numero"]]),
     complement:
-      getValue(establishment, "complement", "complemento") ??
+      getValue(sanitizedEstablishment, "complement", "complemento") ??
       findFirstFromPaths(payloadSources, [["endereco", "complemento"], ["complemento"], ["estabelecimento", "complemento"], ["consulta_cnpj", "complemento"]]),
-    provider_payload: sanitizeProviderPayload(getValue(establishment, "provider_payload"))
+    provider_payload: sanitizeProviderPayload(getValue(sanitizedEstablishment, "provider_payload"))
   };
 }

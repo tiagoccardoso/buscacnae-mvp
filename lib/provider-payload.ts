@@ -2,21 +2,36 @@
  * Higienização do `provider_payload` persistido.
  *
  * A Casa dos Dados é a única fonte autorizada de dados empresariais. Registros
- * gravados antes da remoção da CNPJ.ws ainda podem carregar, dentro do JSON
- * salvo no banco, a resposta daquela fonte (`cnpjws_consulta`) e mensagens
- * técnicas de enriquecimento (`erro_enriquecimento_*`).
- *
- * Esses blocos NUNCA devem chegar à ficha, à lista, ao mapa ou às exportações:
- * eles são removidos aqui, de forma centralizada, antes de qualquer leitura.
+ * gravados por versões antigas ainda podem carregar, dentro do JSON salvo no
+ * banco, respostas de fontes aposentadas e mensagens técnicas de enriquecimento.
+ * Esses blocos nunca devem chegar à ficha, à lista, ao mapa ou às exportações.
  * Nenhuma chamada externa é feita por este módulo.
  */
 
-/** Chaves legadas que não pertencem às fontes atualmente autorizadas. */
-export const LEGACY_PROVIDER_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
-  "cnpjws_consulta",
-  "erro_enriquecimento_cnpjws",
-  "erro_enriquecimento_casadosdados"
-]);
+function normalizePayloadKey(key: string) {
+  return key
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toLowerCase();
+}
+
+/**
+ * Identifica metadados técnicos que pertencem a integrações aposentadas.
+ *
+ * O payload atual usa `consulta_cnpj` como wrapper válido e os blocos
+ * `casadosdados_*` como fonte oficial. Consultas com o sufixo `_consulta`,
+ * além de mensagens/status de enriquecimento, são estruturas históricas e
+ * não representam dados cadastrais atuais.
+ */
+function isRetiredPayloadKey(key: string) {
+  const normalized = normalizePayloadKey(key);
+  const isCurrentConsultationWrapper = normalized === "consultacnpj";
+  const isRetiredConsultation = normalized.endsWith("consulta") && !isCurrentConsultationWrapper;
+  const isTechnicalEnrichmentMetadata = normalized.includes("enriquecimento") || normalized.includes("enrichment");
+
+  return isRetiredConsultation || isTechnicalEnrichmentMetadata;
+}
 
 const MAX_DEPTH = 12;
 
@@ -35,7 +50,7 @@ export function sanitizeProviderPayload<T = unknown>(value: T, depth = 0): T {
   if (isPlainObject(value)) {
     const output: Record<string, unknown> = {};
     for (const [key, nested] of Object.entries(value)) {
-      if (LEGACY_PROVIDER_PAYLOAD_KEYS.has(key)) continue;
+      if (isRetiredPayloadKey(key)) continue;
       output[key] = sanitizeProviderPayload(nested, depth + 1);
     }
     return output as T;
@@ -54,7 +69,7 @@ export function hasLegacyProviderData(value: unknown, depth = 0): boolean {
 
   if (isPlainObject(value)) {
     for (const [key, nested] of Object.entries(value)) {
-      if (key === "cnpjws_consulta" && nested !== null && nested !== undefined) return true;
+      if (isRetiredPayloadKey(key) && nested !== null && nested !== undefined) return true;
       if (hasLegacyProviderData(nested, depth + 1)) return true;
     }
   }

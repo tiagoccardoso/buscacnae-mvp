@@ -73,11 +73,11 @@ CNPJ com dígito verificador inválido **não** é descartado (a fonte é oficia
 - Correção: consulta detalhada sem razão social não sobrescreve mais a razão social da pesquisa com
   “Sem razão social”.
 
-## 6. CNPJ.ws
+## 6. Higienização de payload legado
 
-Removida a dependência funcional: nenhuma URL, cliente, variável de ambiente, fallback ou mensagem.
-Registros antigos têm o bloco legado higienizado (`lib/provider-payload.ts`) e são revalidados apenas na Casa dos Dados
-ao abrir a ficha (`lib/company-profile.ts`). Testes garantem ausência de `cnpj.ws` no código de produção.
+Não há URL, cliente, variável de ambiente, fallback ou mensagem de integração aposentada no fluxo ativo.
+Registros antigos têm blocos técnicos e consultas históricas higienizados (`lib/provider-payload.ts`) e são
+revalidados apenas na Casa dos Dados ao abrir a ficha (`lib/company-profile.ts`).
 
 ## 7. Resultados (TanStack)
 
@@ -90,7 +90,7 @@ virtualização acima de 100 linhas renderizadas, `aria-sort`, `caption`, checkb
 
 `npm test` (node:test + tsx): 89 testes em `tests/*.test.mts` — Casa dos Dados (paginação, erros, retry, 429,
 timeout, cancelamento, cache/dedupe, reuso), normalização central, Company, tabela (filtros, ordenação, 20 mil linhas,
-paginação/HTML inicial, acessibilidade), ficha (legado, falhas), mapa, OpenCEP, exportações e ausência de CNPJ.ws.
+paginação/HTML inicial, acessibilidade), ficha (payload legado, falhas), mapa, OpenCEP e exportações.
 
 ## 9. Pendências / próximas fases
 

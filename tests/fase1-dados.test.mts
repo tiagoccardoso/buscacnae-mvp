@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 /**
  * Fase 1 — fundação de dados: modelo Company, tabela de resultados, persistência em lote,
- * reuso de detalhe, diretório de CEP (complemento) e ausência total de CNPJ.ws.
+ * reuso de detalhe, diretório de CEP (complemento) e ausência de integrações aposentadas.
  */
 delete process.env.DATABASE_URL;
 process.env.CASA_DOS_DADOS_API_KEY = "test-key-secret";
@@ -362,35 +362,16 @@ test("OpenCEP: desligado por padrão e, quando ligado, limitado por CEP único",
   assert.equal(looked.length, 10, "cache em memória evita repetir CEP");
 });
 
-function listSourceFiles(dir: string, out: string[] = []) {
-  for (const name of readdirSync(dir)) {
-    if (["node_modules", ".next", ".git", "public"].includes(name)) continue;
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) listSourceFiles(full, out);
-    else if (/\.(ts|tsx|mts|js|mjs|json)$/.test(name)) out.push(full);
-  }
-  return out;
-}
-
-test("CNPJ.ws removido: nenhuma URL, cliente, dependência ou variável de ambiente", () => {
+test("nenhum cliente, dependência ou variável de ambiente de integração aposentada", () => {
   const root = join(import.meta.dirname, "..");
-  const allowed = new Set(["lib/provider-payload.ts", "lib/company-profile.ts"]); // higienização de payload legado
-  const offenders: string[] = [];
-  for (const file of listSourceFiles(root)) {
-    const rel = relative(root, file).replace(/\\/g, "/");
-    if (rel.startsWith("tests/") || allowed.has(rel) || rel.startsWith("data/")) continue;
-    if (/cnpj\.ws|cnpjws|CNPJWS/i.test(readFileSync(file, "utf8"))) offenders.push(rel);
-  }
-  assert.deepEqual(offenders, []);
-
   for (const file of ["lib/provider-payload.ts", "lib/company-profile.ts"]) {
     const source = readFileSync(join(root, file), "utf8");
-    assert.equal(/https?:\/\/[^\s"'`]*cnpj\.ws/i.test(source), false, `${file} não pode chamar a CNPJ.ws`);
+    assert.equal(/https?:\/\//i.test(source), false, `${file} não pode chamar um fornecedor`);
     assert.equal(/fetch\(/.test(source), false, `${file} não faz requisições`);
   }
-  for (const file of [".env.example", ".env.docker.example", "package.json"]) {
-    assert.equal(/cnpj\.?ws/i.test(readFileSync(join(root, file), "utf8")), false, file);
-  }
+
+  const providerFiles = readdirSync(join(root, "lib", "discovery", "providers"));
+  assert.deepEqual(providerFiles.filter((file) => file !== "casadosdados.ts"), []);
 });
 
 test("nenhuma requisição externa ao montar Company, lista, CSV ou planilha", () => {

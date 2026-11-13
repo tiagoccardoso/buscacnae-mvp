@@ -1,3 +1,5 @@
+import { sanitizeProviderPayload } from "@/lib/provider-payload";
+
 export type LeadPricingTierKey = "basic" | "phone" | "email" | "complete";
 
 export type LeadPricingTier = {
@@ -233,8 +235,8 @@ export function extractLeadContactSignals(lead: ContactLike): LeadContactSignals
     }
   }
 
-  collectContactSignals(lead.providerPayload, emails, phones, "providerPayload");
-  collectContactSignals(lead.provider_payload, emails, phones, "provider_payload");
+  collectContactSignals(sanitizeProviderPayload(lead.providerPayload), emails, phones, "providerPayload");
+  collectContactSignals(sanitizeProviderPayload(lead.provider_payload), emails, phones, "provider_payload");
 
   return {
     emails: Array.from(emails),
