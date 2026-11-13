@@ -98,24 +98,34 @@ export default async function CrmPage({ searchParams }: PageProps) {
   if (!session) return null;
   const { ctx, workspaces } = session;
 
-  const stages = await listStages(ctx);
-  const stageId = stages.some((stage) => stage.id === stageParam) ? stageParam : "";
-  const filters: DealFilters = {
-    owner: owner || undefined,
-    q,
-    source,
-    origin,
-    target,
-    stageId: stageId || undefined,
-    createdFrom: createdFrom || null,
-    createdTo: createdTo || null,
-    archived: archivedView ? "archived" : "active"
-  };
-  const [members, allDeals, tasks] = await Promise.all([
-    listMembers(ctx),
-    listDeals(ctx, filters),
-    view === "tarefas" ? listTasks(ctx, { openOnly: param(params, "todas") !== "1", assigneeId: owner === "me" ? ctx.profileId : undefined }) : Promise.resolve([])
-  ]);
+  let stages: Awaited<ReturnType<typeof listStages>>;
+  let members: Awaited<ReturnType<typeof listMembers>>;
+  let allDeals: Awaited<ReturnType<typeof listDeals>>;
+  let tasks: Awaited<ReturnType<typeof listTasks>>;
+  let stageId = "";
+  try {
+    stages = await listStages(ctx);
+    stageId = stages.some((stage) => stage.id === stageParam) ? stageParam : "";
+    const filters: DealFilters = {
+      owner: owner || undefined,
+      q,
+      source,
+      origin,
+      target,
+      stageId: stageId || undefined,
+      createdFrom: createdFrom || null,
+      createdTo: createdTo || null,
+      archived: archivedView ? "archived" : "active"
+    };
+    [members, allDeals, tasks] = await Promise.all([
+      listMembers(ctx),
+      listDeals(ctx, filters),
+      view === "tarefas" ? listTasks(ctx, { openOnly: param(params, "todas") !== "1", assigneeId: owner === "me" ? ctx.profileId : undefined }) : Promise.resolve([])
+    ]);
+  } catch (error) {
+    console.error("[crm] falha ao carregar dados", { message: error instanceof Error ? error.message : String(error) });
+    return <CrmUnavailable />;
+  }
   const now = nowMs();
   const stageById = new Map(stages.map((stage) => [stage.id, stage]));
   const isOpenDeal = (deal: DealView) => (stageById.get(deal.stageId)?.kind ?? "open") === "open";
