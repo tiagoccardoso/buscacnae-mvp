@@ -11,6 +11,7 @@ import {
   addTaskAction,
   deleteContactAction,
   deleteDealAction,
+  setDealArchivedAction,
   toggleTaskAction,
   updateDealAction
 } from "@/app/dashboard/crm/actions";
@@ -131,6 +132,7 @@ export default async function DealPage({ params, searchParams }: PageProps) {
             ].filter(Boolean).join(" · ")}
           </p>
           <div className="inline-list">
+            {deal.archivedAt ? <span className="pill warning">Arquivado em {formatDateTime(deal.archivedAt)}</span> : null}
             <span className={`pill${stage?.kind === "won" ? " success" : stage?.kind === "lost" ? " danger" : " accent"}`}>{stage?.name ?? "Sem etapa"}</span>
             <span className="pill">{deal.ownerName ? `Responsável: ${deal.ownerName}` : "Sem responsável"}</span>
             {deal.priority !== "normal" ? <span className={`pill${deal.priority === "high" ? " warning" : ""}`}>Prioridade {PRIORITY_LABEL[deal.priority].toLowerCase()}</span> : null}
@@ -390,21 +392,36 @@ export default async function DealPage({ params, searchParams }: PageProps) {
             </details>
           </section>
 
+          {editable ? (
+            <form action={setDealArchivedAction} className="crm-archive-zone">
+              <input type="hidden" name="dealId" value={deal.id} />
+              <input type="hidden" name="archive" value={deal.archivedAt ? "0" : "1"} />
+              <button type="submit" className="button-secondary button-sm">{deal.archivedAt ? "Restaurar prospect" : "Arquivar prospect"}</button>
+              <p className="footnote">
+                {deal.archivedAt
+                  ? "Volta para a lista e o Kanban com todo o histórico."
+                  : "Tira o prospect da lista e do Kanban sem apagar nada: histórico, notas, tarefas e contatos ficam preservados e ele pode ser restaurado."}
+              </p>
+            </form>
+          ) : null}
+
           {canDeleteDeal(actor, deal) ? (
             isProspect ? (
               <details className="crm-disclosure crm-danger-zone">
                 <summary>Excluir prospect…</summary>
                 <form action={deleteDealAction} className="stack-xs crm-subform">
                   <input type="hidden" name="dealId" value={deal.id} />
-                  <p className="footnote">Apaga o cadastro manual, contatos, observações, tarefas e o histórico deste negócio. Não pode ser desfeito.</p>
+                  <p className="footnote">Apaga o cadastro manual, contatos, observações, tarefas e o histórico deste negócio. Não pode ser desfeito. Para só tirar da lista, prefira arquivar.</p>
+                  <label className="checkbox-inline"><input type="checkbox" name="confirmHistory" value="1" required /> Entendo que o histórico comercial será apagado definitivamente</label>
                   <button type="submit" className="button-ghost button-sm is-destructive">Confirmar exclusão definitiva</button>
                 </form>
               </details>
             ) : (
               <form action={deleteDealAction} className="crm-danger-zone">
                 <input type="hidden" name="dealId" value={deal.id} />
+                <label className="checkbox-inline"><input type="checkbox" name="confirmHistory" value="1" required /> Entendo que notas, tarefas e o negócio serão apagados</label>
                 <button type="submit" className="button-ghost button-sm is-destructive">Remover do CRM</button>
-                <p className="footnote">Apaga notas, tarefas e o negócio. A empresa, as listas e os contatos permanecem.</p>
+                <p className="footnote">Apaga notas, tarefas e o negócio. A empresa, os leads salvos e os contatos permanecem. Para só tirar da lista, prefira arquivar.</p>
               </form>
             )
           ) : null}

@@ -19,6 +19,11 @@ import {
   createTeamWorkspace,
   deleteContact,
   deleteDeal,
+  deleteDeals,
+  dealsWithHistory,
+  moveDeals,
+  setDealsArchived,
+  type BulkResult,
   listMyWorkspaces,
   moveDeal,
   removeStage,
@@ -28,6 +33,7 @@ import {
   updateDeal
 } from "@/lib/crm/repository";
 import { getCrmSession, rememberWorkspace } from "@/lib/crm/server";
+import { safeReturnTo, withParams } from "@/lib/crm/navigation";
 import { isDealSource } from "@/lib/crm/timeline";
 import type { DealSource } from "@/lib/crm/types";
 import { isPriority, type DealPriority } from "@/lib/crm/prospects";
@@ -39,20 +45,6 @@ import { isPriority, type DealPriority } from "@/lib/crm/prospects";
  *   3. permissão verificada no repositório (lib/crm/permissions);
  *   4. histórico gravado na mesma transação da mudança.
  */
-
-function safeReturnTo(value: FormDataEntryValue | null, fallback: string) {
-  const path = String(value ?? "");
-  return /^\/dashboard(\/[A-Za-z0-9_\-/.%]*)?(\?[A-Za-z0-9_\-=&.%]*)?$/.test(path) && !path.includes("//") ? path : fallback;
-}
-
-function withParams(path: string, params: Record<string, string>) {
-  const [base, query = ""] = path.split("?");
-  const search = new URLSearchParams(query);
-  for (const key of ["status", "error", "detail"]) search.delete(key);
-  for (const [key, value] of Object.entries(params)) search.set(key, value);
-  const text = search.toString();
-  return text ? `${base}?${text}` : base;
-}
 
 function revalidateCrm(dealId?: string) {
   revalidatePath("/dashboard/crm");
@@ -111,8 +103,10 @@ export async function addCompanyToCrmAction(formData: FormData) {
   await run(returnTo, async () => {
     if (!isUuid(establishmentId)) throw new CrmError("invalid", "Nenhuma empresa válida selecionada.");
     const result = await createDeals(ctx, [establishmentId], { source, ownerProfileId: ctx.profileId });
-    revalidateCrm(result.dealIds[0]);
-    return result.created ? "deal-criado" : "deal-existente";
+    revalidateCrm(result.dealIds[0] ?? result.existingDealIds[0]);
+    if (result.created) return "deal-criado";
+    if (result.restored) return "deal-restaurado";
+    return "deal-existente";
   });
 }
 
@@ -129,7 +123,7 @@ export async function sendListToCrmAction(formData: FormData) {
     const { data: rows } = await db.from("saved_establishments").select("establishment_id").eq("profile_id", ctx.profileId).eq("list_id", listId);
     const ids = uuidList((rows ?? []).map((row) => row.establishment_id));
     if (!ids.length) throw new CrmError("invalid", "Nenhuma empresa válida selecionada.");
-    await createDeals(ctx, ids, { source: "list", sourceRef: listId, sourceLabel: String(list.name ?? ""), ownerProfileId: ctx.profileId });
+    await createDeals(ctx, ids, { source: "list", sourceRef: listId, sourceLabel: String(list.name ?? ""), ownerProfileId: ctx.profileId, requireVisible: true });
     revalidateCrm();
     return "lista-enviada";
   });
@@ -139,25 +133,99 @@ export async function sendListToCrmAction(formData: FormData) {
  * Seleção da tabela de resultados → CRM (chamada direta do componente cliente).
  * Retorna contagens em vez de redirecionar.
  */
-export async function sendSearchSelectionToCrm(
-  searchId: string | null,
-  establishmentIds: string[]
-): Promise<{ ok: boolean; created: number; alreadyInCrm: number; error?: string }> {
+export type SendToCrmResult = { ok: boolean; created: number; alreadyInCrm: number; savedNew: number; restored: number; message?: string; error?: string };
+
+/** Mensagem única para "Enviar ao CRM" (busca, mapa, leads salvos, ficha). */
+function sendToCrmMessage(result: { created: number; alreadyInCrm: number; restored: number; requested: number }) {
+  if (result.requested === 1) {
+    if (result.created) return "Lead adicionado ao CRM e aos leads salvos.";
+    if (result.restored) return "Lead restaurado no CRM e mantido nos leads salvos.";
+    return "Este lead já estava no CRM; ele foi mantido nos leads salvos, sem duplicação.";
+  }
+  const parts = [`${result.created} lead(s) adicionado(s) ao CRM e aos leads salvos.`];
+  if (result.restored) parts.push(`${result.restored} arquivado(s) restaurado(s).`);
+  const already = result.alreadyInCrm - result.restored;
+  if (already > 0) parts.push(`${already} já estava(m) no CRM (sem duplicação).`);
+  return parts.join(" ");
+}
+
+async function sendEstablishments(establishmentIds: string[], source: DealSource, sourceRef: string | null): Promise<SendToCrmResult> {
+  const failed = (error: string): SendToCrmResult => ({ ok: false, created: 0, alreadyInCrm: 0, savedNew: 0, restored: 0, error });
   const current = await getCrmSession().catch(() => null);
-  if (!current) return { ok: false, created: 0, alreadyInCrm: 0, error: "Faça login para usar o CRM." };
+  if (!current) return failed("Faça login para usar o CRM.");
   const ids = uuidList(establishmentIds);
-  if (!ids.length) return { ok: false, created: 0, alreadyInCrm: 0, error: "Nenhuma empresa válida selecionada." };
+  if (!ids.length) return failed("Nenhuma empresa válida selecionada.");
   try {
-    const result = await createDeals(current.ctx, ids, {
-      source: "search",
-      sourceRef: isUuid(searchId) ? searchId : null,
-      ownerProfileId: current.ctx.profileId
-    });
+    const result = await createDeals(current.ctx, ids, { source, sourceRef, ownerProfileId: current.ctx.profileId, requireVisible: true });
+    if (!result.requested) return failed("Nenhuma empresa liberada para você foi selecionada.");
     revalidateCrm();
-    return { ok: true, created: result.created, alreadyInCrm: result.alreadyInCrm };
+    revalidatePath("/dashboard", "layout");
+    return { ok: true, created: result.created, alreadyInCrm: result.alreadyInCrm, savedNew: result.savedNew, restored: result.restored, message: sendToCrmMessage(result) };
   } catch (error) {
     console.error("[crm] falha ao enviar seleção", { message: error instanceof Error ? error.message : String(error) });
-    return { ok: false, created: 0, alreadyInCrm: 0, error: error instanceof CrmError ? error.message : "Não foi possível enviar ao CRM agora." };
+    return failed(error instanceof CrmError ? error.message : "Não foi possível enviar ao CRM agora.");
+  }
+}
+
+export async function sendSearchSelectionToCrm(searchId: string | null, establishmentIds: string[]): Promise<SendToCrmResult> {
+  return sendEstablishments(establishmentIds, "search", isUuid(searchId) ? searchId : null);
+}
+
+/** Mapa empresarial → CRM (chamada do painel da empresa no mapa). */
+export async function sendMapCompanyToCrm(searchId: string | null, establishmentId: string): Promise<SendToCrmResult> {
+  return sendEstablishments([establishmentId], "map", isUuid(searchId) ? searchId : null);
+}
+
+// ---------------------------------------------------------------------------
+// Ações em lote da listagem (Fase 9) — chamadas do cliente, sem redirect: a tela
+// chama router.refresh() e mantém a mesma URL (filtros, busca e página preservados).
+// ---------------------------------------------------------------------------
+
+export type BulkDealsInput =
+  | { op: "archive" | "restore"; dealIds: string[] }
+  | { op: "delete"; dealIds: string[]; force?: boolean }
+  | { op: "move"; dealIds: string[]; stageId: string };
+
+export type BulkDealsResponse = { ok: boolean; message: string; tone: "success" | "warning" | "danger"; result?: BulkResult };
+
+function bulkMessage(op: BulkDealsInput["op"], result: BulkResult) {
+  const verb = { archive: "arquivado(s)", restore: "restaurado(s)", delete: "excluído(s)", move: "movido(s)" }[op];
+  const parts = [`${result.done.length} prospect(s) ${verb}.`];
+  if (result.hasHistory.length) parts.push(`${result.hasHistory.length} com histórico comercial não foi(ram) excluído(s): arquive ou confirme a exclusão definitiva.`);
+  if (result.forbidden.length) parts.push(`${result.forbidden.length} sem permissão (somente o responsável ou um administrador).`);
+  if (result.failed.length) parts.push(`${result.failed.length} não processado(s) por falha temporária; tente novamente.`);
+  if (result.notFound.length) parts.push(`${result.notFound.length} não encontrado(s) neste workspace.`);
+  return parts.join(" ");
+}
+
+export async function bulkDealsAction(input: BulkDealsInput): Promise<BulkDealsResponse> {
+  const current = await getCrmSession().catch(() => null);
+  if (!current) return { ok: false, tone: "danger", message: "Sessão expirada. Entre novamente." };
+  const ids = Array.isArray(input?.dealIds) ? input.dealIds.map(String) : [];
+  try {
+    let result: BulkResult;
+    if (input.op === "archive" || input.op === "restore") result = await setDealsArchived(current.ctx, ids, input.op === "archive");
+    else if (input.op === "delete") result = await deleteDeals(current.ctx, ids, { force: input.force === true });
+    else if (input.op === "move") result = await moveDeals(current.ctx, ids, String(input.stageId ?? ""));
+    else return { ok: false, tone: "danger", message: "Ação inválida." };
+    revalidateCrm();
+    const clean = !result.forbidden.length && !result.notFound.length && !result.hasHistory.length && !result.failed.length;
+    return { ok: result.done.length > 0 || clean, tone: clean ? "success" : result.done.length ? "warning" : "danger", message: bulkMessage(input.op, result), result };
+  } catch (error) {
+    if (!(error instanceof CrmError)) console.error("[crm] falha na ação em lote", { message: error instanceof Error ? error.message : String(error) });
+    return { ok: false, tone: "danger", message: error instanceof CrmError ? error.message : "Não foi possível concluir agora. Recarregue a lista para conferir o estado atual." };
+  }
+}
+
+/** Negócios com histórico comercial (para a confirmação de exclusão avisar antes). */
+export async function dealsHistoryCheck(dealIds: string[]): Promise<{ ok: boolean; withHistory: string[] }> {
+  const current = await getCrmSession().catch(() => null);
+  if (!current) return { ok: false, withHistory: [] };
+  try {
+    const set = await dealsWithHistory(current.ctx, uuidList(dealIds).slice(0, 200));
+    return { ok: true, withHistory: [...set] };
+  } catch {
+    return { ok: false, withHistory: [] };
   }
 }
 
@@ -223,9 +291,25 @@ export async function deleteDealAction(formData: FormData) {
   const dealId = String(formData.get("dealId") ?? "");
   await run("/dashboard/crm", async () => {
     if (!isUuid(dealId)) throw new CrmError("invalid", "Etapa inválida.");
-    const removed = await deleteDeal(ctx, dealId);
+    // Com histórico comercial, a exclusão exige a confirmação explícita do formulário.
+    const removed = await deleteDeal(ctx, dealId, { force: formData.get("confirmHistory") === "1" });
     revalidateCrm(dealId);
     return removed.kind === "prospect" ? "prospect-removido" : "deal-removido";
+  });
+}
+
+/** Arquivar / restaurar pela página do negócio (formulário, com redirect e feedback). */
+export async function setDealArchivedAction(formData: FormData) {
+  const { ctx } = await session();
+  const dealId = String(formData.get("dealId") ?? "");
+  const archive = formData.get("archive") === "1";
+  await run(`/dashboard/crm/${isUuid(dealId) ? dealId : ""}`, async () => {
+    if (!isUuid(dealId)) throw new CrmError("invalid", "Nenhum negócio válido selecionado.");
+    const result = await setDealsArchived(ctx, [dealId], archive);
+    if (result.forbidden.length) throw new CrmError("forbidden", "Somente o responsável ou um administrador pode arquivar este negócio.");
+    if (result.notFound.length) throw new CrmError("not_found", "Negócio não encontrado neste workspace.");
+    revalidateCrm(dealId);
+    return archive ? "deal-arquivado" : "deal-restaurado-manual";
   });
 }
 

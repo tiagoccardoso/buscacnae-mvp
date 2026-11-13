@@ -113,6 +113,16 @@ export type DealView = Deal & {
   ownerName: string | null;
   openTasks: number;
   nextTaskDueAt: string | null;
+  /** Arquivado: fora da listagem padrão, com histórico preservado (Fase 9). */
+  archivedAt: string | null;
+  /** Última interação registrada explicitamente (interaction.logged). */
+  lastInteractionAt: string | null;
+  /** Último evento de qualquer tipo no histórico do negócio. */
+  lastActivityAt: string | null;
+  /** Contato para ações rápidas (contato principal > cadastro do prospect > telefone público da ficha). */
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
 };
 
 export type CrmNote = {
@@ -168,7 +178,9 @@ export type ActivityType =
   | "prospect.created"
   | "prospect.updated"
   | "interaction.logged"
-  | "next_contact.scheduled";
+  | "next_contact.scheduled"
+  | "deal.archived"
+  | "deal.restored";
 
 export type CrmActivity = {
   id: string;

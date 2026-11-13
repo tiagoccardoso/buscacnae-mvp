@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toggleSavedEstablishmentAction } from "@/app/dashboard/actions";
+import { sendMapCompanyToCrm } from "@/app/dashboard/crm/actions";
 import { formatCnpj, formatDate, formatMoney } from "@/lib/format";
 import { PRECISION_LABELS, isPreciseLocation, type MapCompany } from "@/lib/map/types";
 
@@ -29,6 +30,7 @@ export function CompanyMapPanel({ company, searchId, onClose, onSavedChange }: C
   const [saved, setSaved] = useState(company.saved);
   const [pending, startTransition] = useTransition();
   const [saveError, setSaveError] = useState("");
+  const [crmMessage, setCrmMessage] = useState("");
 
   // O painel é remontado a cada empresa (key no componente pai); aqui só movemos o foco.
   useEffect(() => {
@@ -53,6 +55,22 @@ export function CompanyMapPanel({ company, searchId, onClose, onSavedChange }: C
       } catch {
         setSaveError("Não foi possível atualizar a carteira agora.");
       }
+    });
+  }
+
+  function sendToCrm() {
+    setSaveError("");
+    setCrmMessage("");
+    startTransition(async () => {
+      const result = await sendMapCompanyToCrm(searchId, company.id).catch(() => null);
+      if (!result?.ok) {
+        setSaveError(result?.error ?? "Não foi possível enviar ao CRM agora.");
+        return;
+      }
+      // O envio ao CRM também salva a empresa nos leads salvos.
+      setSaved(true);
+      onSavedChange(company.id, true);
+      setCrmMessage(result.message ?? "Lead adicionado ao CRM e aos leads salvos.");
     });
   }
 
@@ -128,6 +146,12 @@ export function CompanyMapPanel({ company, searchId, onClose, onSavedChange }: C
         </p>
       ) : null}
 
+      {crmMessage ? (
+        <p className="footnote" role="status">
+          {crmMessage}
+        </p>
+      ) : null}
+
       <div className="map-company-actions">
         <Link
           href={`/dashboard/companies/${encodeURIComponent(company.cnpj)}?from=mapa&search=${encodeURIComponent(searchId)}`}
@@ -150,6 +174,9 @@ export function CompanyMapPanel({ company, searchId, onClose, onSavedChange }: C
           disabled={pending}
         >
           {saved ? "Remover da carteira" : "Salvar na carteira"}
+        </button>
+        <button type="button" className="button-secondary" onClick={sendToCrm} aria-busy={pending || undefined} disabled={pending}>
+          Enviar ao CRM
         </button>
       </div>
     </section>

@@ -16,6 +16,7 @@ import {
   type DuplicateReport
 } from "@/lib/crm/repository";
 import { getCrmSession } from "@/lib/crm/server";
+import { safeReturnTo, withParams } from "@/lib/crm/navigation";
 import { validateTemplate } from "@/lib/crm/templates";
 import { isInteractionChannel, isInteractionOutcome } from "@/lib/crm/timeline";
 
@@ -24,15 +25,6 @@ import { isInteractionChannel, isInteractionOutcome } from "@/lib/crm/timeline";
  * Mesmo padrão de app/dashboard/crm/actions.ts: sessão + workspace no servidor,
  * entrada normalizada, permissão no repositório, histórico na mesma transação.
  */
-
-function withParams(path: string, params: Record<string, string>) {
-  const [base, query = ""] = path.split("?");
-  const search = new URLSearchParams(query);
-  for (const key of ["status", "error", "detail"]) search.delete(key);
-  for (const [key, value] of Object.entries(params)) search.set(key, value);
-  const text = search.toString();
-  return text ? `${base}?${text}` : base;
-}
 
 function revalidateCrm(dealId?: string) {
   revalidatePath("/dashboard/crm");
@@ -149,7 +141,8 @@ export async function checkProspectDuplicates(input: {
 export async function logInteractionAction(formData: FormData) {
   const { ctx } = await session();
   const dealId = String(formData.get("dealId") ?? "");
-  const self = `/dashboard/crm/${isUuid(dealId) ? dealId : ""}`;
+  // Ação rápida da listagem volta para a própria listagem (filtros e página preservados).
+  const self = safeReturnTo(formData.get("returnTo"), `/dashboard/crm/${isUuid(dealId) ? dealId : ""}`);
   await run(self, async () => {
     if (!isUuid(dealId)) throw new CrmError("not_found", "Registro não encontrado.");
     const channel = String(formData.get("channel") ?? "");
@@ -199,7 +192,7 @@ export async function logWhatsappContact(dealId: string, summary: string): Promi
 export async function scheduleNextContactAction(formData: FormData) {
   const { ctx } = await session();
   const dealId = String(formData.get("dealId") ?? "");
-  const self = `/dashboard/crm/${isUuid(dealId) ? dealId : ""}`;
+  const self = safeReturnTo(formData.get("returnTo"), `/dashboard/crm/${isUuid(dealId) ? dealId : ""}`);
   await run(self, async () => {
     if (!isUuid(dealId)) throw new CrmError("not_found", "Registro não encontrado.");
     const clear = formData.get("clear") === "1";

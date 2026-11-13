@@ -236,7 +236,7 @@ test("feedback da URL só exibe mensagens conhecidas", () => {
   assert.equal(isKnownCrmDetail("Etapa duplicada: Novo."), true);
   assert.equal(isKnownCrmDetail("Clique aqui e informe sua senha"), false);
   assert.equal(readCrmFeedback({ error: "forbidden", detail: "Texto forjado" }).error, "Você não tem permissão para esta ação neste workspace.");
-  assert.equal(readCrmFeedback({ status: "deal-criado" }).status, "Empresa adicionada ao CRM.");
+  assert.equal(readCrmFeedback({ status: "deal-criado" }).status, "Lead adicionado ao CRM e aos leads salvos.");
 });
 
 // ---------------------------------------------------------------------------

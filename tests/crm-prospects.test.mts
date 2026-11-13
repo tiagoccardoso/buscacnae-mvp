@@ -249,6 +249,6 @@ describe("histórico comercial e indicadores", () => {
       stages,
       now
     );
-    assert.deepEqual(summary, { total: 4, open: 2, openValueCents: 1000, won: 1, wonValueCents: 5000, lost: 1, manual: 2, overdueContacts: 1, scheduledContacts: 1, winRate: 50 });
+    assert.deepEqual(summary, { total: 4, open: 2, openValueCents: 1000, won: 1, wonValueCents: 5000, lost: 1, manual: 2, overdueContacts: 1, scheduledContacts: 1, newInPeriod: 0, proposalsPending: 0, inNegotiation: 0, stale: 0, conversionRate: 50, winRate: 50 });
   });
 });

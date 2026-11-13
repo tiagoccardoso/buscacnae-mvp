@@ -1,0 +1,399 @@
+/* ============================================================================
+   CRM — Fase 9: gestão de prospects (resumo comercial, lista com seleção,
+   ações rápidas, arquivamento e diálogos). Somente tokens de tokens.css.
+   ============================================================================ */
+
+.crm-dashboard {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.crm-dashboard-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.crm-period {
+  gap: var(--space-2);
+}
+
+.crm-metric-won {
+  color: var(--success);
+}
+
+.crm-dashboard-alerts {
+  margin: 0;
+}
+
+/* Filtros secundários recolhidos: a barra principal fica curta. */
+.crm-filters-more {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.crm-filters-more > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-sm);
+  color: var(--accent);
+  font-size: var(--text-footnote);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  list-style: none;
+}
+
+.crm-filters-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.crm-filters-more > summary::before {
+  content: "";
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.crm-filters-more[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.crm-filters-more > summary:focus-visible {
+  outline: var(--border-focus) solid var(--accent);
+  outline-offset: 2px;
+}
+
+.crm-filters-more-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  align-items: end;
+  gap: var(--space-4);
+  padding-top: var(--space-3);
+}
+
+.crm-filter-check {
+  min-height: var(--control-height);
+  align-items: center;
+}
+
+/* ---- Lista ---------------------------------------------------------------- */
+
+.crm-list {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.crm-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.crm-list-feedback:empty {
+  display: none;
+}
+
+.crm-bulk-bar {
+  position: sticky;
+  top: calc(var(--nav-height) + var(--space-2));
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-thin) solid var(--separator);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-2);
+}
+
+.crm-bulk-count {
+  margin-right: auto;
+  font-size: var(--text-callout);
+}
+
+.crm-bulk-move .input {
+  min-height: var(--control-height-sm);
+  max-width: 12rem;
+}
+
+.crm-table .crm-col-check {
+  width: 2.5rem;
+}
+
+.crm-table tr.is-selected > td {
+  background: var(--accent-soft);
+}
+
+.crm-table tr.is-archived .cell-strong {
+  color: var(--label-secondary);
+}
+
+.crm-stage-select {
+  min-height: var(--control-height-sm);
+  max-width: 11rem;
+  font-size: var(--text-footnote);
+}
+
+.crm-pill-xs {
+  justify-self: start;
+  font-size: var(--text-caption);
+}
+
+.crm-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.crm-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.button-icon.crm-row-icon {
+  width: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  padding: 0;
+  color: var(--label-secondary);
+}
+
+.button-icon.crm-row-icon:hover {
+  color: var(--label);
+}
+
+.button-icon.crm-row-delete:hover,
+.button-icon.crm-row-delete:focus-visible {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.button-icon.crm-row-icon.wa-link {
+  color: var(--success);
+}
+
+/* Menu de ações da linha: dropdown no desktop, folha inferior no celular. */
+.crm-row-menu {
+  position: relative;
+}
+
+.crm-row-menu-scrim {
+  display: none;
+}
+
+.crm-row-menu-list {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: var(--z-dropdown);
+  display: grid;
+  min-width: 15rem;
+  max-width: 20rem;
+  padding: var(--space-2);
+  border: var(--border-thin) solid var(--separator);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-3);
+}
+
+.crm-row-menu-title {
+  display: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--label-secondary);
+  font-size: var(--text-footnote);
+  font-weight: var(--weight-semibold);
+}
+
+.crm-row-menu-item {
+  display: grid;
+  gap: 0.1rem;
+  width: 100%;
+  min-height: var(--control-height-sm);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+  font-size: var(--text-callout);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.crm-row-menu-item:hover,
+.crm-row-menu-item:focus-visible {
+  background: var(--fill-4);
+  outline: none;
+}
+
+.crm-row-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 var(--border-focus) var(--accent);
+}
+
+.crm-row-menu-item.is-danger {
+  margin-top: var(--space-1);
+  color: var(--danger);
+}
+
+.crm-row-menu-item.is-danger:hover,
+.crm-row-menu-item.is-danger:focus-visible {
+  background: var(--danger-soft);
+}
+
+.crm-row-menu-item[aria-disabled="true"] {
+  color: var(--label-tertiary);
+  cursor: not-allowed;
+}
+
+.crm-row-menu-item[aria-disabled="true"]:hover {
+  background: transparent;
+}
+
+.crm-row-menu-hint {
+  overflow: hidden;
+  color: var(--label-secondary);
+  font-size: var(--text-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Diálogos (confirmação, interação, agendamento). */
+.crm-dialog {
+  width: min(32rem, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100dvh - 2 * var(--space-6));
+  padding: var(--space-6);
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: var(--bg-elevated);
+  color: var(--label);
+  box-shadow: var(--shadow-4);
+  overflow: auto;
+}
+
+.crm-dialog::backdrop {
+  background: var(--scrim);
+}
+
+.crm-dialog-actions {
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.crm-pagination {
+  justify-content: center;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+}
+
+.crm-pagination [aria-disabled="true"] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.crm-archive-zone {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+}
+
+.crm-board-saved {
+  font-size: var(--text-footnote);
+}
+
+@media (max-width: 820px) {
+  /* Linha vira cartão: seleção no canto, ações em linha no rodapé do cartão. */
+  .crm-table tr {
+    position: relative;
+  }
+
+  .crm-table td.crm-col-check {
+    position: absolute;
+    top: var(--space-5);
+    right: 0;
+    width: auto;
+    padding: 0;
+  }
+
+  .crm-table td[data-label="Prospect"] {
+    padding-right: var(--space-8);
+  }
+
+  .crm-table td.cell-actions {
+    padding-top: var(--space-3);
+  }
+
+  .crm-row-actions {
+    justify-content: flex-start;
+    gap: var(--space-2);
+  }
+
+  .button-icon.crm-row-icon {
+    width: var(--control-height);
+    min-width: var(--control-height);
+    height: var(--control-height);
+  }
+
+  .crm-stage-select {
+    max-width: none;
+    min-height: var(--control-height);
+  }
+
+  .crm-row-menu-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    display: block;
+    background: var(--scrim);
+  }
+
+  .crm-row-menu-list {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: var(--z-modal);
+    max-width: none;
+    max-height: 80dvh;
+    overflow: auto;
+    padding: var(--space-3) var(--space-3) calc(var(--space-4) + env(safe-area-inset-bottom));
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+
+  .crm-row-menu-title {
+    display: block;
+  }
+
+  .crm-row-menu-item {
+    min-height: var(--control-height);
+  }
+
+  .crm-bulk-bar {
+    top: auto;
+    bottom: var(--space-3);
+  }
+
+  .crm-bulk-count {
+    flex-basis: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crm-filters-more > summary::before {
+    transition: none;
+  }
+}

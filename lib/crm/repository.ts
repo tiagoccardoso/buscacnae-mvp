@@ -165,17 +165,26 @@ const DEAL_SELECT = `
   SELECT d.*, e.cnpj, e.company_name, e.trade_name, e.city_name, e.state_code, e.phone AS e_phone,
          pr.kind AS pr_kind, pr.name AS pr_name, pr.trade_name AS pr_trade_name, pr.city_name AS pr_city_name,
          pr.state_code AS pr_state_code, pr.whatsapp AS pr_whatsapp, pr.phone AS pr_phone, pr.phone_secondary AS pr_phone_secondary,
-         ${DISPLAY_NAME} AS owner_name, t.open_tasks, t.next_due
+         pr.email AS pr_email, pr.contact_name AS pr_contact_name,
+         pc.name AS pc_name, pc.email AS pc_email, pc.phone AS pc_phone, pc.whatsapp AS pc_whatsapp,
+         ${DISPLAY_NAME} AS owner_name, t.open_tasks, t.next_due, h.last_interaction_at, h.last_activity_at
     FROM crm_deals d
     LEFT JOIN establishments e ON e.id = d.establishment_id
     LEFT JOIN crm_prospects pr ON pr.workspace_id = d.workspace_id AND pr.id = d.prospect_id
+    LEFT JOIN crm_contacts pc ON pc.workspace_id = d.workspace_id AND pc.id = d.primary_contact_id
     LEFT JOIN profiles p ON p.id = d.owner_profile_id
     LEFT JOIN users u ON u.id = p.user_id
     LEFT JOIN LATERAL (
       SELECT count(*)::int AS open_tasks, min(due_at) AS next_due
         FROM crm_tasks ct
        WHERE ct.workspace_id = d.workspace_id AND ct.deal_id = d.id AND ct.status = 'todo'
-    ) t ON TRUE`;
+    ) t ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT max(a.happened_at) FILTER (WHERE a.type = 'interaction.logged') AS last_interaction_at,
+             max(a.happened_at) AS last_activity_at
+        FROM crm_activities a
+       WHERE a.workspace_id = d.workspace_id AND a.deal_id = d.id
+    ) h ON TRUE`;
 
 function mapCompanyRef(row: Row): CrmCompanyRef {
   if (row.prospect_id) {
@@ -207,8 +216,25 @@ function mapCompanyRef(row: Row): CrmCompanyRef {
   };
 }
 
+/** Telefone e e-mail para as ações rápidas: contato principal > prospect > ficha oficial. */
+function quickContact(row: Row) {
+  const phone =
+    firstWhatsappNumber(row.pc_whatsapp, row.pc_phone)?.raw ??
+    strOrNull(row.pc_whatsapp) ?? strOrNull(row.pc_phone) ??
+    (row.prospect_id ? strOrNull(row.pr_whatsapp) ?? strOrNull(row.pr_phone) ?? strOrNull(row.pr_phone_secondary) : strOrNull(row.e_phone));
+  return {
+    contactName: strOrNull(row.pc_name) ?? (row.prospect_id ? strOrNull(row.pr_contact_name) : null),
+    contactPhone: phone,
+    contactEmail: strOrNull(row.pc_email) ?? (row.prospect_id ? strOrNull(row.pr_email) : null)
+  };
+}
+
 function mapDeal(row: Row): DealView {
   return {
+    ...quickContact(row),
+    archivedAt: iso(row.archived_at),
+    lastInteractionAt: iso(row.last_interaction_at),
+    lastActivityAt: iso(row.last_activity_at),
     id: str(row.id),
     establishmentId: strOrNull(row.establishment_id),
     prospectId: strOrNull(row.prospect_id),
@@ -244,11 +270,29 @@ export type DealFilters = {
   /** "establishment" = empresas da base; "prospect" = cadastros manuais. */
   target?: "establishment" | "prospect" | "";
   stageId?: string;
+  /** "active" (padrão) = sem arquivados; "archived" = só arquivados; "all" = ambos. */
+  archived?: "active" | "archived" | "all";
+  /** Entrada no CRM (created_at), datas YYYY-MM-DD no fuso de São Paulo, inclusivas. */
+  createdFrom?: string | null;
+  createdTo?: string | null;
 };
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function listDeals(ctx: CrmContext, filters: DealFilters = {}, limit = 2000) {
   const params: unknown[] = [ctx.workspace.id];
   const where = ["d.workspace_id = $1"];
+  const archived = filters.archived ?? "active";
+  if (archived === "active") where.push("d.archived_at IS NULL");
+  else if (archived === "archived") where.push("d.archived_at IS NOT NULL");
+  if (filters.createdFrom && DATE_ONLY.test(filters.createdFrom)) {
+    params.push(filters.createdFrom);
+    where.push(`d.created_at >= ($${params.length}::date)::timestamp AT TIME ZONE 'America/Sao_Paulo'`);
+  }
+  if (filters.createdTo && DATE_ONLY.test(filters.createdTo)) {
+    params.push(filters.createdTo);
+    where.push(`d.created_at < ($${params.length}::date + 1)::timestamp AT TIME ZONE 'America/Sao_Paulo'`);
+  }
   if (filters.owner === "me") {
     params.push(ctx.profileId);
     where.push(`d.owner_profile_id = $${params.length}`);
@@ -292,6 +336,7 @@ export async function listDeals(ctx: CrmContext, filters: DealFilters = {}, limi
       clauses.push(
         `e.cnpj LIKE ${digitsLike}`,
         `pr.document LIKE ${digitsLike}`,
+        `regexp_replace(COALESCE(e.phone, ''), '\\D', '', 'g') LIKE ${digitsLike}`,
         `regexp_replace(COALESCE(pr.phone, '') || ' ' || COALESCE(pr.whatsapp, '') || ' ' || COALESCE(pr.phone_secondary, ''), '\\D', '', 'g') LIKE ${digitsLike}`,
         `EXISTS (SELECT 1 FROM crm_contacts c WHERE c.workspace_id = d.workspace_id
                     AND ((d.prospect_id IS NOT NULL AND c.prospect_id = d.prospect_id) OR (d.establishment_id IS NOT NULL AND c.establishment_id = d.establishment_id))
@@ -352,15 +397,36 @@ function contactTargetClause(deal: Pick<DealView, "establishmentId" | "prospectI
 export async function createDeals(
   ctx: CrmContext,
   establishmentIds: string[],
-  options: { source: DealSource; sourceRef?: string | null; sourceLabel?: string | null; ownerProfileId?: string | null; stageId?: string | null }
+  options: {
+    source: DealSource;
+    sourceRef?: string | null;
+    sourceLabel?: string | null;
+    ownerProfileId?: string | null;
+    stageId?: string | null;
+    /** Também garante a empresa nos leads salvos do usuário (padrão: sim). */
+    saveLead?: boolean;
+    /**
+     * Só aceita empresas que o usuário já pode ver (busca liberada, lead salvo ou CRM de um
+     * workspace dele). Usado por busca, mapa e listas: um UUID forjado não entra no CRM nem
+     * nos leads salvos.
+     */
+    requireVisible?: boolean;
+  }
 ) {
   const stages = await listStages(ctx);
   const stage = (options.stageId && stages.find((item) => item.id === options.stageId)) || entryStage(stages);
   if (!stage) throw new CrmError("invalid", "Configure ao menos uma etapa no pipeline.");
 
-  const existing = await dealIdsByEstablishment(ctx, establishmentIds);
-  const plan = planImport(establishmentIds, existing.keys());
-  if (!plan.toCreate.length) return { created: 0, alreadyInCrm: plan.alreadyInCrm, requested: plan.requested, dealIds: [] as string[] };
+  let requestedIds = Array.from(new Set(establishmentIds.map((id) => String(id).toLowerCase()).filter(isUuid)));
+  if (options.requireVisible) {
+    const visible = await visibleEstablishmentIds(ctx, requestedIds);
+    requestedIds = requestedIds.filter((id) => visible.has(id));
+  }
+  const existing = await dealIdsByEstablishment(ctx, requestedIds);
+  const plan = planImport(requestedIds, existing.keys());
+  const empty = { created: 0, alreadyInCrm: 0, restored: 0, savedNew: 0, requested: 0, dealIds: [] as string[], existingDealIds: [] as string[] };
+  if (!plan.requested) return empty;
+  const syncSaved = options.saveLead !== false && (await hasSavedLeadsTable());
 
   let ownerId: string | null = options.ownerProfileId ?? null;
   if (ownerId) {
@@ -374,11 +440,31 @@ export async function createDeals(
     sourceLabel: options.sourceLabel ?? null
   }).payload;
 
+  // Uma única instrução (atômica): novos negócios + histórico, restauração de negócios
+  // arquivados reenviados e o vínculo com os leads salvos do usuário (sem cópia de dados;
+  // registro já salvo é reaproveitado, nunca sobrescrito).
+  const isManager = ctx.role === "owner" || ctx.role === "admin";
+  // A visibilidade é revalidada DENTRO da instrução de escrita (acesso revogado entre a
+  // checagem prévia e o insert não passa).
+  const visible = options.requireVisible ? ` WHERE ${await visibilityPredicate("$7")}` : "";
   const rows = await q(
-    `WITH input AS (
+    `WITH requested AS (
+       SELECT e.id AS establishment_id
+         FROM unnest($9::uuid[]) AS i(id)
+         JOIN establishments e ON e.id = i.id${visible}
+     ), input AS (
        SELECT e.id AS establishment_id, i.ord
          FROM unnest($4::uuid[]) WITH ORDINALITY AS i(id, ord)
-         JOIN establishments e ON e.id = i.id
+         JOIN establishments e ON e.id = i.id${visible}
+     ), restored AS (
+       UPDATE crm_deals SET archived_at = NULL, archived_by = NULL, updated_at = NOW()
+        WHERE workspace_id = $1 AND archived_at IS NOT NULL
+          AND establishment_id IN (SELECT establishment_id FROM requested)
+          AND ($10::boolean OR owner_profile_id IS NULL OR owner_profile_id = $7)
+       RETURNING id, establishment_id
+     ), restored_act AS (
+       INSERT INTO crm_activities (workspace_id, deal_id, establishment_id, actor_profile_id, type, payload)
+       SELECT $1, restored.id, restored.establishment_id, $7, 'deal.restored', '{"via":"resend"}'::jsonb FROM restored
      ), base AS (
        SELECT COALESCE(MIN(position), ${POSITION_STEP}) AS top FROM crm_deals WHERE workspace_id = $1 AND stage_id = $2
      ), ins AS (
@@ -390,11 +476,71 @@ export async function createDeals(
      ), act AS (
        INSERT INTO crm_activities (workspace_id, deal_id, establishment_id, actor_profile_id, type, payload)
        SELECT $1, ins.id, ins.establishment_id, $7, 'deal.created', $8::jsonb FROM ins
-     )
-     SELECT id FROM ins`,
-    [ctx.workspace.id, stage.id, ownerId, plan.toCreate, options.source, options.sourceRef ?? null, ctx.profileId, JSON.stringify(payload)]
+     )${
+       syncSaved
+         ? `, saved AS (
+       INSERT INTO saved_establishments (profile_id, establishment_id)
+       SELECT $7, requested.establishment_id FROM requested
+        WHERE NOT EXISTS (SELECT 1 FROM saved_establishments s WHERE s.profile_id = $7 AND s.establishment_id = requested.establishment_id)
+       ON CONFLICT DO NOTHING
+       RETURNING establishment_id
+     )`
+         : ""
+     }
+     SELECT 'created' AS kind, id::text AS id FROM ins
+     UNION ALL SELECT 'restored', id::text FROM restored
+     ${syncSaved ? "UNION ALL SELECT 'saved', establishment_id::text FROM saved" : ""}`,
+    [ctx.workspace.id, stage.id, ownerId, plan.toCreate, options.source, options.sourceRef ?? null, ctx.profileId, JSON.stringify(payload), requestedIds, isManager]
   );
-  return { created: rows.length, alreadyInCrm: plan.requested - rows.length, requested: plan.requested, dealIds: rows.map((row) => str(row.id)) };
+  const created = rows.filter((row) => row.kind === "created").map((row) => str(row.id));
+  return {
+    created: created.length,
+    alreadyInCrm: plan.requested - created.length,
+    restored: rows.filter((row) => row.kind === "restored").length,
+    savedNew: rows.filter((row) => row.kind === "saved").length,
+    requested: plan.requested,
+    dealIds: created,
+    existingDealIds: [...existing.values()]
+  };
+}
+
+/**
+ * Condição SQL "empresa e.* visível para o perfil em `profileParam`" — mesmas regras de
+ * lib/search/visibility.ts (busca liberada, lead salvo ou CRM de um workspace do usuário).
+ */
+async function visibilityPredicate(profileParam: string) {
+  const [flags] = await q(
+    `SELECT to_regclass('public.saved_establishments') IS NOT NULL AS has_saved,
+            (to_regclass('public.search_results') IS NOT NULL AND to_regclass('public.search_access_orders') IS NOT NULL) AS has_orders`
+  );
+  const clauses = [
+    `EXISTS (SELECT 1 FROM crm_deals vd JOIN crm_workspace_members vm ON vm.workspace_id = vd.workspace_id AND vm.profile_id = ${profileParam} WHERE vd.establishment_id = e.id)`
+  ];
+  if (flags?.has_saved === true) clauses.push(`EXISTS (SELECT 1 FROM saved_establishments vs WHERE vs.establishment_id = e.id AND vs.profile_id = ${profileParam})`);
+  if (flags?.has_orders === true) {
+    clauses.push(`EXISTS (SELECT 1 FROM search_results sr
+                    JOIN search_access_orders o ON o.search_query_id = sr.search_query_id AND o.status IN ('paid', 'free')
+                   WHERE sr.establishment_id = e.id AND COALESCE(o.profile_id, sr.profile_id) = ${profileParam})`);
+  }
+  return `(${clauses.join(" OR ")})`;
+}
+
+/** Versão em lote de isEstablishmentVisible. */
+export async function visibleEstablishmentIds(ctx: CrmContext, establishmentIds: string[]) {
+  const ids = Array.from(new Set(establishmentIds.filter(isUuid)));
+  if (!ids.length) return new Set<string>();
+  const rows = await q(`SELECT e.id FROM establishments e WHERE e.id = ANY($1::uuid[]) AND ${await visibilityPredicate("$2")}`, [ids, ctx.profileId]);
+  return new Set(rows.map((row) => str(row.id)));
+}
+
+let savedLeadsTableKnown = false;
+
+/** saved_establishments (leads salvos) existe? Só o resultado positivo fica em cache. */
+async function hasSavedLeadsTable() {
+  if (savedLeadsTableKnown) return true;
+  const [row] = await q(`SELECT to_regclass('public.saved_establishments') IS NOT NULL AS ok`);
+  savedLeadsTableKnown = row?.ok === true;
+  return savedLeadsTableKnown;
 }
 
 async function requireDeal(ctx: CrmContext, dealId: string) {
@@ -508,17 +654,74 @@ export async function moveDeal(ctx: CrmContext, dealId: string, toStageId: strin
   return { stageChanged: toStageId !== deal.stageId, closed: isClosedStage(target) };
 }
 
-export async function deleteDeal(ctx: CrmContext, dealId: string) {
+/** Condição SQL de "histórico comercial" para o negócio d (mesma regra de dealsWithHistory). */
+const HISTORY_CONDITION = `(
+  EXISTS (SELECT 1 FROM crm_pipeline_stages s WHERE s.workspace_id = d.workspace_id AND s.id = d.stage_id AND s.kind <> 'open')
+  OR d.amount_cents IS NOT NULL
+  OR EXISTS (SELECT 1 FROM crm_notes n WHERE n.workspace_id = d.workspace_id AND n.deal_id = d.id)
+  OR EXISTS (SELECT 1 FROM crm_tasks t WHERE t.workspace_id = d.workspace_id AND t.deal_id = d.id)
+  OR EXISTS (SELECT 1 FROM crm_activities a WHERE a.workspace_id = d.workspace_id AND a.deal_id = d.id
+                AND a.type IN ('interaction.logged', 'stage.changed', 'contact.created'))
+  OR EXISTS (SELECT 1 FROM crm_contacts c WHERE c.workspace_id = d.workspace_id
+                AND ((d.prospect_id IS NOT NULL AND c.prospect_id = d.prospect_id)
+                  OR (d.establishment_id IS NOT NULL AND c.establishment_id = d.establishment_id)))
+)`;
+
+const HISTORY_GUARD_MESSAGE = "Este prospect tem histórico comercial. Arquive-o ou confirme a exclusão definitiva.";
+
+function isDivisionByZero(error: unknown) {
+  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "22012");
+}
+
+/**
+ * Exclusão definitiva de um negócio. Sem `force`, a transação trava a linha do negócio
+ * (FOR UPDATE: nota/tarefa/interação concorrente espera) e ABORTA se houver histórico
+ * comercial — a checagem acontece dentro da mesma transação da exclusão (sem janela TOCTOU).
+ */
+export async function deleteDeal(ctx: CrmContext, dealId: string, options: { force?: boolean } = {}) {
   const deal = await requireDeal(ctx, dealId);
   if (!canDeleteDeal({ profileId: ctx.profileId, role: ctx.role }, deal)) {
     throw new CrmError("forbidden", "Somente quem criou o negócio (sendo responsável) ou um administrador pode removê-lo.");
   }
+  const isManager = ctx.role === "owner" || ctx.role === "admin";
+  const guard: Array<{ text: string; params: unknown[] }> = [
+    { text: `SELECT id FROM crm_deals WHERE workspace_id = $1 AND id = $2 FOR UPDATE`, params: [ctx.workspace.id, dealId] },
+    // Permissão revalidada na linha travada (reatribuição concorrente não usa autorização velha).
+    {
+      text: `SELECT 1 / (CASE WHEN EXISTS (SELECT 1 FROM crm_deals d WHERE d.workspace_id = $1 AND d.id = $2
+                AND ($3::boolean OR (d.owner_profile_id = $4 AND COALESCE(d.created_by, $4) = $4))) THEN 1 ELSE 0 END) AS ok`,
+      params: [ctx.workspace.id, dealId, isManager, ctx.profileId]
+    }
+  ];
+  if (!options.force) {
+    // Divisão por zero proposital = erro que desfaz a transação inteira quando há histórico.
+    guard.push({ text: `SELECT 1 / (CASE WHEN EXISTS (SELECT 1 FROM crm_deals d WHERE d.workspace_id = $1 AND d.id = $2 AND ${HISTORY_CONDITION}) THEN 0 ELSE 1 END) AS ok`, params: [ctx.workspace.id, dealId] });
+  }
+  try {
+    return await runDeleteDeal(ctx, deal, guard);
+  } catch (error) {
+    if (isDivisionByZero(error)) {
+      // Qual guarda abortou? Relê o estado atual para responder com o motivo certo.
+      const current = await getDeal(ctx, dealId);
+      if (!current) throw new CrmError("not_found", "Negócio não encontrado neste workspace.");
+      if (!canDeleteDeal({ profileId: ctx.profileId, role: ctx.role }, current)) {
+        throw new CrmError("forbidden", "Somente quem criou o negócio (sendo responsável) ou um administrador pode removê-lo.");
+      }
+      throw new CrmError("conflict", HISTORY_GUARD_MESSAGE);
+    }
+    throw error;
+  }
+}
+
+async function runDeleteDeal(ctx: CrmContext, deal: DealView, guard: Array<{ text: string; params: unknown[] }>) {
+  const dealId = deal.id;
   if (deal.prospectId) {
     // Prospect manual existe só por causa do negócio: sai junto (LGPD — não deixa dado
     // pessoal órfão e inacessível). Contatos do prospect caem em cascata; o histórico do
     // negócio (que pode citar nomes e resumos de conversas) é apagado, e fica só um
     // evento de auditoria sem dado pessoal.
     await sql.transaction([
+      ...guard,
       { text: `DELETE FROM crm_activities WHERE workspace_id = $1 AND (deal_id = $2 OR prospect_id = $3)`, params: [ctx.workspace.id, dealId, deal.prospectId] },
       activityInsert(ctx, { type: "deal.deleted", dealId: null, establishmentId: null, prospectId: null, actorProfileId: ctx.profileId, payload: { kind: "prospect" } }),
       { text: `DELETE FROM crm_deals WHERE workspace_id = $1 AND id = $2`, params: [ctx.workspace.id, dealId] },
@@ -527,10 +730,197 @@ export async function deleteDeal(ctx: CrmContext, dealId: string) {
     return { kind: "prospect" as const };
   }
   await sql.transaction([
+    ...guard,
     activityInsert(ctx, { type: "deal.deleted", dealId, establishmentId: deal.establishmentId, actorProfileId: ctx.profileId, payload: {} }),
     { text: `DELETE FROM crm_deals WHERE workspace_id = $1 AND id = $2`, params: [ctx.workspace.id, dealId] }
   ]);
   return { kind: "establishment" as const };
+}
+
+// ---------------------------------------------------------------------------
+// Arquivamento e ações em lote (Fase 9)
+// ---------------------------------------------------------------------------
+
+export const MAX_BULK_DEALS = 200;
+
+/**
+ * Negócios com HISTÓRICO COMERCIAL: notas, tarefas, interações registradas, contatos,
+ * mudança de etapa, valor informado ou etapa de fechamento (ganho/perdido).
+ * Para eles, a ação recomendada é arquivar; a exclusão exige confirmação explícita.
+ */
+export async function dealsWithHistory(ctx: CrmContext, dealIds: string[]) {
+  const ids = Array.from(new Set(dealIds.filter(isUuid)));
+  if (!ids.length) return new Set<string>();
+  const rows = await q(
+    `SELECT d.id
+       FROM crm_deals d
+       JOIN crm_pipeline_stages s ON s.workspace_id = d.workspace_id AND s.id = d.stage_id
+      WHERE d.workspace_id = $1 AND d.id = ANY($2::uuid[])
+        AND (
+          s.kind <> 'open' OR d.amount_cents IS NOT NULL
+          OR EXISTS (SELECT 1 FROM crm_notes n WHERE n.workspace_id = d.workspace_id AND n.deal_id = d.id)
+          OR EXISTS (SELECT 1 FROM crm_tasks t WHERE t.workspace_id = d.workspace_id AND t.deal_id = d.id)
+          OR EXISTS (SELECT 1 FROM crm_activities a WHERE a.workspace_id = d.workspace_id AND a.deal_id = d.id
+                        AND a.type IN ('interaction.logged', 'stage.changed', 'contact.created'))
+          OR EXISTS (SELECT 1 FROM crm_contacts c WHERE c.workspace_id = d.workspace_id
+                        AND ((d.prospect_id IS NOT NULL AND c.prospect_id = d.prospect_id)
+                          OR (d.establishment_id IS NOT NULL AND c.establishment_id = d.establishment_id)))
+        )`,
+    [ctx.workspace.id, ids]
+  );
+  return new Set(rows.map((row) => str(row.id)));
+}
+
+export type BulkResult = {
+  /** Negócios efetivamente alterados/removidos. */
+  done: string[];
+  /** Sem permissão para este negócio (papel/responsável). */
+  forbidden: string[];
+  /** Não encontrados no workspace ativo (id forjado, de outro workspace ou já removido). */
+  notFound: string[];
+  /** Exclusão recusada por haver histórico comercial (use arquivar ou confirme explicitamente). */
+  hasHistory: string[];
+  /** Falha inesperada neste item (os demais itens seguem; cada exclusão é atômica por negócio). */
+  failed: string[];
+};
+
+function bulkIds(dealIds: string[]) {
+  const ids = Array.from(new Set(dealIds.map((id) => String(id).toLowerCase()).filter(isUuid)));
+  if (!ids.length) throw new CrmError("invalid", "Nenhum negócio válido selecionado.");
+  if (ids.length > MAX_BULK_DEALS) throw new CrmError("invalid", `Use no máximo ${MAX_BULK_DEALS} negócios por vez.`);
+  return ids;
+}
+
+async function dealsById(ctx: CrmContext, ids: string[]) {
+  const rows = await q(`${DEAL_SELECT} WHERE d.workspace_id = $1 AND d.id = ANY($2::uuid[])`, [ctx.workspace.id, ids]);
+  return new Map(rows.map((row) => [str(row.id), mapDeal(row)]));
+}
+
+/**
+ * Arquiva (ou restaura) negócios. Não apaga nada: o negócio sai da listagem padrão e
+ * volta pelo filtro "Arquivados". Mesma regra de edição do negócio (responsável ou admin).
+ * Os leads salvos não são tocados.
+ */
+export async function setDealsArchived(ctx: CrmContext, dealIds: string[], archive: boolean): Promise<BulkResult> {
+  const ids = bulkIds(dealIds);
+  const deals = await dealsById(ctx, ids);
+  const actor = { profileId: ctx.profileId, role: ctx.role };
+  const result: BulkResult = { done: [], forbidden: [], notFound: [], hasHistory: [], failed: [] };
+  const statements: Array<{ text: string; params: unknown[] }> = [];
+  for (const id of ids) {
+    const deal = deals.get(id);
+    if (!deal) {
+      result.notFound.push(id);
+      continue;
+    }
+    if (!canEditDeal(actor, deal)) {
+      result.forbidden.push(id);
+      continue;
+    }
+    if (Boolean(deal.archivedAt) === archive) {
+      result.done.push(id); // idempotente: já está no estado pedido
+      continue;
+    }
+    // Evento só é gravado se a linha realmente mudou (ação concorrente não gera registro falso).
+    statements.push({
+      text: `WITH changed AS (
+               UPDATE crm_deals
+                  SET archived_at = CASE WHEN $4::boolean THEN NOW() ELSE NULL END,
+                      archived_by = CASE WHEN $4::boolean THEN $3::uuid ELSE NULL END,
+                      updated_at = NOW()
+                WHERE workspace_id = $1 AND id = $2 AND (archived_at IS NULL) = $4::boolean
+                  AND ($6::boolean OR owner_profile_id IS NULL OR owner_profile_id = $3)
+               RETURNING id, establishment_id, prospect_id
+             )
+             INSERT INTO crm_activities (workspace_id, deal_id, establishment_id, prospect_id, actor_profile_id, type, payload)
+             SELECT $1, changed.id, changed.establishment_id, changed.prospect_id, $3, $5, '{}'::jsonb FROM changed
+             RETURNING deal_id`,
+      params: [ctx.workspace.id, id, ctx.profileId, archive, archive ? "deal.archived" : "deal.restored", ctx.role === "owner" || ctx.role === "admin"]
+    });
+  }
+  if (statements.length) {
+    const changed = await sql.transaction(statements);
+    for (const rows of changed as unknown as Row[][]) {
+      for (const row of rows) result.done.push(str(row.deal_id));
+    }
+  }
+  // Tentados e não alterados: relê o estado. Já no estado pedido (ação concorrente) = concluído;
+  // senão, a permissão mudou no meio do caminho (ex.: reatribuído) = sem permissão.
+  const pending = ids.filter((id) => deals.has(id) && !result.forbidden.includes(id) && !result.done.includes(id));
+  if (pending.length) {
+    const fresh = await dealsById(ctx, pending);
+    for (const id of pending) {
+      const current = fresh.get(id);
+      if (!current) result.notFound.push(id);
+      else if (Boolean(current.archivedAt) === archive) result.done.push(id);
+      else result.forbidden.push(id);
+    }
+  }
+  return result;
+}
+
+/**
+ * Exclusão (1 ou N) a partir da listagem. Cada negócio é verificado individualmente:
+ * permissão de exclusão e, sem `force`, ausência de histórico comercial. A remoção em si
+ * reaproveita `deleteDeal` (mesma regra LGPD para prospects manuais). Os leads salvos
+ * do usuário NÃO são removidos.
+ */
+export async function deleteDeals(ctx: CrmContext, dealIds: string[], options: { force?: boolean } = {}): Promise<BulkResult> {
+  const ids = bulkIds(dealIds);
+  const deals = await dealsById(ctx, ids);
+  const actor = { profileId: ctx.profileId, role: ctx.role };
+  const history = options.force ? new Set<string>() : await dealsWithHistory(ctx, ids);
+  const result: BulkResult = { done: [], forbidden: [], notFound: [], hasHistory: [], failed: [] };
+  for (const id of ids) {
+    const deal = deals.get(id);
+    if (!deal) {
+      result.notFound.push(id);
+      continue;
+    }
+    if (!canDeleteDeal(actor, deal)) {
+      result.forbidden.push(id);
+      continue;
+    }
+    if (history.has(id)) {
+      result.hasHistory.push(id);
+      continue;
+    }
+    try {
+      // A checagem definitiva de histórico acontece dentro da transação de cada exclusão.
+      await deleteDeal(ctx, id, { force: options.force === true });
+      result.done.push(id);
+    } catch (error) {
+      if (error instanceof CrmError && error.code === "not_found") result.notFound.push(id);
+      else if (error instanceof CrmError && error.code === "conflict") result.hasHistory.push(id);
+      else if (error instanceof CrmError && error.code === "forbidden") result.forbidden.push(id);
+      else {
+        console.error("[crm] falha ao excluir negócio em lote", { message: error instanceof Error ? error.message : String(error) });
+        result.failed.push(id);
+      }
+    }
+  }
+  return result;
+}
+
+/** Troca de etapa em lote (mesma regra e histórico do seletor de etapa). */
+export async function moveDeals(ctx: CrmContext, dealIds: string[], toStageId: string): Promise<BulkResult> {
+  const ids = bulkIds(dealIds);
+  if (!isUuid(toStageId)) throw new CrmError("invalid", "Etapa inválida.");
+  const result: BulkResult = { done: [], forbidden: [], notFound: [], hasHistory: [], failed: [] };
+  for (const id of ids) {
+    try {
+      await moveDeal(ctx, id, toStageId, 0);
+      result.done.push(id);
+    } catch (error) {
+      if (error instanceof CrmError && error.code === "forbidden") result.forbidden.push(id);
+      else if (error instanceof CrmError && error.code === "not_found") result.notFound.push(id);
+      else {
+        if (!(error instanceof CrmError)) console.error("[crm] falha ao mover em lote", { message: error instanceof Error ? error.message : String(error) });
+        result.failed.push(id);
+      }
+    }
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -981,6 +1371,15 @@ export async function createManualDeal(
     });
     statements.push({ text: `UPDATE crm_deals SET primary_contact_id = $3 WHERE workspace_id = $1 AND id = $2`, params: [ctx.workspace.id, dealId, contactId] });
     statements.push(activityInsert(ctx, { ...base, type: "contact.created", payload: { contactId, name: contactName, primary: true } }));
+  }
+  if (establishmentId && (await hasSavedLeadsTable())) {
+    // Empresa da base vinculada → também nos leads salvos do usuário (reaproveita se já existir).
+    statements.push({
+      text: `INSERT INTO saved_establishments (profile_id, establishment_id)
+             SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM saved_establishments WHERE profile_id = $1 AND establishment_id = $2)
+             ON CONFLICT DO NOTHING`,
+      params: [ctx.profileId, establishmentId]
+    });
   }
   if (deal.nextContactAt) statements.push(activityInsert(ctx, { ...base, type: "next_contact.scheduled", payload: { at: deal.nextContactAt } }));
   if (deal.notes) {

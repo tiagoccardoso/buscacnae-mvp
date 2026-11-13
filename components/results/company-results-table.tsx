@@ -69,7 +69,7 @@ type CompanyResultsTableProps = {
   createListFromSelectionAction?: (establishmentIds: string[], name: string) => Promise<{ ok: boolean; saved: number; error?: string; listId?: string }>;
   toggleSavedAction?: (formData: FormData) => Promise<void>;
   /** CRM nativo (Fase 6): envia a seleção como negócios, referenciando a empresa. */
-  sendToCrmAction?: (establishmentIds: string[]) => Promise<{ ok: boolean; created: number; alreadyInCrm: number; error?: string }>;
+  sendToCrmAction?: (establishmentIds: string[]) => Promise<{ ok: boolean; created: number; alreadyInCrm: number; message?: string; error?: string }>;
   /** Nome base do arquivo CSV da seleção. */
   csvFileName?: string;
   /** Filtros iniciais (lidos da URL: mesmos nomes do Mapa). */
@@ -434,8 +434,10 @@ export function CompanyResultsTable({
         setFeedback({ tone: "danger", text: result.error ?? "Não foi possível enviar ao CRM." });
         return;
       }
-      const already = result.alreadyInCrm > 0 ? ` ${numberFormatter.format(result.alreadyInCrm)} já estava(m) no CRM.` : "";
-      setFeedback({ tone: "success", text: `${numberFormatter.format(result.created)} empresa(s) adicionada(s) ao CRM na etapa inicial.${already}` });
+      // Enviar ao CRM também garante as empresas nos leads salvos (mesma transação no servidor).
+      setBulkSavedIds((current) => new Set([...current, ...ids]));
+      const already = result.alreadyInCrm > 0 ? ` ${numberFormatter.format(result.alreadyInCrm)} já estava(m) no CRM (sem duplicação).` : "";
+      setFeedback({ tone: "success", text: result.message ?? `${numberFormatter.format(result.created)} lead(s) adicionado(s) ao CRM e aos leads salvos.${already}` });
     });
   }
 

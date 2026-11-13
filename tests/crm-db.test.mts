@@ -69,6 +69,8 @@ describe("CRM no banco (PGlite)", () => {
     await db.exec(readFileSync(new URL("../sql/neon_crm.sql", import.meta.url), "utf8"));
     // Fase 8 aplicada por cima: os fluxos da Fase 6 precisam continuar idênticos.
     await db.exec(readFileSync(new URL("../sql/neon_crm_prospects.sql", import.meta.url), "utf8"));
+    // Fase 9 (arquivamento) por cima.
+    await db.exec(readFileSync(new URL("../sql/neon_crm_gestao.sql", import.meta.url), "utf8"));
     for (const user of Object.values(users)) {
       await db.query(`INSERT INTO users (id, name, email) VALUES ($1, $2, $3)`, [user.id, user.name, user.email]);
       await db.query(`INSERT INTO profiles (id, user_id, email, full_name) VALUES ($1, $1, $2, $3)`, [user.id, user.email, user.name]);
@@ -266,7 +268,7 @@ describe("CRM no banco (PGlite)", () => {
 
   test("remover do CRM mantém a empresa e o registro de auditoria", async () => {
     const [deal] = await listDeals(ana);
-    await deleteDeal(ana, deal.id);
+    await deleteDeal(ana, deal.id, { force: true }); // confirmação explícita (Fase 9): o negócio tem histórico
     assert.equal(await getDeal(ana, deal.id), null);
     const { rows } = await db.query<{ count: number }>(`SELECT count(*)::int AS count FROM establishments WHERE id = $1`, [deal.establishmentId]);
     assert.equal(rows[0].count, 1);

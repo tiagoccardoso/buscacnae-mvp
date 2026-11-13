@@ -91,12 +91,19 @@ describe("Fase 8 — prospects manuais no banco (PGlite)", () => {
 
     // Estado "produção": já existe um negócio da Fase 6 ANTES da migração da Fase 8.
     const ana = await asUser(users.ana);
-    const created = await repo.createDeals(ana, [officialId], { source: "search", ownerProfileId: ANA });
-    legacyDealId = created.dealIds[0];
+    // Inserção direta (o repositório atual já usa colunas da Fase 9): mesmo formato do createDeals da Fase 6.
+    const stage = (await db.query<{ id: string }>(`SELECT id FROM crm_pipeline_stages WHERE workspace_id = $1 ORDER BY position LIMIT 1`, [ana.workspace.id])).rows[0];
+    const created = await db.query<{ id: string }>(
+      `INSERT INTO crm_deals (workspace_id, establishment_id, stage_id, position, owner_profile_id, source, created_by) VALUES ($1, $2, $3, 0, $4, 'search', $4) RETURNING id`,
+      [ana.workspace.id, officialId, stage.id, ANA]
+    );
+    legacyDealId = created.rows[0].id;
+    await db.query(`INSERT INTO crm_activities (workspace_id, deal_id, establishment_id, actor_profile_id, type, payload) VALUES ($1, $2, $3, $4, 'deal.created', '{"source":"search"}')`, [ana.workspace.id, legacyDealId, officialId, ANA]);
 
     // Migração aplicada sobre dados existentes, duas vezes (idempotente).
     await db.exec(sqlFile("neon_crm_prospects.sql"));
     await db.exec(sqlFile("neon_crm_prospects.sql"));
+    await db.exec(sqlFile("neon_crm_gestao.sql"));
   });
 
   after(async () => {
@@ -322,7 +329,7 @@ describe("Fase 8 — prospects manuais no banco (PGlite)", () => {
   test("excluir prospect remove cadastro, contatos e histórico pessoal; mantém auditoria", async () => {
     const ana = await asUser(users.ana);
     const [zé] = await repo.listDeals(ana, { q: "Oficina" });
-    const removed = await repo.deleteDeal(ana, zé.id);
+    const removed = await repo.deleteDeal(ana, zé.id, { force: true }); // confirmação explícita (Fase 9)
     assert.equal(removed.kind, "prospect");
     assert.equal(await repo.getProspect(ana, zé.prospectId), null);
     assert.equal(await count(`SELECT count(*)::int AS n FROM crm_contacts WHERE prospect_id = $1`, [zé.prospectId]), 0);

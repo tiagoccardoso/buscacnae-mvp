@@ -217,6 +217,10 @@ export function describeActivity(activity: Pick<CrmActivity, "type" | "payload">
       const when = dateTimeLabel(p.at);
       return when ? `Agendou o próximo contato para ${when}` : "Removeu o próximo contato agendado";
     }
+    case "deal.archived":
+      return "Arquivou o negócio (histórico preservado)";
+    case "deal.restored":
+      return p.via === "resend" ? "Restaurou o negócio ao reenviá-lo ao CRM" : "Restaurou o negócio arquivado";
     default:
       return "Atividade";
   }

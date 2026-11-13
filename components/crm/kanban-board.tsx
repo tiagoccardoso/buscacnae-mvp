@@ -111,6 +111,7 @@ export function KanbanBoard({ stages, deals, moveAction, now: nowProp }: { stage
   const suppressClickRef = useRef(false);
   const [announcement, setAnnouncement] = useState("");
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
   const [pending, startTransition] = useTransition();
   const [now] = useState(() => nowProp ?? Date.now());
   const liveId = useId();
@@ -130,6 +131,7 @@ export function KanbanBoard({ stages, deals, moveAction, now: nowProp }: { stage
 
       setCards(result.cards);
       setError("");
+      setSaved("");
       setAnnouncement(`${moving.companyName} movida para ${stageName(toStageId)}.`);
       startTransition(async () => {
         const response = await moveAction(dealId, toStageId, toIndex).catch(() => ({ ok: false, error: "Falha de conexão." }));
@@ -137,6 +139,8 @@ export function KanbanBoard({ stages, deals, moveAction, now: nowProp }: { stage
           setCards(previous);
           setError(response.error ?? "Não foi possível mover o negócio.");
           setAnnouncement(`Movimento desfeito: ${response.error ?? "erro"}`);
+        } else if (moving.stageId !== toStageId) {
+          setSaved(`${moving.companyName} movida para ${stageName(toStageId)}. Alteração salva.`);
         }
       });
     },
@@ -259,6 +263,7 @@ export function KanbanBoard({ stages, deals, moveAction, now: nowProp }: { stage
     <div className="crm-board-shell">
       <p id={liveId} className="sr-only" aria-live="polite">{announcement}</p>
       {error ? <div className="notice danger" role="alert">{error}</div> : null}
+      {saved && !error ? <div className="notice success crm-board-saved">{saved}</div> : null}
       <div ref={boardRef} className={`crm-board${drag?.active ? " is-dragging" : ""}`} aria-describedby={liveId} aria-busy={pending}>
         {columns.map(({ stage, cards: columnCards }) => {
           const isOver = drag?.active && drag.overStageId === stage.id;

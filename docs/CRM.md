@@ -217,6 +217,20 @@ A primeira auditoria não encontrou nada crítico. Encontrou 3 problemas altos, 
 - `tests/crm-prospects-db.test.mts` (PGlite + repositório real): migração sobre dados existentes e reaplicada, lead de busca preservado, cadastro sem CNPJ, com CNPJ fora da base, com CNPJ da base (vínculo), pessoa física, duplicidades, edição, movimentação, contato adicional, pesquisa por telefone/e-mail/documento, filtros, registro de contato, próximo contato, tarefa, isolamento (inclusive pela FK composta e pelo CHECK), permissões em equipe, modelos, exclusão com LGPD, reversão bloqueada com dados e reversão limpa.
 - **Node 24:** neste ambiente (Node 24.11 + tsx 4.20), imports **estáticos** de `.ts` a partir de `.mts` não expõem os nomes exportados. Os testes da fase e os de `crm`, `crm-db` e `prospeccao` usam `await import()`, o mesmo padrão dos testes da Fase 7.
 
+## Fase 9: gestão de prospects (lista, arquivamento, CRM ↔ leads salvos)
+
+Migração: [`sql/neon_crm_gestao.sql`](../sql/neon_crm_gestao.sql) (aditiva, idempotente; aplicar **depois** de `neon_crm_prospects.sql`). Reversão segura: `sql/neon_crm_gestao_rollback.sql` (aborta se houver arquivados). Se precisar reverter também a Fase 8, reverta a Fase 9 antes.
+
+- **Arquivar ≠ excluir.** `crm_deals.archived_at/archived_by`. Arquivar tira da lista, do Kanban e dos indicadores, sem apagar nada; restaura pelo filtro *Mais filtros → Situação → Arquivados* ou pela página do negócio. Eventos `deal.archived`/`deal.restored` no histórico.
+- **Exclusão protegida.** Com histórico comercial (notas, tarefas, interações, contatos, mudança de etapa, valor ou fechamento), excluir exige confirmação explícita; a checagem roda **dentro** da transação, com `FOR UPDATE` no negócio. A lista oferece arquivar como ação principal nesses casos.
+- **Enviar ao CRM = CRM + leads salvos.** `createDeals` grava, na mesma instrução, o negócio (único por workspace + empresa) e o vínculo em `saved_establishments` do usuário (`NOT EXISTS` + `ON CONFLICT DO NOTHING`), sem copiar dados e sem sobrescrever notas/etapa já preenchidas. Reenviar um negócio arquivado o restaura. Busca, mapa e listas exigem que a empresa já esteja liberada para o usuário (`visibleEstablishmentIds`). A migração garante `UNIQUE (profile_id, establishment_id)` quando faltar e não houver duplicatas.
+- **Prospects manuais** continuam deduplicados por documento no workspace e identificados por `crm_prospects.id`; como `saved_establishments` só referencia empresas da base, eles não entram nos leads salvos (cadastro vinculado a CNPJ da base entra).
+- **Excluir/arquivar no CRM não remove o lead salvo.**
+- **Lista (`?view=tabela`):** busca por empresa, CNPJ, contato, telefone e e-mail; filtros por etapa, responsável, origem, tipo, data de entrada, situação e "sem acompanhamento"; ordenação por atualização, entrada, próxima atividade, valor, empresa e previsão; paginação de 25; seleção múltipla com mover/arquivar/restaurar/excluir; ações rápidas (abrir, editar, WhatsApp, copiar telefone/e-mail, registrar interação, agendar acompanhamento, etapa, arquivar, excluir). Filtros, busca e página são preservados após cada ação.
+- **Resumo comercial** (`lib/crm/metrics.ts`, regras no cabeçalho do arquivo): ativos, novos no período (7/30/90 dias), em negociação, propostas pendentes, ganhos, perdidos, valor potencial e conversão — sempre sobre o mesmo recorte filtrado da tela.
+- **Limites conhecidos:** a lista carrega até 2.000 negócios por consulta e pagina/agrega em memória; acima disso, migrar para paginação e agregação em SQL.
+- **Testes:** `tests/crm-gestao.test.mts` (unidade) e `tests/crm-gestao-db.test.mts` (PGlite + repositório real).
+
 ## Próximos passos sugeridos
 
 - Convite por e-mail com aceite (em vez de adicionar pelo e-mail de uma conta existente).

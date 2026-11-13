@@ -13,7 +13,7 @@ type Props = {
 
 const VIEWS = [
   { key: "kanban", label: "Kanban", href: "/dashboard/crm" },
-  { key: "tabela", label: "Tabela", href: "/dashboard/crm?view=tabela" },
+  { key: "tabela", label: "Lista", href: "/dashboard/crm?view=tabela" },
   { key: "tarefas", label: "Tarefas", href: "/dashboard/crm?view=tarefas" },
   { key: "configuracoes", label: "Pipeline e equipe", href: "/dashboard/crm/configuracoes" }
 ] as const;
